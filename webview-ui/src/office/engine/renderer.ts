@@ -482,7 +482,7 @@ export function renderBubbles(
 
     const sittingOff = ch.state === CharacterState.TYPE ? BUBBLE_SITTING_OFFSET_PX : 0
 
-    // ── Activity bubble: square box with dynamic text, above nameplate ──
+    // ── Activity bubble: square box with dynamic text (2 lines, 100px wide), above nameplate ──
     if (ch.bubbleType === 'activity') {
       let alpha = 1.0
       if (ch.bubbleTimer < ACTIVITY_BUBBLE_FADE_SEC) {
@@ -490,18 +490,51 @@ export function renderBubbles(
       }
       if (alpha <= 0) continue
 
-      const fontSize = Math.max(7, Math.round(4.5 * zoom))
+      const fontSize = 18
       ctx.save()
-      ctx.font = `${fontSize}px "FS Pixel Sans Unicode", monospace`
+      ctx.font = `${fontSize}px "FS Pixel Sans", sans-serif`
       const text = ch.bubbleText || ''
-      const metrics = ctx.measureText(text)
-      const padX = Math.round(3 * zoom)
-      const padY = Math.round(2 * zoom)
-      const boxW = Math.round(metrics.width + padX * 2)
-      const boxH = Math.round(fontSize + padY * 2)
-      const tailH = Math.round(2 * zoom)
 
-      // Position above the nameplate overlay (~20px extra above BUBBLE_VERTICAL_OFFSET)
+      // Word-wrap into 2 lines, max 100px wide
+      const maxW = 100
+      const words = text.split(/\s+/)
+      let line1 = ''
+      let line2 = ''
+      for (const word of words) {
+        const test = line1 ? line1 + ' ' + word : word
+        if (ctx.measureText(test).width <= maxW) {
+          line1 = test
+        } else {
+          if (!line2) {
+            line2 = word
+          } else {
+            const test2 = line2 + ' ' + word
+            if (ctx.measureText(test2).width <= maxW) {
+              line2 = test2
+            } else {
+              line2 = line2 + ' ' + word
+              break
+            }
+          }
+        }
+      }
+      // If all fit on line1 and line2 is empty, check if we need to truncate
+      if (line2 && ctx.measureText(line2).width > maxW) {
+        while (ctx.measureText(line2 + '\u2026').width > maxW && line2.length > 1) {
+          line2 = line2.slice(0, -1)
+        }
+        line2 = line2 + '\u2026'
+      }
+
+      const lines = line2 ? [line1, line2] : [line1]
+      const lineH = fontSize + 2
+      const padX = 6
+      const padY = 4
+      const boxW = maxW + padX * 2
+      const boxH = lineH * lines.length + padY * 2
+      const tailH = 4
+
+      // Position above the nameplate overlay
       const extraOffset = 20
       const cx = Math.round(offsetX + ch.x * zoom)
       const boxX = cx - Math.round(boxW / 2)
@@ -510,28 +543,30 @@ export function renderBubbles(
       )
 
       // Box background
-      ctx.globalAlpha = alpha * 0.88
+      ctx.globalAlpha = alpha * 0.9
       ctx.fillStyle = '#1a1a2e'
       ctx.fillRect(boxX, boxY, boxW, boxH)
       ctx.strokeStyle = '#555577'
-      ctx.lineWidth = Math.max(1, zoom * 0.5)
+      ctx.lineWidth = 1
       ctx.strokeRect(boxX, boxY, boxW, boxH)
 
       // Tail pointer
       ctx.fillStyle = '#1a1a2e'
       ctx.beginPath()
-      ctx.moveTo(cx - Math.round(2 * zoom), boxY + boxH)
-      ctx.lineTo(cx + Math.round(2 * zoom), boxY + boxH)
+      ctx.moveTo(cx - 3, boxY + boxH)
+      ctx.lineTo(cx + 3, boxY + boxH)
       ctx.lineTo(cx, boxY + boxH + tailH)
       ctx.closePath()
       ctx.fill()
 
-      // Text
+      // Text lines
       ctx.globalAlpha = alpha
       ctx.fillStyle = '#ccddff'
       ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-      ctx.fillText(text, cx, boxY + Math.round(boxH / 2))
+      ctx.textBaseline = 'top'
+      for (let i = 0; i < lines.length; i++) {
+        ctx.fillText(lines[i], cx, boxY + padY + i * lineH)
+      }
       ctx.restore()
       continue
     }
