@@ -1,19 +1,22 @@
-import { useState, useCallback, useRef } from 'react'
-import { OfficeState } from './office/engine/officeState.js'
-import { OfficeCanvas } from './office/components/OfficeCanvas.js'
-import { ToolOverlay } from './office/components/ToolOverlay.js'
-import { EditorToolbar } from './office/editor/EditorToolbar.js'
-import { EditorState } from './office/editor/editorState.js'
-import { EditTool } from './office/types.js'
-import { isRotatable } from './office/layout/furnitureCatalog.js'
-import { vscode } from './vscodeApi.js'
-import { useExtensionMessages } from './hooks/useExtensionMessages.js'
+import { useCallback, useRef, useState } from 'react'
+import { BottomToolbar } from './components/BottomToolbar.js'
+import { DebugView } from './components/DebugView.js'
+import { InspectionPanel } from './components/InspectionPanel.js'
+import { LeftSidebar } from './components/LeftSidebar.js'
+import { RightSidebar } from './components/RightSidebar.js'
+import { ZoomControls } from './components/ZoomControls.js'
 import { PULSE_ANIMATION_DURATION_SEC } from './constants.js'
 import { useEditorActions } from './hooks/useEditorActions.js'
 import { useEditorKeyboard } from './hooks/useEditorKeyboard.js'
-import { ZoomControls } from './components/ZoomControls.js'
-import { BottomToolbar } from './components/BottomToolbar.js'
-import { DebugView } from './components/DebugView.js'
+import { useExtensionMessages } from './hooks/useExtensionMessages.js'
+import { OfficeCanvas } from './office/components/OfficeCanvas.js'
+import { ToolOverlay } from './office/components/ToolOverlay.js'
+import { EditorState } from './office/editor/editorState.js'
+import { EditorToolbar } from './office/editor/EditorToolbar.js'
+import { OfficeState } from './office/engine/officeState.js'
+import { isRotatable } from './office/layout/furnitureCatalog.js'
+import { EditTool } from './office/types.js'
+import { vscode } from './vscodeApi.js'
 
 // Game state lives outside React — updated imperatively by message handlers
 const officeStateRef = { current: null as OfficeState | null }
@@ -121,11 +124,31 @@ function App() {
 
   const isEditDirty = useCallback(() => editor.isEditMode && editor.isDirty, [editor.isEditMode, editor.isDirty])
 
-  const { agents, selectedAgent, agentTools, agentStatuses, subagentTools, subagentCharacters, layoutReady, loadedAssets, workspaceFolders } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty)
+  const { agents, selectedAgent, agentTools, agentStatuses, subagentTools, subagentCharacters, layoutReady, layoutWasReset, loadedAssets, workspaceFolders, externalAssetDirectories, agentStats, agentRoles, agentDetails, requestAgentDetails, pipelineIssues } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty)
+
+  // Deep inspection panel state
+  const [inspectedAgentId, setInspectedAgentId] = useState<number | null>(null)
+
+  const handleInspectAgent = useCallback((agentId: number) => {
+    setInspectedAgentId(agentId)
+    requestAgentDetails(agentId)
+  }, [requestAgentDetails])
+
+  const handleCloseInspection = useCallback(() => {
+    setInspectedAgentId(null)
+  }, [])
+
+  // Migration notice disabled — we control layout revisions ourselves
+  const showMigrationNotice = false
 
   const [isDebugMode, setIsDebugMode] = useState(false)
+  const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(false)
 
   const handleToggleDebugMode = useCallback(() => setIsDebugMode((prev) => !prev), [])
+  const handleToggleAlwaysShowOverlay = useCallback(
+    () => setAlwaysShowOverlay((prev) => !prev),
+    [],
+  )
 
   const handleSelectAgent = useCallback((id: number) => {
     vscode.postMessage({ type: 'focusAgent', id })
@@ -191,11 +214,13 @@ function App() {
           50% { opacity: 0.3; }
         }
         .pixel-agents-pulse { animation: pixel-agents-pulse ${PULSE_ANIMATION_DURATION_SEC}s ease-in-out infinite; }
+        .pixel-agents-migration-btn:hover { filter: brightness(0.8); }
       `}</style>
 
       <OfficeCanvas
         officeState={officeState}
         onClick={handleClick}
+        onDoubleClick={handleInspectAgent}
         isEditMode={editor.isEditMode}
         editorState={editorState}
         onEditorTileAction={editor.handleEditorTileAction}
@@ -210,7 +235,37 @@ function App() {
         panRef={editor.panRef}
       />
 
-      <ZoomControls zoom={editor.zoom} onZoomChange={editor.handleZoomChange} />
+      {!isDebugMode && <ZoomControls zoom={editor.zoom} onZoomChange={editor.handleZoomChange} />}
+
+      {/* Left Sidebar — Agent list */}
+      {!isDebugMode && !editor.isEditMode && (
+        <LeftSidebar
+          agents={agents}
+          agentTools={agentTools}
+          agentStatuses={agentStatuses}
+          agentStats={agentStats}
+          agentRoles={agentRoles}
+          subagentCharacters={subagentCharacters}
+          subagentTools={subagentTools}
+          officeState={officeState}
+          onInspectAgent={handleInspectAgent}
+          pipelineIssues={pipelineIssues}
+        />
+      )}
+
+      {/* Right Sidebar — Activity feed & tools */}
+      {!isDebugMode && !editor.isEditMode && (
+        <RightSidebar
+          agents={agents}
+          agentTools={agentTools}
+          agentStatuses={agentStatuses}
+          agentStats={agentStats}
+          agentRoles={agentRoles}
+          subagentCharacters={subagentCharacters}
+          subagentTools={subagentTools}
+          officeState={officeState}
+        />
+      )}
 
       {/* Vignette overlay */}
       <div
@@ -229,7 +284,10 @@ function App() {
         onToggleEditMode={editor.handleToggleEditMode}
         isDebugMode={isDebugMode}
         onToggleDebugMode={handleToggleDebugMode}
+        alwaysShowOverlay={alwaysShowOverlay}
+        onToggleAlwaysShowOverlay={handleToggleAlwaysShowOverlay}
         workspaceFolders={workspaceFolders}
+        externalAssetDirectories={externalAssetDirectories}
       />
 
       {editor.isEditMode && editor.isDirty && (
@@ -240,9 +298,9 @@ function App() {
         <div
           style={{
             position: 'absolute',
-            top: 8,
+            top: editor.isDirty ? 52 : 8,
             left: '50%',
-            transform: editor.isDirty ? 'translateX(calc(-50% + 100px))' : 'translateX(-50%)',
+            transform: 'translateX(-50%)',
             zIndex: 49,
             background: 'var(--pixel-hint-bg)',
             color: '#fff',
@@ -255,7 +313,7 @@ function App() {
             whiteSpace: 'nowrap',
           }}
         >
-          Press <b>R</b> to rotate
+          Rotate (R)
         </div>
       )}
 
@@ -274,10 +332,12 @@ function App() {
             selectedFurnitureColor={selColor}
             floorColor={editorState.floorColor}
             wallColor={editorState.wallColor}
+            selectedWallSet={editorState.selectedWallSet}
             onToolChange={editor.handleToolChange}
             onTileTypeChange={editor.handleTileTypeChange}
             onFloorColorChange={editor.handleFloorColorChange}
             onWallColorChange={editor.handleWallColorChange}
+            onWallSetChange={editor.handleWallSetChange}
             onSelectedFurnitureColorChange={editor.handleSelectedFurnitureColorChange}
             onFurnitureTypeChange={editor.handleFurnitureTypeChange}
             loadedAssets={loadedAssets}
@@ -285,16 +345,21 @@ function App() {
         )
       })()}
 
-      <ToolOverlay
-        officeState={officeState}
-        agents={agents}
-        agentTools={agentTools}
-        subagentCharacters={subagentCharacters}
-        containerRef={containerRef}
-        zoom={editor.zoom}
-        panRef={editor.panRef}
-        onCloseAgent={handleCloseAgent}
-      />
+      {!isDebugMode && (
+        <ToolOverlay
+          officeState={officeState}
+          agents={agents}
+          agentTools={agentTools}
+          agentStats={agentStats}
+          agentRoles={agentRoles}
+          subagentCharacters={subagentCharacters}
+          containerRef={containerRef}
+          zoom={editor.zoom}
+          panRef={editor.panRef}
+          onCloseAgent={handleCloseAgent}
+          alwaysShowOverlay={alwaysShowOverlay}
+        />
+      )}
 
       {isDebugMode && (
         <DebugView
@@ -306,6 +371,16 @@ function App() {
           onSelectAgent={handleSelectAgent}
         />
       )}
+
+      {inspectedAgentId !== null && (
+        <InspectionPanel
+          agentId={inspectedAgentId}
+          agentDetails={agentDetails}
+          folderName={inspectedAgentId !== null ? officeState.characters.get(inspectedAgentId)?.folderName : undefined}
+          onClose={handleCloseInspection}
+        />
+      )}
+
     </div>
   )
 }

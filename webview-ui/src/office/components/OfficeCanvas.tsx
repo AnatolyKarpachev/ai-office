@@ -14,6 +14,7 @@ import { unlockAudio } from '../../notificationSound.js'
 interface OfficeCanvasProps {
   officeState: OfficeState
   onClick: (agentId: number) => void
+  onDoubleClick?: (agentId: number) => void
   isEditMode: boolean
   editorState: EditorState
   onEditorTileAction: (col: number, row: number) => void
@@ -28,7 +29,7 @@ interface OfficeCanvasProps {
   panRef: React.MutableRefObject<{ x: number; y: number }>
 }
 
-export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, onEditorTileAction, onEditorEraseAction, onEditorSelectionChange, onDeleteSelected, onRotateSelected, onDragMove, editorTick: _editorTick, zoom, onZoomChange, panRef }: OfficeCanvasProps) {
+export function OfficeCanvas({ officeState, onClick, onDoubleClick, isEditMode, editorState, onEditorTileAction, onEditorEraseAction, onEditorSelectionChange, onDeleteSelected, onRotateSelected, onDragMove, editorTick: _editorTick, zoom, onZoomChange, panRef }: OfficeCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const offsetRef = useRef({ x: 0, y: 0 })
@@ -101,6 +102,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
           editorRender = {
             showGrid: true,
             ghostSprite: null,
+            ghostMirrored: false,
             ghostCol: editorState.ghostCol,
             ghostRow: editorState.ghostRow,
             ghostValid: editorState.ghostValid,
@@ -124,6 +126,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
               const placementRow = getWallPlacementRow(editorState.selectedFurnitureType, editorState.ghostRow)
               editorRender.ghostSprite = entry.sprite
               editorRender.ghostRow = placementRow
+              editorRender.ghostMirrored = !!entry.mirrorSide && editorState.selectedFurnitureType.endsWith(':left')
               editorRender.ghostValid = canPlaceFurniture(
                 officeState.getLayout(),
                 editorState.selectedFurnitureType,
@@ -144,6 +147,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
                 editorRender.ghostSprite = entry.sprite
                 editorRender.ghostCol = ghostCol
                 editorRender.ghostRow = ghostRow
+                editorRender.ghostMirrored = !!entry.mirrorSide && draggedItem.type.endsWith(':left')
                 editorRender.ghostValid = canPlaceFurniture(
                   officeState.getLayout(),
                   draggedItem.type,
@@ -605,6 +609,22 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
     [officeState, onClick, screenToWorld, screenToTile, isEditMode],
   )
 
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (isEditMode || !onDoubleClick) return
+      const pos = screenToWorld(e.clientX, e.clientY)
+      if (!pos) return
+      const hitId = officeState.getCharacterAt(pos.worldX, pos.worldY)
+      if (hitId !== null) {
+        // For sub-agents, inspect the parent
+        const meta = officeState.subagentMeta.get(hitId)
+        const inspectId = meta ? meta.parentAgentId : hitId
+        onDoubleClick(inspectId)
+      }
+    },
+    [officeState, screenToWorld, isEditMode, onDoubleClick],
+  )
+
   const handleMouseLeave = useCallback(() => {
     isPanningRef.current = false
     isEraseDraggingRef.current = false
@@ -679,6 +699,7 @@ export function OfficeCanvas({ officeState, onClick, isEditMode, editorState, on
         onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
         onAuxClick={handleAuxClick}
         onMouseLeave={handleMouseLeave}
         onWheel={handleWheel}

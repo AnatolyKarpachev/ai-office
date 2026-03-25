@@ -1,19 +1,38 @@
 import { useState, useEffect } from 'react'
 import type { ToolActivity } from '../types.js'
 import type { OfficeState } from '../engine/officeState.js'
-import type { SubagentCharacter } from '../../hooks/useExtensionMessages.js'
+import type { SubagentCharacter, AgentStats, AgentRoleInfo } from '../../hooks/useExtensionMessages.js'
 import { TILE_SIZE, CharacterState } from '../types.js'
 import { TOOL_OVERLAY_VERTICAL_OFFSET, CHARACTER_SITTING_OFFSET_PX } from '../../constants.js'
+import { TokenBar } from '../../components/TokenBar.js'
+
+const MODEL_CONTEXT_LIMITS: Record<string, number> = {
+  "claude-opus-4-6": 200000,
+  "claude-sonnet-4-6": 200000,
+  "claude-haiku-4-5": 200000,
+  "default": 200000,
+}
+
+function getContextLimit(model?: string): number {
+  if (!model) return MODEL_CONTEXT_LIMITS["default"]
+  for (const [key, limit] of Object.entries(MODEL_CONTEXT_LIMITS)) {
+    if (key !== "default" && model.includes(key)) return limit
+  }
+  return MODEL_CONTEXT_LIMITS["default"]
+}
 
 interface ToolOverlayProps {
   officeState: OfficeState
   agents: number[]
   agentTools: Record<number, ToolActivity[]>
+  agentStats: Map<number, AgentStats>
+  agentRoles: Map<number, AgentRoleInfo>
   subagentCharacters: SubagentCharacter[]
   containerRef: React.RefObject<HTMLDivElement | null>
   zoom: number
   panRef: React.RefObject<{ x: number; y: number }>
   onCloseAgent: (id: number) => void
+  alwaysShowOverlay: boolean
 }
 
 /** Derive a short human-readable activity string from tools/status */
@@ -24,19 +43,16 @@ function getActivityText(
 ): string {
   const tools = agentTools[agentId]
   if (tools && tools.length > 0) {
-    // Find the latest non-done tool
     const activeTool = [...tools].reverse().find((t) => !t.done)
     if (activeTool) {
       if (activeTool.permissionWait) return 'Needs approval'
       return activeTool.status
     }
-    // All tools done but agent still active (mid-turn) — keep showing last tool status
     if (isActive) {
       const lastTool = tools[tools.length - 1]
       if (lastTool) return lastTool.status
     }
   }
-
   return 'Idle'
 }
 
@@ -44,11 +60,14 @@ export function ToolOverlay({
   officeState,
   agents,
   agentTools,
+  agentStats,
+  agentRoles,
   subagentCharacters,
   containerRef,
   zoom,
   panRef,
   onCloseAgent,
+  alwaysShowOverlay,
 }: ToolOverlayProps) {
   const [, setTick] = useState(0)
   useEffect(() => {
@@ -76,7 +95,6 @@ export function ToolOverlay({
   const selectedId = officeState.selectedAgentId
   const hoveredId = officeState.hoveredAgentId
 
-  // All character IDs
   const allIds = [...agents, ...subagentCharacters.map((s) => s.id)]
 
   return (
@@ -88,43 +106,46 @@ export function ToolOverlay({
         const isSelected = selectedId === id
         const isHovered = hoveredId === id
         const isSub = ch.isSubagent
-        const showDetails = isSelected || isHovered
 
-        // Position above character
         const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0
         const screenX = (deviceOffsetX + ch.x * zoom) / dpr
         const screenY = (deviceOffsetY + (ch.y + sittingOffset - TOOL_OVERLAY_VERTICAL_OFFSET) * zoom) / dpr
 
-        // Always show name label; show activity details on hover/select
-        const displayName = ch.folderName || (isSub ? 'Subtask' : `Agent #${id}`)
-
-        // Get activity text (only needed when showing details)
-        let activityText = ''
-        let dotColor: string | null = null
-        if (showDetails) {
-          const subHasPermission = isSub && ch.bubbleType === 'permission'
-          if (isSub) {
-            if (subHasPermission) {
-              activityText = 'Needs approval'
-            } else {
-              const sub = subagentCharacters.find((s) => s.id === id)
-              activityText = sub ? sub.label : 'Subtask'
-            }
+        // Activity text
+        const subHasPermission = isSub && ch.bubbleType === 'permission'
+        let activityText: string
+        if (isSub) {
+          if (subHasPermission) {
+            activityText = 'Needs approval'
           } else {
-            activityText = getActivityText(id, agentTools, ch.isActive)
+            const sub = subagentCharacters.find((s) => s.id === id)
+            activityText = sub ? sub.label : 'Subtask'
           }
-
-          const tools = agentTools[id]
-          const hasPermission = subHasPermission || tools?.some((t) => t.permissionWait && !t.done)
-          const hasActiveTools = tools?.some((t) => !t.done)
-          const isActive = ch.isActive
-
-          if (hasPermission) {
-            dotColor = 'var(--pixel-status-permission)'
-          } else if (isActive && hasActiveTools) {
-            dotColor = 'var(--pixel-status-active)'
-          }
+        } else {
+          activityText = getActivityText(id, agentTools, ch.isActive)
         }
+
+        // Dot color
+        const tools = agentTools[id]
+        const hasPermission = subHasPermission || tools?.some((t) => t.permissionWait && !t.done)
+        const hasActiveTools = tools?.some((t) => !t.done)
+        const isActive = ch.isActive
+
+        let dotColor: string | null = null
+        if (hasPermission) {
+          dotColor = 'var(--pixel-status-permission)'
+        } else if (isActive && hasActiveTools) {
+          dotColor = 'var(--pixel-status-active)'
+        }
+
+        // Role & stats
+        const roleInfo = agentRoles.get(id) ?? null
+        const stats = !isSub ? agentStats.get(id) : null
+        const totalTokens = stats ? stats.totalInputTokens + stats.totalOutputTokens : 0
+        const contextLimit = stats ? getContextLimit(stats.model) : 0
+
+        // Show expanded overlay on hover/select/alwaysShow
+        const showExpanded = alwaysShowOverlay || isSelected || isHovered
 
         return (
           <div
@@ -141,7 +162,67 @@ export function ToolOverlay({
               zIndex: isSelected ? 'var(--pixel-overlay-selected-z)' : 'var(--pixel-overlay-z)',
             }}
           >
-            {showDetails ? (
+            {/* ALWAYS VISIBLE: name + role nameplate */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                marginBottom: 2,
+                padding: '2px 6px',
+                background: 'var(--pixel-bg)',
+                border: '2px solid var(--pixel-border)',
+                borderRadius: 0,
+                boxShadow: 'var(--pixel-shadow)',
+                whiteSpace: 'nowrap',
+                opacity: 0.9,
+              }}
+            >
+              {dotColor && (
+                <span
+                  className={isActive && !hasPermission ? 'pixel-agents-pulse' : undefined}
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: '50%',
+                    background: dotColor,
+                    flexShrink: 0,
+                  }}
+                />
+              )}
+              <span
+                style={{
+                  fontSize: isSub ? '16px' : '18px',
+                  fontStyle: isSub ? 'italic' : undefined,
+                  color: 'var(--pixel-text-dim)',
+                }}
+              >
+                {ch.folderName || (isSub ? 'sub' : `agent-${id}`)}
+              </span>
+              {roleInfo && roleInfo.role && (
+                <span
+                  style={{
+                    fontSize: '11px',
+                    lineHeight: 1,
+                    padding: '1px 4px',
+                    background: roleInfo.colors.badge,
+                    color: roleInfo.colors.primary,
+                    border: `1px solid ${roleInfo.colors.primary}`,
+                    borderRadius: 0,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.5px',
+                    fontWeight: 'bold',
+                    whiteSpace: 'nowrap',
+                    flexShrink: 0,
+                  }}
+                >
+                  {roleInfo.role}
+                </span>
+              )}
+            </div>
+
+            {/* EXPANDED: full overlay on hover/select/alwaysShow */}
+            {showExpanded && (
               <div
                 style={{
                   display: 'flex',
@@ -156,20 +237,9 @@ export function ToolOverlay({
                   boxShadow: 'var(--pixel-shadow)',
                   whiteSpace: 'nowrap',
                   maxWidth: 220,
+                  opacity: alwaysShowOverlay && !isSelected && !isHovered ? (isSub ? 0.5 : 0.75) : 1,
                 }}
               >
-                {dotColor && (
-                  <span
-                    className={ch.isActive && dotColor !== 'var(--pixel-status-permission)' ? 'pixel-agents-pulse' : undefined}
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: '50%',
-                      background: dotColor,
-                      flexShrink: 0,
-                    }}
-                  />
-                )}
                 <div style={{ overflow: 'hidden' }}>
                   <span
                     style={{
@@ -183,17 +253,19 @@ export function ToolOverlay({
                   >
                     {activityText}
                   </span>
-                  <span
-                    style={{
-                      fontSize: '16px',
-                      color: 'var(--pixel-text-dim)',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      display: 'block',
-                    }}
-                  >
-                    {displayName}
-                  </span>
+                  {ch.folderName && (
+                    <span
+                      style={{
+                        fontSize: '16px',
+                        color: 'var(--pixel-text-dim)',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        display: 'block',
+                      }}
+                    >
+                      {ch.folderName}
+                    </span>
+                  )}
                 </div>
                 {isSelected && !isSub && (
                   <button
@@ -224,24 +296,18 @@ export function ToolOverlay({
                   </button>
                 )}
               </div>
-            ) : (
-              <div
-                style={{
-                  background: 'var(--pixel-bg)',
-                  border: '1px solid var(--pixel-border)',
-                  padding: '1px 6px',
-                  boxShadow: 'var(--pixel-shadow)',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: '16px',
-                    color: 'var(--pixel-text-dim)',
-                  }}
-                >
-                  {displayName}
-                </span>
+            )}
+
+            {/* ALWAYS VISIBLE: token health bar */}
+            {!isSub && stats && totalTokens > 0 && (
+              <div style={{ marginTop: 2 }}>
+                <TokenBar
+                  totalTokens={totalTokens}
+                  contextLimit={contextLimit}
+                  model={stats.model}
+                  turnCount={stats.turnCount}
+                  visible
+                />
               </div>
             )}
           </div>

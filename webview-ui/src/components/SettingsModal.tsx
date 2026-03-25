@@ -7,6 +7,9 @@ interface SettingsModalProps {
   onClose: () => void
   isDebugMode: boolean
   onToggleDebugMode: () => void
+  alwaysShowOverlay: boolean
+  onToggleAlwaysShowOverlay: () => void
+  externalAssetDirectories: string[]
 }
 
 const menuItemBase: React.CSSProperties = {
@@ -24,9 +27,19 @@ const menuItemBase: React.CSSProperties = {
   textAlign: 'left',
 }
 
-export function SettingsModal({ isOpen, onClose, isDebugMode, onToggleDebugMode }: SettingsModalProps) {
+export function SettingsModal({
+  isOpen,
+  onClose,
+  isDebugMode,
+  onToggleDebugMode,
+  alwaysShowOverlay,
+  onToggleAlwaysShowOverlay,
+  externalAssetDirectories,
+}: SettingsModalProps) {
   const [hovered, setHovered] = useState<string | null>(null)
   const [soundLocal, setSoundLocal] = useState(isSoundEnabled)
+  const [showDirInput, setShowDirInput] = useState(false)
+  const [dirInputValue, setDirInputValue] = useState('')
 
   if (!isOpen) return null
 
@@ -135,6 +148,113 @@ export function SettingsModal({ isOpen, onClose, isDebugMode, onToggleDebugMode 
           Import Layout
         </button>
         <button
+          onClick={() => setShowDirInput((prev) => !prev)}
+          onMouseEnter={() => setHovered('addAssets')}
+          onMouseLeave={() => setHovered(null)}
+          style={{
+            ...menuItemBase,
+            background: hovered === 'addAssets' ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+          }}
+        >
+          Add Asset Directory
+        </button>
+        {showDirInput && (
+          <div style={{ display: 'flex', alignItems: 'center', padding: '4px 10px', gap: 4 }}>
+            <input
+              type="text"
+              value={dirInputValue}
+              onChange={(e) => setDirInputValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && dirInputValue.trim()) {
+                  vscode.postMessage({ type: 'addExternalAssetDirectory', path: dirInputValue.trim() })
+                  setDirInputValue('')
+                  setShowDirInput(false)
+                }
+              }}
+              placeholder="/path/to/assets"
+              style={{
+                flex: 1,
+                background: 'rgba(0, 0, 0, 0.3)',
+                border: '1px solid var(--pixel-border)',
+                borderRadius: 0,
+                color: 'rgba(255, 255, 255, 0.8)',
+                fontSize: '18px',
+                padding: '2px 6px',
+                outline: 'none',
+              }}
+              autoFocus
+            />
+            <button
+              onClick={() => {
+                if (dirInputValue.trim()) {
+                  vscode.postMessage({ type: 'addExternalAssetDirectory', path: dirInputValue.trim() })
+                  setDirInputValue('')
+                  setShowDirInput(false)
+                }
+              }}
+              onMouseEnter={() => setHovered('addDirOk')}
+              onMouseLeave={() => setHovered(null)}
+              style={{
+                background: hovered === 'addDirOk' ? 'rgba(90, 140, 255, 0.3)' : 'transparent',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                borderRadius: 0,
+                color: 'rgba(255, 255, 255, 0.7)',
+                fontSize: '18px',
+                cursor: 'pointer',
+                padding: '2px 8px',
+                flexShrink: 0,
+              }}
+            >
+              OK
+            </button>
+          </div>
+        )}
+        {externalAssetDirectories.map((dir) => (
+          <div
+            key={dir}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '4px 10px',
+              gap: 8,
+            }}
+          >
+            <span
+              style={{
+                fontSize: '18px',
+                color: 'rgba(255, 255, 255, 0.5)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                maxWidth: 180,
+              }}
+              title={dir}
+            >
+              {dir.split(/[/\\]/).pop() ?? dir}
+            </span>
+            <button
+              onClick={() =>
+                vscode.postMessage({ type: 'removeExternalAssetDirectory', path: dir })
+              }
+              onMouseEnter={() => setHovered(`remove-${dir}`)}
+              onMouseLeave={() => setHovered(null)}
+              style={{
+                background: hovered === `remove-${dir}` ? 'rgba(255, 80, 80, 0.2)' : 'transparent',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                borderRadius: 0,
+                color: 'rgba(255, 255, 255, 0.5)',
+                fontSize: '18px',
+                cursor: 'pointer',
+                padding: '1px 6px',
+                flexShrink: 0,
+              }}
+            >
+              X
+            </button>
+          </div>
+        ))}
+        <button
           onClick={() => {
             const newVal = !isSoundEnabled()
             setSoundEnabled(newVal)
@@ -166,6 +286,35 @@ export function SettingsModal({ isOpen, onClose, isDebugMode, onToggleDebugMode 
             }}
           >
             {soundLocal ? 'X' : ''}
+          </span>
+        </button>
+        <button
+          onClick={onToggleAlwaysShowOverlay}
+          onMouseEnter={() => setHovered('overlay')}
+          onMouseLeave={() => setHovered(null)}
+          style={{
+            ...menuItemBase,
+            background: hovered === 'overlay' ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+          }}
+        >
+          <span>Always Show Labels</span>
+          <span
+            style={{
+              width: 14,
+              height: 14,
+              border: '2px solid rgba(255, 255, 255, 0.5)',
+              borderRadius: 0,
+              background: alwaysShowOverlay ? 'rgba(90, 140, 255, 0.8)' : 'transparent',
+              flexShrink: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '12px',
+              lineHeight: 1,
+              color: '#fff',
+            }}
+          >
+            {alwaysShowOverlay ? 'X' : ''}
           </span>
         </button>
         <button

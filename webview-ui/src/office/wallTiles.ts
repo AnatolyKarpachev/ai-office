@@ -1,7 +1,8 @@
 /**
  * Wall tile auto-tiling: sprite storage and bitmask-based piece selection.
  *
- * Stores 16 wall sprites (one per 4-bit bitmask) loaded from walls.png.
+ * Stores wall tile sets loaded from individual PNGs in assets/walls/.
+ * Each set contains 16 wall sprites (one per 4-bit bitmask).
  * At render time, each wall tile's 4 cardinal neighbors are checked to build
  * a bitmask, and the corresponding sprite is drawn directly.
  * No changes to the layout model — auto-tiling is purely visual.
@@ -9,21 +10,53 @@
  * Bitmask convention: N=1, E=2, S=4, W=8. Out-of-bounds = NOT wall.
  */
 
-import type { SpriteData, TileType as TileTypeVal, FloorColor, FurnitureInstance } from './types.js'
-import { TileType, TILE_SIZE } from './types.js'
 import { getColorizedSprite } from './colorize.js'
+import type {
+  FloorColor,
+  FurnitureInstance,
+  SpriteData,
+  TileType as TileTypeVal,
+} from './types.js'
+import { TILE_SIZE, TileType } from './types.js'
 
-/** 16 wall sprites indexed by bitmask (0-15) */
-let wallSprites: SpriteData[] | null = null
+/** Wall tile sets: each set has 16 sprites indexed by bitmask (0-15) */
+let wallSets: SpriteData[][] = []
 
-/** Set wall sprites (called once when extension sends wallTilesLoaded) */
-export function setWallSprites(sprites: SpriteData[]): void {
-  wallSprites = sprites
+/** Set wall tile sets (called once when extension sends wallTilesLoaded) */
+export function setWallSprites(sets: SpriteData[][]): void {
+  wallSets = sets
 }
 
 /** Check if wall sprites have been loaded */
 export function hasWallSprites(): boolean {
-  return wallSprites !== null
+  return wallSets.length > 0
+}
+
+/** Get number of available wall sets */
+export function getWallSetCount(): number {
+  return wallSets.length
+}
+
+/** Get the first sprite (bitmask 0, top-left piece) of a wall set for preview rendering */
+export function getWallSetPreviewSprite(setIndex: number): SpriteData | null {
+  const set = wallSets[setIndex]
+  if (!set) return null
+  return set[0] ?? null
+}
+
+/**
+ * Build the 4-bit neighbor bitmask for a wall tile at (col, row).
+ */
+function buildWallMask(col: number, row: number, tileMap: TileTypeVal[][]): number {
+  const tmRows = tileMap.length
+  const tmCols = tmRows > 0 ? tileMap[0].length : 0
+
+  let mask = 0
+  if (row > 0 && tileMap[row - 1][col] === TileType.WALL) mask |= 1 // N
+  if (col < tmCols - 1 && tileMap[row][col + 1] === TileType.WALL) mask |= 2 // E
+  if (row < tmRows - 1 && tileMap[row + 1][col] === TileType.WALL) mask |= 4 // S
+  if (col > 0 && tileMap[row][col - 1] === TileType.WALL) mask |= 8 // W
+  return mask
 }
 
 /**
@@ -34,20 +67,13 @@ export function getWallSprite(
   col: number,
   row: number,
   tileMap: TileTypeVal[][],
+  setIndex = 0,
 ): { sprite: SpriteData; offsetY: number } | null {
-  if (!wallSprites) return null
+  if (wallSets.length === 0) return null
+  const sprites = wallSets[setIndex] ?? wallSets[0]
 
-  const tmRows = tileMap.length
-  const tmCols = tmRows > 0 ? tileMap[0].length : 0
-
-  // Build 4-bit neighbor bitmask
-  let mask = 0
-  if (row > 0 && tileMap[row - 1][col] === TileType.WALL) mask |= 1            // N
-  if (col < tmCols - 1 && tileMap[row][col + 1] === TileType.WALL) mask |= 2   // E
-  if (row < tmRows - 1 && tileMap[row + 1][col] === TileType.WALL) mask |= 4   // S
-  if (col > 0 && tileMap[row][col - 1] === TileType.WALL) mask |= 8            // W
-
-  const sprite = wallSprites[mask]
+  const mask = buildWallMask(col, row, tileMap)
+  const sprite = sprites[mask]
   if (!sprite) return null
 
   // Anchor sprite at bottom of tile — tall sprites extend upward
@@ -56,7 +82,7 @@ export function getWallSprite(
 
 /**
  * Get a colorized wall sprite for a tile based on its cardinal neighbors.
- * Uses Colorize mode (grayscale → HSL) like floor tiles.
+ * Uses Colorize mode (grayscale -> HSL) like floor tiles.
  * Returns the colorized sprite + Y offset, or null if no wall sprites loaded.
  */
 export function getColorizedWallSprite(
@@ -64,23 +90,16 @@ export function getColorizedWallSprite(
   row: number,
   tileMap: TileTypeVal[][],
   color: FloorColor,
+  setIndex = 0,
 ): { sprite: SpriteData; offsetY: number } | null {
-  if (!wallSprites) return null
+  if (wallSets.length === 0) return null
+  const sprites = wallSets[setIndex] ?? wallSets[0]
 
-  const tmRows = tileMap.length
-  const tmCols = tmRows > 0 ? tileMap[0].length : 0
-
-  // Build 4-bit neighbor bitmask (same as getWallSprite)
-  let mask = 0
-  if (row > 0 && tileMap[row - 1][col] === TileType.WALL) mask |= 1            // N
-  if (col < tmCols - 1 && tileMap[row][col + 1] === TileType.WALL) mask |= 2   // E
-  if (row < tmRows - 1 && tileMap[row + 1][col] === TileType.WALL) mask |= 4   // S
-  if (col > 0 && tileMap[row][col - 1] === TileType.WALL) mask |= 8            // W
-
-  const sprite = wallSprites[mask]
+  const mask = buildWallMask(col, row, tileMap)
+  const sprite = sprites[mask]
   if (!sprite) return null
 
-  const cacheKey = `wall-${mask}-${color.h}-${color.s}-${color.b}-${color.c}`
+  const cacheKey = `wall-${setIndex}-${mask}-${color.h}-${color.s}-${color.b}-${color.c}`
   const colorized = getColorizedSprite(cacheKey, sprite, { ...color, colorize: true })
 
   return { sprite: colorized, offsetY: TILE_SIZE - sprite.length }
@@ -95,7 +114,7 @@ export function getWallInstances(
   tileColors?: Array<FloorColor | null>,
   cols?: number,
 ): FurnitureInstance[] {
-  if (!wallSprites) return []
+  if (wallSets.length === 0) return []
   const tmRows = tileMap.length
   const tmCols = tmRows > 0 ? tileMap[0].length : 0
   const layoutCols = cols ?? tmCols
@@ -122,7 +141,7 @@ export function getWallInstances(
 
 /**
  * Compute the flat fill hex color for a wall tile with a given FloorColor.
- * Uses same Colorize algorithm as floor tiles: 50% gray → HSL.
+ * Uses same Colorize algorithm as floor tiles: 50% gray -> HSL.
  */
 export function wallColorToHex(color: FloorColor): string {
   const { h, s, b, c } = color

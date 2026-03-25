@@ -11,6 +11,6 @@
     "resolveJsonModule": true,
     "declaration": false
   },
-  "include": ["server/**/*.ts", "scripts/**/*.ts"],
+  "include": ["server/**/*.ts", "scripts/**/*.ts", "shared/**/*.ts"],
   "exclude": ["node_modules", "dist", "webview-ui"]
 }

@@ -1,6 +1,6 @@
 import { TileType, FurnitureType, DEFAULT_COLS, DEFAULT_ROWS, TILE_SIZE, Direction } from '../types.js'
 import type { TileType as TileTypeVal, OfficeLayout, PlacedFurniture, Seat, FurnitureInstance, FloorColor } from '../types.js'
-import { getCatalogEntry } from './furnitureCatalog.js'
+import { getCatalogEntry, getOrientationInGroup } from './furnitureCatalog.js'
 import { getColorizedSprite } from '../colorize.js'
 
 /** Convert flat tile array from layout into 2D grid */
@@ -72,7 +72,16 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[]): Furnit
       sprite = getColorizedSprite(`furn-${item.type}-${h}-${s}-${bv}-${cv}-${item.color.colorize ? 1 : 0}`, entry.sprite, item.color)
     }
 
-    instances.push({ sprite, x, y, zY })
+    // Determine if this instance should be mirrored (side asset used in "left" orientation)
+    let mirrored = false
+    if (entry.mirrorSide) {
+      const orientInGroup = getOrientationInGroup(item.type)
+      if (orientInGroup === 'left') {
+        mirrored = true
+      }
+    }
+
+    instances.push({ sprite, x, y, zY, ...(mirrored ? { mirrored: true } : {}) })
   }
   return instances
 }
@@ -121,7 +130,8 @@ function orientationToFacing(orientation: string): Direction {
     case 'front': return Direction.DOWN
     case 'back': return Direction.UP
     case 'left': return Direction.LEFT
-    case 'right': return Direction.RIGHT
+    case 'right':
+    case 'side': return Direction.RIGHT
     default: return Direction.DOWN
   }
 }
@@ -150,14 +160,16 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
     { dc: 1, dr: 0, facing: Direction.RIGHT },   // desk is right of chair → face RIGHT
   ]
 
-  // For each chair, every footprint tile becomes a seat.
-  // Multi-tile chairs (e.g. 2-tile couches) produce multiple seats.
+  // For each chair, non-background footprint tiles become seats.
+  // Skips top backgroundTiles rows (e.g. chair backs) — agents sit on the seat, not the back.
   for (const item of furniture) {
     const entry = getCatalogEntry(item.type)
     if (!entry || entry.category !== 'chairs') continue
 
+    const bgRows = entry.backgroundTiles || 0
     let seatCount = 0
     for (let dr = 0; dr < entry.footprintH; dr++) {
+      if (dr < bgRows) continue // skip background rows (chair backs)
       for (let dc = 0; dc < entry.footprintW; dc++) {
         const tileCol = item.col + dc
         const tileRow = item.row + dr
@@ -178,6 +190,9 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
           }
         }
 
+        // isLounge = true ONLY for SOFA furniture types (idle agents sit on sofas)
+        const isSofa = item.type.toUpperCase().startsWith('SOFA')
+
         // First seat uses chair uid (backward compat), subsequent use uid:N
         const seatUid = seatCount === 0 ? item.uid : `${item.uid}:${seatCount}`
         seats.set(seatUid, {
@@ -186,6 +201,7 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
           seatRow: tileRow,
           facingDir,
           assigned: false,
+          isLounge: isSofa,
         })
         seatCount++
       }
@@ -200,6 +216,17 @@ export function getSeatTiles(seats: Map<string, Seat>): Set<string> {
   const tiles = new Set<string>()
   for (const seat of seats.values()) {
     tiles.add(`${seat.seatCol},${seat.seatRow}`)
+  }
+  return tiles
+}
+
+/** Get only lounge (sofa) seat tiles — these need to be unblocked for pathfinding */
+export function getLoungeSeatTiles(seats: Map<string, Seat>): Set<string> {
+  const tiles = new Set<string>()
+  for (const seat of seats.values()) {
+    if (seat.isLounge) {
+      tiles.add(`${seat.seatCol},${seat.seatRow}`)
+    }
   }
   return tiles
 }

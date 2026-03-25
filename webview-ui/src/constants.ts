@@ -17,6 +17,7 @@ export const WANDER_MOVES_BEFORE_REST_MIN = 3
 export const WANDER_MOVES_BEFORE_REST_MAX = 6
 export const SEAT_REST_MIN_SEC = 120.0
 export const SEAT_REST_MAX_SEC = 240.0
+export const IDLE_SEAT_MAX_SEC = 10.0  // idle agents get up after this
 
 // ── Matrix Effect ────────────────────────────────────────────
 export const MATRIX_EFFECT_DURATION_SEC = 0.3
@@ -47,6 +48,9 @@ export const BUTTON_ICON_SIZE_FACTOR = 0.45
 export const BUTTON_LINE_WIDTH_MIN = 1.5
 export const BUTTON_LINE_WIDTH_ZOOM_FACTOR = 0.5
 export const BUBBLE_FADE_DURATION_SEC = 0.5
+export const ACTIVITY_BUBBLE_DURATION_SEC = 1.0
+export const ACTIVITY_BUBBLE_FADE_SEC = 0.3
+export const ACTIVITY_BUBBLE_MAX_CHARS = 25
 export const BUBBLE_SITTING_OFFSET_PX = 10
 export const BUBBLE_VERTICAL_OFFSET_PX = 24
 export const FALLBACK_FLOOR_COLOR = '#808080'
@@ -95,6 +99,9 @@ export const NOTIFICATION_NOTE_1_START_SEC = 0
 export const NOTIFICATION_NOTE_2_START_SEC = 0.1
 export const NOTIFICATION_NOTE_DURATION_SEC = 0.18
 export const NOTIFICATION_VOLUME = 0.14
+
+// ── Furniture Animation ─────────────────────────────────────
+export const FURNITURE_ANIM_INTERVAL_SEC = 0.2
 
 // ── Game Logic ───────────────────────────────────────────────
 export const MAX_DELTA_TIME_SEC = 0.1

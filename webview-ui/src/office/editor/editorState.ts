@@ -14,6 +14,9 @@ export class EditorState {
   // Wall color settings (applied to new wall tiles when painting)
   wallColor: FloorColor = { ...DEFAULT_WALL_COLOR }
 
+  // Wall set index (0-based, selects which wall tile set to use)
+  selectedWallSet = 0
+
   // Tracks toggle direction during wall drag (true=adding walls, false=removing, null=undecided)
   wallDragAdding: boolean | null = null
 

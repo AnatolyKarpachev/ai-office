@@ -12,6 +12,7 @@ import {
   WANDER_MOVES_BEFORE_REST_MAX,
   SEAT_REST_MIN_SEC,
   SEAT_REST_MAX_SEC,
+  IDLE_SEAT_MAX_SEC,
 } from '../../constants.js'
 
 /** Tools that show reading animation instead of typing */
@@ -72,13 +73,55 @@ export function createCharacter(
     seatId,
     bubbleType: null,
     bubbleTimer: 0,
+    bubbleText: '',
     seatTimer: 0,
     isSubagent: false,
     parentAgentId: null,
     matrixEffect: null,
     matrixEffectTimer: 0,
     matrixEffectSeeds: [],
+    loungeTargetSeatId: null,
   }
+}
+
+/** Minimum tile distance subagent keeps from parent (avoids crowding) */
+const SUBAGENT_MIN_DISTANCE = 2
+/** Maximum tile distance before subagent starts walking toward parent */
+const SUBAGENT_MAX_DISTANCE = 6
+
+/** Find a free lounge seat (sofa/bench, not at a desk) for an idle agent to sit on */
+function findFreeLoungeSeat(
+  seats: Map<string, Seat>,
+  ch: Character,
+  allCharacters?: Map<number, Character>,
+): Seat | null {
+  // Build set of claimed seat UIDs (characters walking toward or sitting on a seat)
+  const claimedSeats = new Set<string>()
+  const occupied = new Set<string>()
+  if (allCharacters) {
+    for (const other of allCharacters.values()) {
+      if (other.id === ch.id) continue
+      occupied.add(`${other.tileCol},${other.tileRow}`)
+      // Reserve loungeTarget so two characters don't walk to the same sofa
+      if (other.loungeTargetSeatId) claimedSeats.add(other.loungeTargetSeatId)
+    }
+  }
+
+  let bestSeat: Seat | null = null
+  let bestDist = Infinity
+  for (const seat of seats.values()) {
+    if (!seat.isLounge) continue
+    if (seat.assigned) continue
+    if (claimedSeats.has(seat.uid)) continue
+    if (ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow) continue
+    if (occupied.has(`${seat.seatCol},${seat.seatRow}`)) continue
+    const dist = Math.abs(seat.seatCol - ch.tileCol) + Math.abs(seat.seatRow - ch.tileRow)
+    if (dist < bestDist) {
+      bestDist = dist
+      bestSeat = seat
+    }
+  }
+  return bestSeat
 }
 
 export function updateCharacter(
@@ -88,6 +131,7 @@ export function updateCharacter(
   seats: Map<string, Seat>,
   tileMap: TileTypeVal[][],
   blockedTiles: Set<string>,
+  allCharacters?: Map<number, Character>,
 ): void {
   ch.frameTimer += dt
 
@@ -97,8 +141,37 @@ export function updateCharacter(
         ch.frameTimer -= TYPE_FRAME_DURATION_SEC
         ch.frame = (ch.frame + 1) % 2
       }
+      // If active and sitting on a sofa — get up and go to desk
+      if (ch.isActive) {
+        let onSofa = false
+        for (const seat of seats.values()) {
+          if (seat.isLounge && seat.seatCol === ch.tileCol && seat.seatRow === ch.tileRow) {
+            onSofa = true
+            break
+          }
+        }
+        if (onSofa) {
+          ch.state = CharacterState.IDLE
+          ch.seatTimer = 0
+          ch.frame = 0
+          ch.frameTimer = 0
+          break
+        }
+      }
       // If no longer active, stand up and start wandering (after seatTimer expires)
       if (!ch.isActive) {
+        // Cap seat timer for idle agents at desk — don't let them sit idle for minutes
+        // But DON'T cap if they're on a lounge seat (sofa) — they should stay there
+        let onLoungeSeat = false
+        for (const seat of seats.values()) {
+          if (seat.isLounge && seat.seatCol === ch.tileCol && seat.seatRow === ch.tileRow) {
+            onLoungeSeat = true
+            break
+          }
+        }
+        if (!onLoungeSeat && ch.seatTimer > IDLE_SEAT_MAX_SEC) {
+          ch.seatTimer = IDLE_SEAT_MAX_SEC
+        }
         if (ch.seatTimer > 0) {
           ch.seatTimer -= dt
           break
@@ -107,6 +180,20 @@ export function updateCharacter(
         ch.state = CharacterState.IDLE
         ch.frame = 0
         ch.frameTimer = 0
+        // Try to find a free lounge seat (sofa/bench) and walk there
+        const loungeTarget = findFreeLoungeSeat(seats, ch, allCharacters)
+        if (loungeTarget) {
+          const path = findPath(ch.tileCol, ch.tileRow, loungeTarget.seatCol, loungeTarget.seatRow, tileMap, blockedTiles)
+          if (path.length > 0) {
+            ch.path = path
+            ch.moveProgress = 0
+            ch.state = CharacterState.WALK
+            ch.frame = 0
+            ch.frameTimer = 0
+            ch.loungeTargetSeatId = loungeTarget.uid
+            break
+          }
+        }
         ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
         ch.wanderCount = 0
         ch.wanderLimit = randomInt(WANDER_MOVES_BEFORE_REST_MIN, WANDER_MOVES_BEFORE_REST_MAX)
@@ -117,14 +204,11 @@ export function updateCharacter(
     case CharacterState.IDLE: {
       // No idle animation — static pose
       ch.frame = 0
-      if (ch.seatTimer < 0) ch.seatTimer = 0 // clear turn-end sentinel
+      if (ch.seatTimer < 0) ch.seatTimer = 0 // safety: clear negative values
       // If became active, pathfind to seat
       if (ch.isActive) {
         if (!ch.seatId) {
-          // No seat assigned — type in place
-          ch.state = CharacterState.TYPE
-          ch.frame = 0
-          ch.frameTimer = 0
+          // No seat assigned — stay standing (don't sit in air)
           break
         }
         const seat = seats.get(ch.seatId)
@@ -149,6 +233,46 @@ export function updateCharacter(
       // Countdown wander timer
       ch.wanderTimer -= dt
       if (ch.wanderTimer <= 0) {
+        // Idle agents: try to find a lounge seat (sofa/bench) every wander cycle
+        if (!ch.isActive) {
+          const loungeTarget = findFreeLoungeSeat(seats, ch, allCharacters)
+          if (loungeTarget) {
+            const path = findPath(ch.tileCol, ch.tileRow, loungeTarget.seatCol, loungeTarget.seatRow, tileMap, blockedTiles)
+            if (path.length > 0) {
+              ch.path = path
+              ch.moveProgress = 0
+              ch.state = CharacterState.WALK
+              ch.frame = 0
+              ch.frameTimer = 0
+              ch.loungeTargetSeatId = loungeTarget.uid
+              break
+            }
+          }
+        }
+        // Subagent parent-gravitate behavior: when idle, walk toward parent
+        if (ch.isSubagent && ch.parentAgentId !== null && allCharacters) {
+          const parentCh = allCharacters.get(ch.parentAgentId)
+          if (parentCh) {
+            const dist = Math.abs(ch.tileCol - parentCh.tileCol) + Math.abs(ch.tileRow - parentCh.tileRow)
+            if (dist > SUBAGENT_MAX_DISTANCE) {
+              // Too far from parent — walk toward a tile near (but not on top of) parent
+              const targetCol = parentCh.tileCol + randomInt(-SUBAGENT_MIN_DISTANCE, SUBAGENT_MIN_DISTANCE)
+              const targetRow = parentCh.tileRow + randomInt(-SUBAGENT_MIN_DISTANCE, SUBAGENT_MIN_DISTANCE)
+              const path = findPath(ch.tileCol, ch.tileRow, targetCol, targetRow, tileMap, blockedTiles)
+              if (path.length > 0) {
+                ch.path = path
+                ch.moveProgress = 0
+                ch.state = CharacterState.WALK
+                ch.frame = 0
+                ch.frameTimer = 0
+                ch.wanderCount++
+                ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
+                break
+              }
+            }
+          }
+        }
+
         // Check if we've wandered enough — return to seat for a rest
         if (ch.wanderCount >= ch.wanderLimit && ch.seatId) {
           const seat = seats.get(ch.seatId)
@@ -165,7 +289,25 @@ export function updateCharacter(
           }
         }
         if (walkableTiles.length > 0) {
-          const target = walkableTiles[Math.floor(Math.random() * walkableTiles.length)]
+          // Subagents: bias random wander toward parent's area
+          let target: { col: number; row: number }
+          if (ch.isSubagent && ch.parentAgentId !== null && allCharacters) {
+            const parentCh = allCharacters.get(ch.parentAgentId)
+            if (parentCh && Math.random() < 0.6) {
+              // 60% chance to pick a walkable tile near parent
+              const nearTiles = walkableTiles.filter((t) => {
+                const d = Math.abs(t.col - parentCh.tileCol) + Math.abs(t.row - parentCh.tileRow)
+                return d >= SUBAGENT_MIN_DISTANCE && d <= SUBAGENT_MAX_DISTANCE
+              })
+              target = nearTiles.length > 0
+                ? nearTiles[Math.floor(Math.random() * nearTiles.length)]
+                : walkableTiles[Math.floor(Math.random() * walkableTiles.length)]
+            } else {
+              target = walkableTiles[Math.floor(Math.random() * walkableTiles.length)]
+            }
+          } else {
+            target = walkableTiles[Math.floor(Math.random() * walkableTiles.length)]
+          }
           const path = findPath(ch.tileCol, ch.tileRow, target.col, target.row, tileMap, blockedTiles)
           if (path.length > 0) {
             ch.path = path
@@ -196,8 +338,9 @@ export function updateCharacter(
 
         if (ch.isActive) {
           if (!ch.seatId) {
-            // No seat — type in place
-            ch.state = CharacterState.TYPE
+            // No seat — stay standing idle (don't sit in air)
+            ch.state = CharacterState.IDLE
+            ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
           } else {
             const seat = seats.get(ch.seatId)
             if (seat && ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow) {
@@ -208,18 +351,32 @@ export function updateCharacter(
             }
           }
         } else {
+          // Check if arrived at a lounge seat (sofa/bench) — sit and chill
+          if (ch.loungeTargetSeatId) {
+            const loungeSeat = seats.get(ch.loungeTargetSeatId)
+            if (loungeSeat && ch.tileCol === loungeSeat.seatCol && ch.tileRow === loungeSeat.seatRow) {
+              ch.state = CharacterState.TYPE
+              ch.dir = loungeSeat.facingDir
+              ch.frame = 0
+              ch.frameTimer = 0
+              ch.seatTimer = 9999 // sit on sofa until active again
+              ch.loungeTargetSeatId = null
+              break
+            }
+            ch.loungeTargetSeatId = null
+          }
           // Check if arrived at assigned seat — sit down for a rest before wandering again
           if (ch.seatId) {
             const seat = seats.get(ch.seatId)
             if (seat && ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow) {
               ch.state = CharacterState.TYPE
               ch.dir = seat.facingDir
-              // seatTimer < 0 is a sentinel from setAgentActive(false) meaning
-              // "turn just ended" — skip the long rest so idle transition is immediate
-              if (ch.seatTimer < 0) {
-                ch.seatTimer = 0
-              } else {
+              if (ch.isActive) {
+                // Active agents sit and work for a long time
                 ch.seatTimer = randomRange(SEAT_REST_MIN_SEC, SEAT_REST_MAX_SEC)
+              } else {
+                // Idle agents sit briefly then get up — they're slacking off
+                ch.seatTimer = IDLE_SEAT_MAX_SEC
               }
               ch.wanderCount = 0
               ch.wanderLimit = randomInt(WANDER_MOVES_BEFORE_REST_MIN, WANDER_MOVES_BEFORE_REST_MAX)

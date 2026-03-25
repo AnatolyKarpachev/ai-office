@@ -16,7 +16,9 @@ export const TileType = {
   FLOOR_5: 5,
   FLOOR_6: 6,
   FLOOR_7: 7,
-  VOID: 8,
+  FLOOR_8: 8,
+  FLOOR_9: 9,
+  VOID: 255,
 } as const
 export type TileType = (typeof TileType)[keyof typeof TileType]
 
@@ -62,6 +64,8 @@ export interface Seat {
   /** Direction character faces when sitting (toward adjacent desk) */
   facingDir: Direction
   assigned: boolean
+  /** True if this seat is NOT adjacent to a desk (sofa, bench, lounge) */
+  isLounge: boolean
 }
 
 export interface FurnitureInstance {
@@ -72,6 +76,8 @@ export interface FurnitureInstance {
   y: number
   /** Y value used for depth sorting (typically bottom edge) */
   zY: number
+  /** Render-time horizontal flip flag (for mirrored side variants) */
+  mirrored?: boolean
 }
 
 export interface ToolActivity {
@@ -106,7 +112,7 @@ export const EditTool = {
 export type EditTool = (typeof EditTool)[keyof typeof EditTool]
 
 export interface FurnitureCatalogEntry {
-  type: string // FurnitureType enum or asset ID
+  type: string // asset ID from furniture manifest
   label: string
   footprintW: number
   footprintH: number
@@ -121,6 +127,8 @@ export interface FurnitureCatalogEntry {
   backgroundTiles?: number
   /** Whether this item can be placed on wall tiles */
   canPlaceOnWalls?: boolean
+  /** Whether this is a side-oriented asset that produces a mirrored "left" variant */
+  mirrorSide?: boolean
 }
 
 export interface PlacedFurniture {
@@ -140,6 +148,8 @@ export interface OfficeLayout {
   furniture: PlacedFurniture[]
   /** Per-tile color settings, parallel to tiles array. null = wall/no color */
   tileColors?: Array<FloorColor | null>
+  /** Bumped when the bundled default layout changes; forces a reset on existing installs */
+  layoutRevision?: number
 }
 
 export interface Character {
@@ -178,9 +188,11 @@ export interface Character {
   /** Assigned seat uid, or null if no seat */
   seatId: string | null
   /** Active speech bubble type, or null if none showing */
-  bubbleType: 'permission' | 'waiting' | null
-  /** Countdown timer for bubble (waiting: 2→0, permission: unused) */
+  bubbleType: 'permission' | 'waiting' | 'activity' | null
+  /** Countdown timer for bubble (waiting: 2→0, permission: unused, activity: 1→0) */
   bubbleTimer: number
+  /** Text for activity bubble (short tool status) */
+  bubbleText: string
   /** Timer to stay seated while inactive after seat reassignment (counts down to 0) */
   seatTimer: number
   /** Whether this character represents a sub-agent (spawned by Task tool) */
@@ -195,4 +207,6 @@ export interface Character {
   matrixEffectSeeds: number[]
   /** Workspace folder name (only set for multi-root workspaces) */
   folderName?: string
+  /** UID of lounge seat the idle character is walking toward */
+  loungeTargetSeatId?: string | null
 }

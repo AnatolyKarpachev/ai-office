@@ -6,6 +6,7 @@ const PERMISSION_EXEMPT_TOOLS = new Set(["Task", "AskUserQuestion"]);
 const PERMISSION_TIMER_DELAY_MS = 7000;
 const TEXT_IDLE_DELAY_MS = 5000;
 const TOOL_DONE_DELAY_MS = 300;
+const MAX_TOOL_HISTORY = 50;
 const BASH_COMMAND_DISPLAY_MAX_LENGTH = 30;
 const TASK_DESCRIPTION_DISPLAY_MAX_LENGTH = 40;
 const IDLE_ACTIVITY_TIMEOUT_MS = 120_000; // 2 min — long-running tools (builds, tests) need time
@@ -138,6 +139,7 @@ export function processTranscriptLine(
   line: string,
   agent: TrackedAgent,
   emit: (msg: ServerMessage) => void,
+  onStatsUpdate?: (agent: TrackedAgent) => void,
 ): void {
   let record: Record<string, unknown>;
   try {
@@ -148,15 +150,102 @@ export function processTranscriptLine(
 
   const type = record.type as string;
 
+  // Extract metadata from any record (first occurrence)
+  let statsChanged = false;
+  if (!agent.startTime && typeof record.timestamp === "string") {
+    agent.startTime = record.timestamp as string;
+    statsChanged = true;
+  }
+  if (!agent.gitBranch && typeof record.gitBranch === "string") {
+    agent.gitBranch = record.gitBranch as string;
+    statsChanged = true;
+  }
+  if (!agent.cwd && typeof record.cwd === "string") {
+    agent.cwd = record.cwd as string;
+    statsChanged = true;
+  }
+  if (!agent.version && typeof record.version === "string") {
+    agent.version = record.version as string;
+    statsChanged = true;
+  }
+  // Extract agentSetting — the REAL role assigned by Claude Code
+  if (!agent.agentSetting && typeof record.agentSetting === "string") {
+    agent.agentSetting = record.agentSetting as string;
+    statsChanged = true;
+  }
+
   if (type === "assistant") {
+    const tokenStatsChanged = extractTokenUsage(record, agent);
+    statsChanged = statsChanged || tokenStatsChanged;
     handleAssistantMessage(record, agent, emit);
   } else if (type === "user") {
     handleUserMessage(record, agent, emit);
   } else if (type === "system") {
+    const durationChanged = extractTurnDuration(record, agent);
+    statsChanged = statsChanged || durationChanged;
     handleSystemMessage(record, agent, emit);
   } else if (type === "progress") {
     handleProgressMessage(record, agent, emit);
   }
+
+  if (statsChanged && onStatsUpdate) {
+    onStatsUpdate(agent);
+  }
+}
+
+function extractTokenUsage(
+  record: Record<string, unknown>,
+  agent: TrackedAgent,
+): boolean {
+  const message = record.message as Record<string, unknown> | undefined;
+  if (!message) return false;
+
+  let changed = false;
+
+  // Extract model
+  if (typeof message.model === "string" && !agent.model) {
+    agent.model = message.model as string;
+    changed = true;
+  }
+
+  // Extract usage
+  const usage = message.usage as Record<string, unknown> | undefined;
+  if (usage) {
+    if (typeof usage.input_tokens === "number") {
+      agent.totalInputTokens += usage.input_tokens as number;
+      changed = true;
+    }
+    if (typeof usage.output_tokens === "number") {
+      agent.totalOutputTokens += usage.output_tokens as number;
+      changed = true;
+    }
+    if (typeof usage.cache_read_input_tokens === "number") {
+      agent.totalCacheRead += usage.cache_read_input_tokens as number;
+      changed = true;
+    }
+    if (typeof usage.cache_creation_input_tokens === "number") {
+      agent.totalCacheCreation += usage.cache_creation_input_tokens as number;
+      changed = true;
+    }
+  }
+
+  return changed;
+}
+
+function extractTurnDuration(
+  record: Record<string, unknown>,
+  agent: TrackedAgent,
+): boolean {
+  const subtype = record.subtype as string | undefined;
+  if (subtype !== "turn_duration") return false;
+
+  let changed = false;
+  if (typeof record.durationMs === "number") {
+    agent.totalDurationMs += record.durationMs as number;
+    agent.turnCount += 1;
+    changed = true;
+  }
+  return changed;
 }
 
 function handleAssistantMessage(
@@ -190,6 +279,16 @@ function handleAssistantMessage(
         agent.activeToolNames.set(toolId, toolName);
         agent.lastActivityTime = Date.now();
 
+        // Track tool history (ring buffer)
+        if (agent.toolHistory.length >= MAX_TOOL_HISTORY) {
+          agent.toolHistory.shift();
+        }
+        agent.toolHistory.push({ name: toolName, timestamp: new Date().toISOString() });
+
+        // Track tool counts for role detection
+        if (!agent.toolCounts) agent.toolCounts = {};
+        agent.toolCounts[toolName] = (agent.toolCounts[toolName] || 0) + 1;
+
         const activity = READING_TOOLS.has(toolName) ? "reading" : "typing";
         agent.activity = activity;
 
@@ -216,6 +315,11 @@ function handleUserMessage(
   agent: TrackedAgent,
   emit: (msg: ServerMessage) => void,
 ): void {
+  // Extract permissionMode from user records
+  if (!agent.permissionMode && typeof record.permissionMode === "string") {
+    agent.permissionMode = record.permissionMode as string;
+  }
+
   const message = record.message as Record<string, unknown> | undefined;
   if (!message?.content) return;
 
@@ -242,6 +346,17 @@ function handleUserMessage(
 
           agent.activeTools.delete(completedToolId);
           agent.activeToolNames.delete(completedToolId);
+
+          // Update tool history with duration
+          const completedToolName = agent.activeToolNames.get(completedToolId);
+          for (let i = agent.toolHistory.length - 1; i >= 0; i--) {
+            const entry = agent.toolHistory[i];
+            if (entry.durationMs === undefined) {
+              const startMs = new Date(entry.timestamp).getTime();
+              entry.durationMs = Date.now() - startMs;
+              break;
+            }
+          }
 
           // Delay the done message slightly (matches upstream)
           const toolId = completedToolId;

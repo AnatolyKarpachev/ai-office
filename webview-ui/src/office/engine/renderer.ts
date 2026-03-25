@@ -20,6 +20,7 @@ import {
   BUTTON_ICON_SIZE_FACTOR,
   BUTTON_LINE_WIDTH_MIN,
   BUTTON_LINE_WIDTH_ZOOM_FACTOR,
+  ACTIVITY_BUBBLE_FADE_SEC,
   BUBBLE_FADE_DURATION_SEC,
   BUBBLE_SITTING_OFFSET_PX,
   BUBBLE_VERTICAL_OFFSET_PX,
@@ -111,12 +112,25 @@ export function renderScene(
     const cached = getCachedSprite(f.sprite, zoom)
     const fx = offsetX + f.x * zoom
     const fy = offsetY + f.y * zoom
-    drawables.push({
-      zY: f.zY,
-      draw: (c) => {
-        c.drawImage(cached, fx, fy)
-      },
-    })
+    if (f.mirrored) {
+      drawables.push({
+        zY: f.zY,
+        draw: (c) => {
+          c.save()
+          c.translate(fx + cached.width, fy)
+          c.scale(-1, 1)
+          c.drawImage(cached, 0, 0)
+          c.restore()
+        },
+      })
+    } else {
+      drawables.push({
+        zY: f.zY,
+        draw: (c) => {
+          c.drawImage(cached, fx, fy)
+        },
+      })
+    }
   }
 
   // Characters
@@ -324,14 +338,23 @@ export function renderGhostPreview(
   offsetX: number,
   offsetY: number,
   zoom: number,
+  mirrored: boolean = false,
 ): void {
   const cached = getCachedSprite(sprite, zoom)
   const x = offsetX + col * TILE_SIZE * zoom
   const y = offsetY + row * TILE_SIZE * zoom
   ctx.save()
   ctx.globalAlpha = GHOST_PREVIEW_SPRITE_ALPHA
-  ctx.drawImage(cached, x, y)
-  // Tint overlay
+  if (mirrored) {
+    ctx.translate(x + cached.width, y)
+    ctx.scale(-1, 1)
+    ctx.drawImage(cached, 0, 0)
+  } else {
+    ctx.drawImage(cached, x, y)
+  }
+  // Tint overlay — reset transform for correct fill position
+  ctx.restore()
+  ctx.save()
   ctx.globalAlpha = GHOST_PREVIEW_TINT_ALPHA
   ctx.fillStyle = valid ? GHOST_VALID_TINT : GHOST_INVALID_TINT
   ctx.fillRect(x, y, cached.width, cached.height)
@@ -457,21 +480,73 @@ export function renderBubbles(
   for (const ch of characters) {
     if (!ch.bubbleType) continue
 
+    const sittingOff = ch.state === CharacterState.TYPE ? BUBBLE_SITTING_OFFSET_PX : 0
+
+    // ── Activity bubble: square box with dynamic text, above nameplate ──
+    if (ch.bubbleType === 'activity') {
+      let alpha = 1.0
+      if (ch.bubbleTimer < ACTIVITY_BUBBLE_FADE_SEC) {
+        alpha = Math.max(0, ch.bubbleTimer / ACTIVITY_BUBBLE_FADE_SEC)
+      }
+      if (alpha <= 0) continue
+
+      const fontSize = Math.max(7, Math.round(4.5 * zoom))
+      ctx.save()
+      ctx.font = `${fontSize}px "FS Pixel Sans Unicode", monospace`
+      const text = ch.bubbleText || ''
+      const metrics = ctx.measureText(text)
+      const padX = Math.round(3 * zoom)
+      const padY = Math.round(2 * zoom)
+      const boxW = Math.round(metrics.width + padX * 2)
+      const boxH = Math.round(fontSize + padY * 2)
+      const tailH = Math.round(2 * zoom)
+
+      // Position above the nameplate overlay (~20px extra above BUBBLE_VERTICAL_OFFSET)
+      const extraOffset = 20
+      const cx = Math.round(offsetX + ch.x * zoom)
+      const boxX = cx - Math.round(boxW / 2)
+      const boxY = Math.round(
+        offsetY + (ch.y + sittingOff - BUBBLE_VERTICAL_OFFSET_PX - extraOffset) * zoom - boxH - tailH
+      )
+
+      // Box background
+      ctx.globalAlpha = alpha * 0.88
+      ctx.fillStyle = '#1a1a2e'
+      ctx.fillRect(boxX, boxY, boxW, boxH)
+      ctx.strokeStyle = '#555577'
+      ctx.lineWidth = Math.max(1, zoom * 0.5)
+      ctx.strokeRect(boxX, boxY, boxW, boxH)
+
+      // Tail pointer
+      ctx.fillStyle = '#1a1a2e'
+      ctx.beginPath()
+      ctx.moveTo(cx - Math.round(2 * zoom), boxY + boxH)
+      ctx.lineTo(cx + Math.round(2 * zoom), boxY + boxH)
+      ctx.lineTo(cx, boxY + boxH + tailH)
+      ctx.closePath()
+      ctx.fill()
+
+      // Text
+      ctx.globalAlpha = alpha
+      ctx.fillStyle = '#ccddff'
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+      ctx.fillText(text, cx, boxY + Math.round(boxH / 2))
+      ctx.restore()
+      continue
+    }
+
+    // ── Permission / waiting sprite bubbles ──
     const sprite = ch.bubbleType === 'permission'
       ? BUBBLE_PERMISSION_SPRITE
       : BUBBLE_WAITING_SPRITE
 
-    // Compute opacity: permission = full, waiting = fade in last 0.5s
     let alpha = 1.0
     if (ch.bubbleType === 'waiting' && ch.bubbleTimer < BUBBLE_FADE_DURATION_SEC) {
       alpha = ch.bubbleTimer / BUBBLE_FADE_DURATION_SEC
     }
 
     const cached = getCachedSprite(sprite, zoom)
-    // Position: centered above the character's head
-    // Character is anchored bottom-center at (ch.x, ch.y), sprite is 16x24
-    // Place bubble above head with a small gap; follow sitting offset
-    const sittingOff = ch.state === CharacterState.TYPE ? BUBBLE_SITTING_OFFSET_PX : 0
     const bubbleX = Math.round(offsetX + ch.x * zoom - cached.width / 2)
     const bubbleY = Math.round(offsetY + (ch.y + sittingOff - BUBBLE_VERTICAL_OFFSET_PX) * zoom - cached.height - 1 * zoom)
 
@@ -497,6 +572,7 @@ export type RotateButtonBounds = ButtonBounds
 export interface EditorRenderState {
   showGrid: boolean
   ghostSprite: SpriteData | null
+  ghostMirrored: boolean
   ghostCol: number
   ghostRow: number
   ghostValid: boolean
@@ -588,7 +664,7 @@ export function renderFrame(
       renderGhostBorder(ctx, offsetX, offsetY, zoom, cols, rows, editor.ghostBorderHoverCol, editor.ghostBorderHoverRow)
     }
     if (editor.ghostSprite && editor.ghostCol >= 0) {
-      renderGhostPreview(ctx, editor.ghostSprite, editor.ghostCol, editor.ghostRow, editor.ghostValid, offsetX, offsetY, zoom)
+      renderGhostPreview(ctx, editor.ghostSprite, editor.ghostCol, editor.ghostRow, editor.ghostValid, offsetX, offsetY, zoom, editor.ghostMirrored)
     }
     if (editor.hasSelection) {
       renderSelectionHighlight(ctx, editor.selectedCol, editor.selectedRow, editor.selectedW, editor.selectedH, offsetX, offsetY, zoom)

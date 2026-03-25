@@ -1,17 +1,20 @@
 import { TILE_SIZE, MATRIX_EFFECT_DURATION, CharacterState, Direction } from '../types.js'
 import {
-  PALETTE_COUNT,
-  HUE_SHIFT_MIN_DEG,
-  HUE_SHIFT_RANGE_DEG,
-  WAITING_BUBBLE_DURATION_SEC,
-  DISMISS_BUBBLE_FAST_FADE_SEC,
-  INACTIVE_SEAT_TIMER_MIN_SEC,
-  INACTIVE_SEAT_TIMER_RANGE_SEC,
   AUTO_ON_FACING_DEPTH,
   AUTO_ON_SIDE_DEPTH,
-  CHARACTER_SITTING_OFFSET_PX,
   CHARACTER_HIT_HALF_WIDTH,
   CHARACTER_HIT_HEIGHT,
+  CHARACTER_SITTING_OFFSET_PX,
+  DISMISS_BUBBLE_FAST_FADE_SEC,
+  FURNITURE_ANIM_INTERVAL_SEC,
+  HUE_SHIFT_MIN_DEG,
+  HUE_SHIFT_RANGE_DEG,
+  INACTIVE_SEAT_TIMER_MIN_SEC,
+  INACTIVE_SEAT_TIMER_RANGE_SEC,
+  PALETTE_COUNT,
+  WAITING_BUBBLE_DURATION_SEC,
+  ACTIVITY_BUBBLE_DURATION_SEC,
+  ACTIVITY_BUBBLE_MAX_CHARS,
 } from '../../constants.js'
 import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture } from '../types.js'
 import { createCharacter, updateCharacter } from './characters.js'
@@ -23,8 +26,9 @@ import {
   layoutToFurnitureInstances,
   layoutToSeats,
   getBlockedTiles,
+  getSeatTiles,
 } from '../layout/layoutSerializer.js'
-import { getCatalogEntry, getOnStateType } from '../layout/furnitureCatalog.js'
+import { getAnimationFrames, getCatalogEntry, getOnStateType } from '../layout/furnitureCatalog.js'
 
 export class OfficeState {
   layout: OfficeLayout
@@ -34,6 +38,8 @@ export class OfficeState {
   furniture: FurnitureInstance[]
   walkableTiles: Array<{ col: number; row: number }>
   characters: Map<number, Character> = new Map()
+  /** Accumulated time for furniture animation frame cycling */
+  furnitureAnimTimer = 0
   selectedAgentId: number | null = null
   cameraFollowId: number | null = null
   hoveredAgentId: number | null = null
@@ -48,7 +54,7 @@ export class OfficeState {
     this.layout = layout || createDefaultLayout()
     this.tileMap = layoutToTileMap(this.layout)
     this.seats = layoutToSeats(this.layout.furniture)
-    this.blockedTiles = getBlockedTiles(this.layout.furniture)
+    this.blockedTiles = getBlockedTiles(this.layout.furniture, getSeatTiles(this.seats))
     this.furniture = layoutToFurnitureInstances(this.layout.furniture)
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles)
   }
@@ -59,7 +65,7 @@ export class OfficeState {
     this.layout = layout
     this.tileMap = layoutToTileMap(layout)
     this.seats = layoutToSeats(layout.furniture)
-    this.blockedTiles = getBlockedTiles(layout.furniture)
+    this.blockedTiles = getBlockedTiles(layout.furniture, getSeatTiles(this.seats))
     this.rebuildFurnitureInstances()
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles)
 
@@ -77,6 +83,7 @@ export class OfficeState {
     }
 
     // Reassign characters to new seats, preserving existing assignments when possible
+    // Hard invariant: one seat = one character
     for (const seat of this.seats.values()) {
       seat.assigned = false
     }
@@ -85,7 +92,7 @@ export class OfficeState {
     for (const ch of this.characters.values()) {
       if (ch.seatId && this.seats.has(ch.seatId)) {
         const seat = this.seats.get(ch.seatId)!
-        if (!seat.assigned) {
+        if (!seat.assigned && !this.isSeatClaimed(ch.seatId)) {
           seat.assigned = true
           // Snap character to seat position
           ch.tileCol = seat.seatCol
@@ -105,8 +112,7 @@ export class OfficeState {
     for (const ch of this.characters.values()) {
       if (ch.seatId) continue
       const seatId = this.findFreeSeat()
-      if (seatId) {
-        this.seats.get(seatId)!.assigned = true
+      if (seatId && this.claimSeat(seatId)) {
         ch.seatId = seatId
         const seat = this.seats.get(seatId)!
         ch.tileCol = seat.seatCol
@@ -159,11 +165,61 @@ export class OfficeState {
     return result
   }
 
+  /** Check if a seatId is already claimed by any character (hard invariant) */
+  private isSeatClaimed(seatId: string): boolean {
+    for (const ch of this.characters.values()) {
+      if (ch.seatId === seatId) return true
+    }
+    return false
+  }
+
+  /** Claim a seat: mark assigned + verify no other character holds it */
+  private claimSeat(seatId: string): boolean {
+    const seat = this.seats.get(seatId)
+    if (!seat) return false
+    if (seat.assigned || this.isSeatClaimed(seatId)) return false
+    seat.assigned = true
+    return true
+  }
+
   private findFreeSeat(): string | null {
+    // Prefer non-lounge seats
     for (const [uid, seat] of this.seats) {
-      if (!seat.assigned) return uid
+      if (!seat.assigned && !seat.isLounge && !this.isSeatClaimed(uid)) return uid
+    }
+    // Fallback: lounge seats
+    for (const [uid, seat] of this.seats) {
+      if (!seat.assigned && !this.isSeatClaimed(uid)) return uid
     }
     return null
+  }
+
+  /** Find the closest free seat to a given parent agent's position */
+  private findFreeSeatNear(parentAgentId: number): string | null {
+    const parentCh = this.characters.get(parentAgentId)
+    if (!parentCh) return this.findFreeSeat()
+
+    const parentCol = parentCh.tileCol
+    const parentRow = parentCh.tileRow
+    let bestSeatId: string | null = null
+    let bestDist = Infinity
+
+    // Prefer non-lounge first
+    for (const [uid, seat] of this.seats) {
+      if (seat.assigned || seat.isLounge || this.isSeatClaimed(uid)) continue
+      const d = Math.abs(seat.seatCol - parentCol) + Math.abs(seat.seatRow - parentRow)
+      if (d < bestDist) { bestDist = d; bestSeatId = uid }
+    }
+    // Fallback: lounge seats
+    if (!bestSeatId) {
+      bestDist = Infinity
+      for (const [uid, seat] of this.seats) {
+        if (seat.assigned || this.isSeatClaimed(uid)) continue
+        const d = Math.abs(seat.seatCol - parentCol) + Math.abs(seat.seatRow - parentRow)
+        if (d < bestDist) { bestDist = d; bestSeatId = uid }
+      }
+    }
+    return bestSeatId
   }
 
   /**
@@ -193,7 +249,7 @@ export class OfficeState {
     return { palette, hueShift }
   }
 
-  addAgent(id: number, preferredPalette?: number, preferredHueShift?: number, preferredSeatId?: string, skipSpawnEffect?: boolean, folderName?: string): void {
+  addAgent(id: number, preferredPalette?: number, preferredHueShift?: number, preferredSeatId?: string, skipSpawnEffect?: boolean, folderName?: string, parentAgentId?: number): void {
     if (this.characters.has(id)) return
 
     let palette: number
@@ -201,34 +257,65 @@ export class OfficeState {
     if (preferredPalette !== undefined) {
       palette = preferredPalette
       hueShift = preferredHueShift ?? 0
+    } else if (parentAgentId !== undefined) {
+      // Subagent: inherit parent's palette with a slight hue shift
+      const parentCh = this.characters.get(parentAgentId)
+      if (parentCh) {
+        palette = parentCh.palette
+        hueShift = parentCh.hueShift
+      } else {
+        const pick = this.pickDiversePalette()
+        palette = pick.palette
+        hueShift = pick.hueShift
+      }
     } else {
       const pick = this.pickDiversePalette()
       palette = pick.palette
       hueShift = pick.hueShift
     }
 
-    // Try preferred seat first, then any free seat
+    // Try preferred seat first, then find a seat near parent (if subagent), then any free seat
+    // Hard invariant: one seat = one character, verified by claimSeat
     let seatId: string | null = null
-    if (preferredSeatId && this.seats.has(preferredSeatId)) {
-      const seat = this.seats.get(preferredSeatId)!
-      if (!seat.assigned) {
-        seatId = preferredSeatId
-      }
+    if (preferredSeatId && this.claimSeat(preferredSeatId)) {
+      seatId = preferredSeatId
+    }
+    if (!seatId && parentAgentId !== undefined) {
+      seatId = this.findFreeSeatNear(parentAgentId)
     }
     if (!seatId) {
       seatId = this.findFreeSeat()
+    }
+    // Claim the found seat (findFreeSeat doesn't mark assigned)
+    if (seatId && !this.seats.get(seatId)?.assigned) {
+      if (!this.claimSeat(seatId)) seatId = null
     }
 
     let ch: Character
     if (seatId) {
       const seat = this.seats.get(seatId)!
-      seat.assigned = true
       ch = createCharacter(id, palette, seatId, seat, hueShift)
     } else {
-      // No seats — spawn at random walkable tile
-      const spawn = this.walkableTiles.length > 0
-        ? this.walkableTiles[Math.floor(Math.random() * this.walkableTiles.length)]
-        : { col: 1, row: 1 }
+      // No seats — spawn at random walkable tile (or near parent if subagent)
+      let spawn = { col: 1, row: 1 }
+      if (parentAgentId !== undefined) {
+        const parentCh = this.characters.get(parentAgentId)
+        if (parentCh && this.walkableTiles.length > 0) {
+          // Find closest walkable tile to parent
+          let best = this.walkableTiles[0]
+          let bestDist = Math.abs(best.col - parentCh.tileCol) + Math.abs(best.row - parentCh.tileRow)
+          for (let i = 1; i < this.walkableTiles.length; i++) {
+            const d = Math.abs(this.walkableTiles[i].col - parentCh.tileCol) + Math.abs(this.walkableTiles[i].row - parentCh.tileRow)
+            if (d < bestDist) {
+              best = this.walkableTiles[i]
+              bestDist = d
+            }
+          }
+          spawn = best
+        }
+      } else if (this.walkableTiles.length > 0) {
+        spawn = this.walkableTiles[Math.floor(Math.random() * this.walkableTiles.length)]
+      }
       ch = createCharacter(id, palette, null, null, hueShift)
       ch.x = spawn.col * TILE_SIZE + TILE_SIZE / 2
       ch.y = spawn.row * TILE_SIZE + TILE_SIZE / 2
@@ -238,6 +325,10 @@ export class OfficeState {
 
     if (folderName) {
       ch.folderName = folderName
+    }
+    if (parentAgentId !== undefined) {
+      ch.isSubagent = true
+      ch.parentAgentId = parentAgentId
     }
     if (!skipSpawnEffect) {
       ch.matrixEffect = 'spawn'
@@ -373,22 +464,27 @@ export class OfficeState {
     const dist = (c: number, r: number) =>
       Math.abs(c - parentCol) + Math.abs(r - parentRow)
 
+    // First pass: prefer non-lounge seats near parent (hard 1:1 check)
     let bestSeatId: string | null = null
     let bestDist = Infinity
     for (const [uid, seat] of this.seats) {
-      if (!seat.assigned) {
+      if (seat.assigned || seat.isLounge || this.isSeatClaimed(uid)) continue
+      const d = dist(seat.seatCol, seat.seatRow)
+      if (d < bestDist) { bestDist = d; bestSeatId = uid }
+    }
+    // Fallback: allow lounge seats
+    if (!bestSeatId) {
+      bestDist = Infinity
+      for (const [uid, seat] of this.seats) {
+        if (seat.assigned || this.isSeatClaimed(uid)) continue
         const d = dist(seat.seatCol, seat.seatRow)
-        if (d < bestDist) {
-          bestDist = d
-          bestSeatId = uid
-        }
+        if (d < bestDist) { bestDist = d; bestSeatId = uid }
       }
     }
 
     let ch: Character
-    if (bestSeatId) {
+    if (bestSeatId && this.claimSeat(bestSeatId)) {
       const seat = this.seats.get(bestSeatId)!
-      seat.assigned = true
       ch = createCharacter(id, palette, bestSeatId, seat, hueShift)
     } else {
       // No seats — spawn at closest walkable tile to parent
@@ -499,11 +595,17 @@ export class OfficeState {
     if (ch) {
       ch.isActive = active
       if (!active) {
-        // Sentinel -1: signals turn just ended, skip next seat rest timer.
-        // Prevents the WALK handler from setting a 2-4 min rest on arrival.
-        ch.seatTimer = -1
+        // Grace period matches IDLE_SEAT_MAX_SEC — agent stays at desk briefly then gets up
+        ch.seatTimer = 10
         ch.path = []
         ch.moveProgress = 0
+      } else {
+        // Cancel sofa walk — active agent should head back to desk
+        if (ch.loungeTargetSeatId) {
+          ch.loungeTargetSeatId = null
+          ch.path = []
+          ch.moveProgress = 0
+        }
       }
       this.rebuildFurnitureInstances()
     }
@@ -547,7 +649,8 @@ export class OfficeState {
       return
     }
 
-    // Build modified furniture list with auto-state applied
+    // Build modified furniture list with auto-state and animation applied
+    const animFrame = Math.floor(this.furnitureAnimTimer / FURNITURE_ANIM_INTERVAL_SEC)
     const modifiedFurniture: PlacedFurniture[] = this.layout.furniture.map((item) => {
       const entry = getCatalogEntry(item.type)
       if (!entry) return item
@@ -555,8 +658,14 @@ export class OfficeState {
       for (let dr = 0; dr < entry.footprintH; dr++) {
         for (let dc = 0; dc < entry.footprintW; dc++) {
           if (autoOnTiles.has(`${item.col + dc},${item.row + dr}`)) {
-            const onType = getOnStateType(item.type)
+            let onType = getOnStateType(item.type)
             if (onType !== item.type) {
+              // Check if the on-state type has animation frames
+              const frames = getAnimationFrames(onType)
+              if (frames && frames.length > 1) {
+                const frameIdx = animFrame % frames.length
+                onType = frames[frameIdx]
+              }
               return { ...item, type: onType }
             }
             return item
@@ -592,6 +701,19 @@ export class OfficeState {
     }
   }
 
+  showActivityBubble(id: number, text: string): void {
+    const ch = this.characters.get(id)
+    if (!ch) return
+    // Don't override permission bubbles
+    if (ch.bubbleType === 'permission') return
+    const short = text.length > ACTIVITY_BUBBLE_MAX_CHARS
+      ? text.slice(0, ACTIVITY_BUBBLE_MAX_CHARS) + '\u2026'
+      : text
+    ch.bubbleType = 'activity'
+    ch.bubbleText = short
+    ch.bubbleTimer = ACTIVITY_BUBBLE_DURATION_SEC
+  }
+
   showWaitingBubble(id: number): void {
     const ch = this.characters.get(id)
     if (ch) {
@@ -600,20 +722,27 @@ export class OfficeState {
     }
   }
 
-  /** Dismiss bubble on click — permission: instant, waiting: quick fade */
+  /** Dismiss bubble on click — permission: instant, waiting/activity: quick fade */
   dismissBubble(id: number): void {
     const ch = this.characters.get(id)
     if (!ch || !ch.bubbleType) return
     if (ch.bubbleType === 'permission') {
       ch.bubbleType = null
       ch.bubbleTimer = 0
-    } else if (ch.bubbleType === 'waiting') {
-      // Trigger immediate fade (0.3s remaining)
+    } else if (ch.bubbleType === 'waiting' || ch.bubbleType === 'activity') {
       ch.bubbleTimer = Math.min(ch.bubbleTimer, DISMISS_BUBBLE_FAST_FADE_SEC)
     }
   }
 
   update(dt: number): void {
+    // Furniture animation cycling
+    const prevFrame = Math.floor(this.furnitureAnimTimer / FURNITURE_ANIM_INTERVAL_SEC)
+    this.furnitureAnimTimer += dt
+    const newFrame = Math.floor(this.furnitureAnimTimer / FURNITURE_ANIM_INTERVAL_SEC)
+    if (newFrame !== prevFrame) {
+      this.rebuildFurnitureInstances()
+    }
+
     const toDelete: number[] = []
     for (const ch of this.characters.values()) {
       // Handle matrix effect animation
@@ -635,15 +764,16 @@ export class OfficeState {
 
       // Temporarily unblock own seat so character can pathfind to it
       this.withOwnSeatUnblocked(ch, () =>
-        updateCharacter(ch, dt, this.walkableTiles, this.seats, this.tileMap, this.blockedTiles)
+        updateCharacter(ch, dt, this.walkableTiles, this.seats, this.tileMap, this.blockedTiles, this.characters)
       )
 
-      // Tick bubble timer for waiting bubbles
-      if (ch.bubbleType === 'waiting') {
+      // Tick bubble timer for waiting / activity bubbles
+      if (ch.bubbleType === 'waiting' || ch.bubbleType === 'activity') {
         ch.bubbleTimer -= dt
         if (ch.bubbleTimer <= 0) {
           ch.bubbleType = null
           ch.bubbleTimer = 0
+          ch.bubbleText = ''
         }
       }
     }
