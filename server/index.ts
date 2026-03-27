@@ -165,7 +165,8 @@ function cleanupSpawnedClaudes(): void {
 // In production (esbuild), __dirname is dist/ so assets are at ./public/assets/
 const devAssetsRoot = join(__dirname, "..", "webview-ui", "public", "assets");
 const prodAssetsRoot = join(__dirname, "public", "assets");
-const assetsRoot = existsSync(devAssetsRoot) ? devAssetsRoot : prodAssetsRoot;
+const isDev = existsSync(devAssetsRoot);
+const assetsRoot = isDev ? devAssetsRoot : prodAssetsRoot;
 
 console.log(`[Server] Loading assets from: ${assetsRoot}`);
 
@@ -320,6 +321,7 @@ function sendInitialData(ws: WebSocket): void {
     type: "settingsLoaded",
     soundEnabled: cfg.soundEnabled,
     externalAssetDirectories: cfg.externalAssetDirectories,
+    serverMode: isDev ? "dev" : "prod",
   }));
 
   // Send character sprites

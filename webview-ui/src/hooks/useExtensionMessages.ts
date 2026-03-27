@@ -134,6 +134,7 @@ export function useExtensionMessages(
   const [agentRolesMap, setAgentRolesMap] = useState<Map<number, AgentRoleInfo>>(new Map())
   const [agentDetailsState, setAgentDetailsState] = useState<AgentDetails | null>(null)
   const [pipelineIssues, setPipelineIssues] = useState<PipelineIssue[]>([])
+  const [serverMode, setServerMode] = useState<string>('...')
 
   const requestAgentDetails = useCallback((id: number) => {
     vscode.postMessage({ type: 'requestAgentDetails', id })
@@ -441,6 +442,9 @@ export function useExtensionMessages(
         if (Array.isArray(msg.externalAssetDirectories)) {
           setExternalAssetDirectories(msg.externalAssetDirectories as string[])
         }
+        if (msg.serverMode) {
+          setServerMode(msg.serverMode as string)
+        }
       } else if (msg.type === 'externalAssetDirectoriesUpdated') {
         if (Array.isArray(msg.dirs)) {
           setExternalAssetDirectories(msg.dirs as string[])
@@ -528,5 +532,6 @@ export function useExtensionMessages(
     agentDetails: agentDetailsState,
     requestAgentDetails,
     pipelineIssues,
+    serverMode,
   }
 }

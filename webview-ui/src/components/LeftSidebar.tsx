@@ -158,6 +158,7 @@ interface LeftSidebarProps {
   officeState: OfficeState
   onInspectAgent: (id: number) => void
   pipelineIssues: PipelineIssue[]
+  serverMode?: string
 }
 
 const sidebarStyle: React.CSSProperties = {
@@ -223,6 +224,7 @@ export function LeftSidebar({
   officeState,
   onInspectAgent,
   pipelineIssues,
+  serverMode,
 }: LeftSidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [hoveredAgent, setHoveredAgent] = useState<number | null>(null)
@@ -321,9 +323,23 @@ export function LeftSidebar({
     <div style={{ ...sidebarStyle, width: 280 }}>
       {/* Header */}
       <div style={headerStyle}>
-        <span style={{ fontSize: '18px', color: 'var(--pixel-accent)', fontWeight: 'bold' }}>
-          {activeTab === 'agents' ? 'AGENTS' : 'TASKS'}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: '18px', color: 'var(--pixel-accent)', fontWeight: 'bold' }}>
+            {activeTab === 'agents' ? 'AGENTS' : 'TASKS'}
+          </span>
+          {serverMode && (
+            <span style={{
+              fontSize: '10px', padding: '0 4px', fontWeight: 'bold',
+              textTransform: 'uppercase', letterSpacing: '0.5px', lineHeight: '14px',
+              background: serverMode === 'dev' ? 'rgba(255,159,67,0.15)' : 'rgba(90,200,140,0.15)',
+              color: serverMode === 'dev' ? '#ff9f43' : '#5ac88c',
+              border: `1px solid ${serverMode === 'dev' ? 'rgba(255,159,67,0.3)' : 'rgba(90,200,140,0.3)'}`,
+              borderRadius: 0,
+            }}>
+              {serverMode}
+            </span>
+          )}
+        </div>
         <button onClick={toggleCollapse} style={toggleBtnStyle} title="Collapse sidebar">◀</button>
       </div>
 

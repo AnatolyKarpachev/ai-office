@@ -72,7 +72,7 @@ export type ServerMessage =
   | { type: "wallTilesLoaded"; sets: unknown[] }
   | { type: "furnitureAssetsLoaded"; catalog: unknown[]; sprites: Record<string, unknown> }
   | { type: "layoutLoaded"; layout: unknown; version: number; wasReset?: boolean }
-  | { type: "settingsLoaded"; soundEnabled: boolean; externalAssetDirectories: string[] }
+  | { type: "settingsLoaded"; soundEnabled: boolean; externalAssetDirectories: string[]; serverMode?: string }
   | { type: "externalAssetDirectoriesUpdated"; dirs: string[] }
   | { type: "agentStats"; id: number; model?: string; totalInputTokens: number; totalOutputTokens: number; totalCacheRead: number; totalCacheCreation: number; turnCount: number; totalDurationMs: number; cacheHitRate: number }
   | { type: "agentDetails"; id: number; model?: string; gitBranch?: string; cwd?: string; sessionId: string; version?: string; permissionMode?: string; toolHistory: Array<{ name: string; timestamp: string; durationMs?: number }>; tokenBreakdown: { input: number; output: number; cacheRead: number; cacheCreation: number }; turnCount: number; totalDurationMs: number; startTime?: string }
