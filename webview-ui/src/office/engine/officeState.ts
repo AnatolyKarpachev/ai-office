@@ -101,7 +101,7 @@ export class OfficeState {
     for (const ch of this.characters.values()) {
       if (ch.seatId && this.seats.has(ch.seatId)) {
         const seat = this.seats.get(ch.seatId)!
-        if (!seat.assigned && !this.isSeatClaimed(ch.seatId)) {
+        if (!seat.assigned && !this.isSeatClaimed(ch.seatId, ch.id)) {
           seat.assigned = true
           // Snap character to seat position
           ch.tileCol = seat.seatCol
@@ -175,9 +175,11 @@ export class OfficeState {
     return result
   }
 
-  /** Check if a seatId is already claimed by any live character (skip despawning) */
-  private isSeatClaimed(seatId: string): boolean {
+  /** Check if a seatId is already claimed by any live character (skip despawning).
+   *  @param excludeId  Optional character ID to exclude from the check (e.g. the character itself) */
+  private isSeatClaimed(seatId: string, excludeId?: number): boolean {
     for (const ch of this.characters.values()) {
+      if (ch.id === excludeId) continue
       if (ch.seatId === seatId && ch.matrixEffect !== 'despawn') return true
     }
     return false
@@ -303,13 +305,17 @@ export class OfficeState {
   }
 
   /** Find the best free seat using team cluster scoring.
-   *  Uses weighted centroid + parent proximity + sibling attraction. */
+   *  Uses weighted centroid + parent proximity + sibling attraction.
+   *  Parent position is based on their assigned SEAT (last active position),
+   *  not their current wandering tile. */
   private findFreeSeatNear(parentAgentId: number, agentId?: number): string | null {
     const parentCh = this.characters.get(parentAgentId)
     if (!parentCh) return this.findFreeSeat(agentId)
 
-    const parentCol = parentCh.tileCol
-    const parentRow = parentCh.tileRow
+    // Use parent's seat position (stable work location) instead of current tile (may be wandering)
+    const parentSeat = parentCh.seatId ? this.seats.get(parentCh.seatId) : null
+    const parentCol = parentSeat ? parentSeat.seatCol : parentCh.tileCol
+    const parentRow = parentSeat ? parentSeat.seatRow : parentCh.tileRow
 
     // Compute cluster info for team-aware scoring
     const { chainRoot, priority } = agentId !== undefined
@@ -372,18 +378,24 @@ export class OfficeState {
           currentSeat.assigned = false
           ch.seatId = null
         }
-        // If there's a role-restricted seat available and agent qualifies, move there
+        // If there's a role-restricted seat available and agent qualifies, move to closest to team
         else if (!currentSeat.requiredRoles) {
+          const cluster = this.getClusterCentroid(this.getAgentPriority(agentId).chainRoot)
+          let bestUid: string | null = null
+          let bestDist = Infinity
           for (const [uid, seat] of this.seats) {
-            if (seat.requiredRoles && seat.requiredRoles.includes(role)
-                && !seat.assigned && !this.isSeatClaimed(uid)) {
-              currentSeat.assigned = false
-              if (this.claimSeat(uid)) {
-                ch.seatId = uid
-                this.sendToSeat(agentId)
-              }
-              return
+            if (!seat.requiredRoles || !seat.requiredRoles.includes(role)) continue
+            if (seat.assigned || this.isSeatClaimed(uid)) continue
+            const d = Math.abs(seat.seatCol - cluster.col) + Math.abs(seat.seatRow - cluster.row)
+            if (d < bestDist) { bestDist = d; bestUid = uid }
+          }
+          if (bestUid) {
+            currentSeat.assigned = false
+            if (this.claimSeat(bestUid)) {
+              ch.seatId = bestUid
+              this.sendToSeat(agentId)
             }
+            return
           }
         }
       }
@@ -429,13 +441,14 @@ export class OfficeState {
       const role = this.agentRoles.get(id)
       if (!role) continue
 
-      // Find best free role-restricted seat
+      // Find best free role-restricted seat — closest to team cluster, not current wandering position
+      const cluster = this.getClusterCentroid(this.getAgentPriority(id).chainRoot)
       let bestUid: string | null = null
       let bestDist = Infinity
       for (const [uid, seat] of this.seats) {
         if (!seat.requiredRoles || !seat.requiredRoles.includes(role)) continue
         if (seat.assigned || this.isSeatClaimed(uid)) continue
-        const d = Math.abs(seat.seatCol - ch.tileCol) + Math.abs(seat.seatRow - ch.tileRow)
+        const d = Math.abs(seat.seatCol - cluster.col) + Math.abs(seat.seatRow - cluster.row)
         if (d < bestDist) { bestDist = d; bestUid = uid }
       }
       if (!bestUid) continue
@@ -637,6 +650,8 @@ export class OfficeState {
   reassignSeat(agentId: number, seatId: string): void {
     const ch = this.characters.get(agentId)
     if (!ch) return
+    // Check if target seat is already taken by another character
+    if (this.isSeatClaimed(seatId, agentId)) return
     // Unassign old seat
     if (ch.seatId) {
       const old = this.seats.get(ch.seatId)
@@ -730,8 +745,10 @@ export class OfficeState {
     const hueShift = parentCh ? parentCh.hueShift : 0
 
     // Cluster-aware seat scoring: find seat closest to team cluster
-    const parentCol = parentCh ? parentCh.tileCol : 0
-    const parentRow = parentCh ? parentCh.tileRow : 0
+    // Use parent's seat position (stable) instead of current tile (may be wandering)
+    const parentSeat = parentCh?.seatId ? this.seats.get(parentCh.seatId) : null
+    const parentCol = parentSeat ? parentSeat.seatCol : (parentCh ? parentCh.tileCol : 0)
+    const parentRow = parentSeat ? parentSeat.seatRow : (parentCh ? parentCh.tileRow : 0)
     const { chainRoot } = this.getAgentPriority(parentAgentId)
     const cluster = this.getClusterCentroid(chainRoot)
     const teammates = cluster.members.map(m => ({ col: m.col, row: m.row }))
@@ -895,23 +912,28 @@ export class OfficeState {
         ch.path = []
         ch.moveProgress = 0
       }
-      // Ensure boss/lead agents return to role-restricted seat, not any random chair
+      // Ensure boss/lead agents return to role-restricted seat closest to team cluster
       const role = this.agentRoles.get(id)
       if (role && ch.seatId) {
         const currentSeat = this.seats.get(ch.seatId)
         // If current seat is NOT role-restricted but one is available, switch
         if (!currentSeat?.requiredRoles || !currentSeat.requiredRoles.includes(role)) {
+          const cluster = this.getClusterCentroid(this.getAgentPriority(id).chainRoot)
+          let bestUid: string | null = null
+          let bestDist = Infinity
           for (const [uid, seat] of this.seats) {
-            if (seat.requiredRoles && seat.requiredRoles.includes(role)
-                && !seat.assigned && !this.isSeatClaimed(uid)) {
-              // Vacate old seat
-              if (currentSeat) currentSeat.assigned = false
-              ch.seatId = null
-              // Claim role seat
-              if (this.claimSeat(uid)) {
-                ch.seatId = uid
-                break
-              }
+            if (!seat.requiredRoles || !seat.requiredRoles.includes(role)) continue
+            if (seat.assigned || this.isSeatClaimed(uid)) continue
+            const d = Math.abs(seat.seatCol - cluster.col) + Math.abs(seat.seatRow - cluster.row)
+            if (d < bestDist) { bestDist = d; bestUid = uid }
+          }
+          if (bestUid) {
+            // Vacate old seat
+            if (currentSeat) currentSeat.assigned = false
+            ch.seatId = null
+            // Claim role seat closest to team
+            if (this.claimSeat(bestUid)) {
+              ch.seatId = bestUid
             }
           }
         }
@@ -1053,6 +1075,29 @@ export class OfficeState {
   }
 
   update(dt: number): void {
+    // ── Seat invariant repair: 1 seat = 1 character ──────────────────
+    // Detect and fix any double-seated agents (defensive sweep)
+    const seatOwners = new Map<string, number>()
+    for (const ch of this.characters.values()) {
+      if (!ch.seatId || ch.matrixEffect === 'despawn') continue
+      const existing = seatOwners.get(ch.seatId)
+      if (existing !== undefined) {
+        // Conflict: two live characters claim the same seat — evict the later one
+        ch.seatId = null
+        ch.state = CharacterState.IDLE
+        ch.wanderTimer = 0
+      } else {
+        seatOwners.set(ch.seatId, ch.id)
+      }
+    }
+    // Sync seat.assigned flags with actual ownership
+    for (const [uid, seat] of this.seats) {
+      const shouldBeAssigned = seatOwners.has(uid)
+      if (seat.assigned !== shouldBeAssigned) {
+        seat.assigned = shouldBeAssigned
+      }
+    }
+
     // Furniture animation cycling
     const prevFrame = Math.floor(this.furnitureAnimTimer / FURNITURE_ANIM_INTERVAL_SEC)
     this.furnitureAnimTimer += dt
