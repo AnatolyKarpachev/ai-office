@@ -175,10 +175,10 @@ export class OfficeState {
     return result
   }
 
-  /** Check if a seatId is already claimed by any character (hard invariant) */
+  /** Check if a seatId is already claimed by any live character (skip despawning) */
   private isSeatClaimed(seatId: string): boolean {
     for (const ch of this.characters.values()) {
-      if (ch.seatId === seatId) return true
+      if (ch.seatId === seatId && ch.matrixEffect !== 'despawn') return true
     }
     return false
   }
@@ -539,6 +539,7 @@ export class OfficeState {
     if (ch.seatId) {
       const seat = this.seats.get(ch.seatId)
       if (seat) seat.assigned = false
+      ch.seatId = null
     }
     if (this.selectedAgentId === id) this.selectedAgentId = null
     if (this.cameraFollowId === id) this.cameraFollowId = null
