@@ -31,6 +31,7 @@ import {
   layoutToFurnitureInstances,
   layoutToSeats,
   getBlockedTiles,
+  getIdleBlockedTiles,
   getSeatTiles,
 } from '../layout/layoutSerializer.js'
 import { getAnimationFrames, getCatalogEntry, getOnStateType } from '../layout/furnitureCatalog.js'
@@ -63,7 +64,9 @@ export class OfficeState {
     this.layout = layout || createDefaultLayout()
     this.tileMap = layoutToTileMap(this.layout)
     this.seats = layoutToSeats(this.layout.furniture)
-    this.blockedTiles = getBlockedTiles(this.layout.furniture, getSeatTiles(this.seats))
+    const seatTiles = getSeatTiles(this.seats)
+    this.blockedTiles = getBlockedTiles(this.layout.furniture, seatTiles)
+    this.idleBlockedTiles = getIdleBlockedTiles(this.layout.furniture, seatTiles)
     this.furniture = layoutToFurnitureInstances(this.layout.furniture)
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles)
   }
@@ -74,7 +77,9 @@ export class OfficeState {
     this.layout = layout
     this.tileMap = layoutToTileMap(layout)
     this.seats = layoutToSeats(layout.furniture)
-    this.blockedTiles = getBlockedTiles(layout.furniture, getSeatTiles(this.seats))
+    const seatTiles = getSeatTiles(this.seats)
+    this.blockedTiles = getBlockedTiles(layout.furniture, seatTiles)
+    this.idleBlockedTiles = getIdleBlockedTiles(layout.furniture, seatTiles)
     this.rebuildFurnitureInstances()
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles)
 

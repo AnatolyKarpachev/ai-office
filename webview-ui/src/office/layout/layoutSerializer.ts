@@ -137,6 +137,30 @@ export function getBlockedTiles(furniture: PlacedFurniture[], excludeTiles?: Set
   return tiles
 }
 
+/** Get blocked tiles for idle agents: same as getBlockedTiles but desk furniture is walkable.
+ *  This allows idle agents to leave their workspace (walk through desk) to reach sofas/corridors,
+ *  while still respecting walls, large decorations, and other non-desk obstacles. */
+export function getIdleBlockedTiles(furniture: PlacedFurniture[], excludeTiles?: Set<string>): Set<string> {
+  const tiles = new Set<string>()
+  const WALKABLE_CATEGORIES = new Set(['chairs', 'sofa', 'floor_decor'])
+  for (const item of furniture) {
+    const entry = getCatalogEntry(item.type)
+    if (!entry) continue
+    if (WALKABLE_CATEGORIES.has(entry.category)) continue
+    if (entry.isDesk) continue // idle agents can walk through desks to leave their workspace
+    const bgRows = entry.backgroundTiles || 0
+    for (let dr = 0; dr < entry.footprintH; dr++) {
+      if (dr < bgRows) continue
+      for (let dc = 0; dc < entry.footprintW; dc++) {
+        const key = `${item.col + dc},${item.row + dr}`
+        if (excludeTiles && excludeTiles.has(key)) continue
+        tiles.add(key)
+      }
+    }
+  }
+  return tiles
+}
+
 /** Get tiles blocked for placement purposes — skips top backgroundTiles rows per item */
 export function getPlacementBlockedTiles(furniture: PlacedFurniture[], excludeUid?: string): Set<string> {
   const tiles = new Set<string>()
@@ -250,14 +274,12 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
             break
           }
         }
-        // If no adjacent desk, use chair orientation (but sofas always face forward)
+        // If no adjacent desk, use furniture orientation
         if (!foundAdjacentDesk) {
-          if (isSofa) {
-            // Lounge seats: characters always face forward (toward camera) for natural look
-            facingDir = Direction.DOWN
-          } else if (entry.orientation) {
+          if (entry.orientation) {
             facingDir = orientationToFacing(entry.orientation)
           }
+          // No orientation — keep default DOWN
         }
 
         // First seat uses chair uid (backward compat), subsequent use uid:N
