@@ -66,6 +66,8 @@ export interface Seat {
   assigned: boolean
   /** True if this seat is NOT adjacent to a desk (sofa, bench, lounge) */
   isLounge: boolean
+  /** True if the seat faces a desk/PC — preferred for agent placement */
+  facesDesk: boolean
 }
 
 export interface FurnitureInstance {

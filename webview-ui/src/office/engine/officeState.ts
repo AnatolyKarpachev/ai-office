@@ -15,6 +15,7 @@ import {
   WAITING_BUBBLE_DURATION_SEC,
   ACTIVITY_BUBBLE_DURATION_SEC,
   ACTIVITY_BUBBLE_MAX_CHARS,
+  IDLE_SEAT_MAX_SEC,
 } from '../../constants.js'
 import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture } from '../types.js'
 import { createCharacter, updateCharacter } from './characters.js'
@@ -183,39 +184,55 @@ export class OfficeState {
   }
 
   private findFreeSeat(): string | null {
-    // Prefer non-lounge seats
+    // Priority 1: desk-facing non-lounge seats (workstations)
+    for (const [uid, seat] of this.seats) {
+      if (!seat.assigned && !seat.isLounge && seat.facesDesk && !this.isSeatClaimed(uid)) return uid
+    }
+    // Priority 2: any non-lounge seats
     for (const [uid, seat] of this.seats) {
       if (!seat.assigned && !seat.isLounge && !this.isSeatClaimed(uid)) return uid
     }
-    // Fallback: lounge seats
+    // Priority 3: lounge seats
     for (const [uid, seat] of this.seats) {
       if (!seat.assigned && !this.isSeatClaimed(uid)) return uid
     }
     return null
   }
 
-  /** Find the closest free seat to a given parent agent's position */
+  /** Find the closest free seat to a given parent agent's position.
+   *  Priority: desk-facing non-lounge > non-lounge > lounge. */
   private findFreeSeatNear(parentAgentId: number): string | null {
     const parentCh = this.characters.get(parentAgentId)
     if (!parentCh) return this.findFreeSeat()
 
     const parentCol = parentCh.tileCol
     const parentRow = parentCh.tileRow
+    const dist = (seat: Seat) => Math.abs(seat.seatCol - parentCol) + Math.abs(seat.seatRow - parentRow)
+
     let bestSeatId: string | null = null
     let bestDist = Infinity
 
-    // Prefer non-lounge first
+    // Priority 1: desk-facing non-lounge seats near parent
     for (const [uid, seat] of this.seats) {
-      if (seat.assigned || seat.isLounge || this.isSeatClaimed(uid)) continue
-      const d = Math.abs(seat.seatCol - parentCol) + Math.abs(seat.seatRow - parentRow)
+      if (seat.assigned || seat.isLounge || !seat.facesDesk || this.isSeatClaimed(uid)) continue
+      const d = dist(seat)
       if (d < bestDist) { bestDist = d; bestSeatId = uid }
     }
-    // Fallback: lounge seats
+    // Priority 2: any non-lounge seats near parent
+    if (!bestSeatId) {
+      bestDist = Infinity
+      for (const [uid, seat] of this.seats) {
+        if (seat.assigned || seat.isLounge || this.isSeatClaimed(uid)) continue
+        const d = dist(seat)
+        if (d < bestDist) { bestDist = d; bestSeatId = uid }
+      }
+    }
+    // Priority 3: lounge seats near parent
     if (!bestSeatId) {
       bestDist = Infinity
       for (const [uid, seat] of this.seats) {
         if (seat.assigned || this.isSeatClaimed(uid)) continue
-        const d = Math.abs(seat.seatCol - parentCol) + Math.abs(seat.seatRow - parentRow)
+        const d = dist(seat)
         if (d < bestDist) { bestDist = d; bestSeatId = uid }
       }
     }
@@ -448,7 +465,9 @@ export class OfficeState {
     return true
   }
 
-  /** Create a sub-agent character with the parent's palette. Returns the sub-agent ID. */
+  /** Create a sub-agent character with the parent's palette. Returns the sub-agent ID.
+   *  Seat priority: desk-facing near parent > non-lounge near parent > lounge near parent.
+   *  Avoids clustering by preferring tiles not adjacent to existing subagents. */
   addSubagent(parentAgentId: number, parentToolId: string): number {
     const key = `${parentAgentId}:${parentToolId}`
     if (this.subagentIdMap.has(key)) return this.subagentIdMap.get(key)!
@@ -464,20 +483,50 @@ export class OfficeState {
     const dist = (c: number, r: number) =>
       Math.abs(c - parentCol) + Math.abs(r - parentRow)
 
-    // First pass: prefer non-lounge seats near parent (hard 1:1 check)
+    // Collect existing sibling subagent positions to avoid clustering
+    const siblingPositions: Array<{ col: number; row: number }> = []
+    for (const [, meta] of this.subagentMeta) {
+      if (meta.parentAgentId === parentAgentId) {
+        const sibCh = this.characters.get(
+          this.subagentIdMap.get(`${meta.parentAgentId}:${meta.parentToolId}`) ?? -999
+        )
+        if (sibCh) siblingPositions.push({ col: sibCh.tileCol, row: sibCh.tileRow })
+      }
+    }
+    // Anti-clustering penalty: seats too close to siblings get a distance penalty
+    const effectiveDist = (seat: Seat) => {
+      let d = dist(seat.seatCol, seat.seatRow)
+      for (const sib of siblingPositions) {
+        const sibDist = Math.abs(seat.seatCol - sib.col) + Math.abs(seat.seatRow - sib.row)
+        if (sibDist <= 1) d += 4 // penalize seats directly adjacent to siblings
+      }
+      return d
+    }
+
     let bestSeatId: string | null = null
     let bestDist = Infinity
+
+    // Priority 1: desk-facing non-lounge seats near parent
     for (const [uid, seat] of this.seats) {
-      if (seat.assigned || seat.isLounge || this.isSeatClaimed(uid)) continue
-      const d = dist(seat.seatCol, seat.seatRow)
+      if (seat.assigned || seat.isLounge || !seat.facesDesk || this.isSeatClaimed(uid)) continue
+      const d = effectiveDist(seat)
       if (d < bestDist) { bestDist = d; bestSeatId = uid }
     }
-    // Fallback: allow lounge seats
+    // Priority 2: any non-lounge seats near parent
+    if (!bestSeatId) {
+      bestDist = Infinity
+      for (const [uid, seat] of this.seats) {
+        if (seat.assigned || seat.isLounge || this.isSeatClaimed(uid)) continue
+        const d = effectiveDist(seat)
+        if (d < bestDist) { bestDist = d; bestSeatId = uid }
+      }
+    }
+    // Priority 3: allow lounge seats
     if (!bestSeatId) {
       bestDist = Infinity
       for (const [uid, seat] of this.seats) {
         if (seat.assigned || this.isSeatClaimed(uid)) continue
-        const d = dist(seat.seatCol, seat.seatRow)
+        const d = effectiveDist(seat)
         if (d < bestDist) { bestDist = d; bestSeatId = uid }
       }
     }
@@ -487,16 +536,22 @@ export class OfficeState {
       const seat = this.seats.get(bestSeatId)!
       ch = createCharacter(id, palette, bestSeatId, seat, hueShift)
     } else {
-      // No seats — spawn at closest walkable tile to parent
+      // No seats — spawn at closest walkable tile to parent, avoiding siblings
       let spawn = { col: 1, row: 1 }
       if (this.walkableTiles.length > 0) {
         let closest = this.walkableTiles[0]
-        let closestDist = dist(closest.col, closest.row)
-        for (let i = 1; i < this.walkableTiles.length; i++) {
-          const d = dist(this.walkableTiles[i].col, this.walkableTiles[i].row)
-          if (d < closestDist) {
-            closest = this.walkableTiles[i]
-            closestDist = d
+        let closestScore = Infinity
+        for (let i = 0; i < this.walkableTiles.length; i++) {
+          const t = this.walkableTiles[i]
+          let score = dist(t.col, t.row)
+          // Anti-clustering for walkable tile fallback
+          for (const sib of siblingPositions) {
+            const sibDist = Math.abs(t.col - sib.col) + Math.abs(t.row - sib.row)
+            if (sibDist <= 1) score += 3
+          }
+          if (score < closestScore) {
+            closest = t
+            closestScore = score
           }
         }
         spawn = closest
@@ -593,13 +648,18 @@ export class OfficeState {
   setAgentActive(id: number, active: boolean): void {
     const ch = this.characters.get(id)
     if (ch) {
-      ch.isActive = active
       if (!active) {
-        // Grace period matches IDLE_SEAT_MAX_SEC — agent stays at desk briefly then gets up
-        ch.seatTimer = 10
-        ch.path = []
-        ch.moveProgress = 0
+        if (ch.isActive) {
+          // First transition to inactive — grace period then sofa
+          ch.isActive = false
+          ch.seatTimer = IDLE_SEAT_MAX_SEC
+          ch.wanderTimer = 0 // so IDLE agents try sofa immediately
+          ch.path = []
+          ch.moveProgress = 0
+        }
+        // Already inactive — don't reset timer/path (would block sofa walk)
       } else {
+        ch.isActive = true
         // Cancel sofa walk — active agent should head back to desk
         if (ch.loungeTargetSeatId) {
           ch.loungeTargetSeatId = null
@@ -644,27 +704,36 @@ export class OfficeState {
       }
     }
 
-    if (autoOnTiles.size === 0) {
-      this.furniture = layoutToFurnitureInstances(this.layout.furniture)
-      return
-    }
-
     // Build modified furniture list with auto-state and animation applied
     const animFrame = Math.floor(this.furnitureAnimTimer / FURNITURE_ANIM_INTERVAL_SEC)
+    const hasAutoOn = autoOnTiles.size > 0
     const modifiedFurniture: PlacedFurniture[] = this.layout.furniture.map((item) => {
       const entry = getCatalogEntry(item.type)
       if (!entry) return item
-      // Check if any tile of this furniture overlaps an auto-on tile
+
+      // Always-on animations: items with animation frames but no state toggle (e.g. fireplaces)
+      const frames = getAnimationFrames(item.type)
+      if (frames && frames.length > 1) {
+        const toggled = getOnStateType(item.type)
+        // If getOnStateType returns the same type, this is NOT a state-toggled item → always animate
+        if (toggled === item.type) {
+          const frameIdx = animFrame % frames.length
+          return { ...item, type: frames[frameIdx] }
+        }
+      }
+
+      // Auto-on: active agents turn electronics ON
+      if (!hasAutoOn) return item
       for (let dr = 0; dr < entry.footprintH; dr++) {
         for (let dc = 0; dc < entry.footprintW; dc++) {
           if (autoOnTiles.has(`${item.col + dc},${item.row + dr}`)) {
             let onType = getOnStateType(item.type)
             if (onType !== item.type) {
               // Check if the on-state type has animation frames
-              const frames = getAnimationFrames(onType)
-              if (frames && frames.length > 1) {
-                const frameIdx = animFrame % frames.length
-                onType = frames[frameIdx]
+              const onFrames = getAnimationFrames(onType)
+              if (onFrames && onFrames.length > 1) {
+                const frameIdx = animFrame % onFrames.length
+                onType = onFrames[frameIdx]
               }
               return { ...item, type: onType }
             }

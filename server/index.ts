@@ -9,7 +9,7 @@ import type { FSWatcher } from "fs";
 import { spawn, execSync, type ChildProcess } from "child_process";
 import crypto from "crypto";
 import { JsonlWatcher, type WatchedFile } from "./watcher.js";
-import { processTranscriptLine } from "./parser.js";
+import { processTranscriptLine, cleanupAgentParserState } from "./parser.js";
 import {
   loadCharacterSprites,
   loadWallTiles,
@@ -833,6 +833,7 @@ watcher.on("fileRemoved", (file: WatchedFile) => {
   if (!agent) return;
 
   agents.delete(file.sessionId);
+  cleanupAgentParserState(agent.id);
   broadcast({ type: "agentClosed", id: agent.id });
   console.log(`Agent ${agent.id} left: ${agent.projectName}`);
 });

@@ -194,7 +194,8 @@ export function updateCharacter(
             break
           }
         }
-        ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
+        // Short retry — sofa may free up soon
+        ch.wanderTimer = WANDER_PAUSE_MIN_SEC
         ch.wanderCount = 0
         ch.wanderLimit = randomInt(WANDER_MOVES_BEFORE_REST_MIN, WANDER_MOVES_BEFORE_REST_MAX)
       }

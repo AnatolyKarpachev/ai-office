@@ -47,7 +47,7 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[]): Furnit
       if (entry.orientation === 'back') {
         // Back-facing chairs render IN FRONT of the seated character
         // (the chair back visually occludes the character behind it)
-        zY = (item.row + 1) * TILE_SIZE + 1
+        zY = (item.row + entry.footprintH) * TILE_SIZE + 1
       } else {
         // All other chairs: cap zY to first row bottom so characters
         // at any seat tile render in front of the chair
@@ -137,7 +137,8 @@ function orientationToFacing(orientation: string): Direction {
 }
 
 /** Generate seats from chair furniture.
- *  Facing priority: 1) chair orientation, 2) adjacent desk, 3) forward (DOWN). */
+ *  Facing priority: 1) chair orientation, 2) adjacent desk, 3) forward (DOWN).
+ *  Skips seats that overlap with other furniture's footprint (prevents phantom seats). */
 export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
   const seats = new Map<string, Seat>()
 
@@ -149,6 +150,19 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
     for (let dr = 0; dr < entry.footprintH; dr++) {
       for (let dc = 0; dc < entry.footprintW; dc++) {
         deskTiles.add(`${item.col + dc},${item.row + dr}`)
+      }
+    }
+  }
+
+  // Build set of all non-chair furniture tiles (including background rows)
+  // to prevent phantom seats on bookshelf tops and other decorative areas
+  const nonChairFurnitureTiles = new Set<string>()
+  for (const item of furniture) {
+    const entry = getCatalogEntry(item.type)
+    if (!entry || entry.category === 'chairs') continue
+    for (let dr = 0; dr < entry.footprintH; dr++) {
+      for (let dc = 0; dc < entry.footprintW; dc++) {
+        nonChairFurnitureTiles.add(`${item.col + dc},${item.row + dr}`)
       }
     }
   }
@@ -174,20 +188,26 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
         const tileCol = item.col + dc
         const tileRow = item.row + dr
 
+        // Skip seats that overlap with non-chair furniture (e.g. bookshelf tops)
+        if (nonChairFurnitureTiles.has(`${tileCol},${tileRow}`)) continue
+
         // Determine facing direction:
-        // 1) Chair orientation takes priority
-        // 2) Adjacent desk direction
+        // 1) Adjacent desk direction (highest priority — face the desk)
+        // 2) Chair orientation fallback
         // 3) Default forward (DOWN)
         let facingDir: Direction = Direction.DOWN
-        if (entry.orientation) {
-          facingDir = orientationToFacing(entry.orientation)
-        } else {
-          for (const d of dirs) {
-            if (deskTiles.has(`${tileCol + d.dc},${tileRow + d.dr}`)) {
-              facingDir = d.facing
-              break
-            }
+        let foundAdjacentDesk = false
+        // Always check for adjacent desks first
+        for (const d of dirs) {
+          if (deskTiles.has(`${tileCol + d.dc},${tileRow + d.dr}`)) {
+            facingDir = d.facing
+            foundAdjacentDesk = true
+            break
           }
+        }
+        // If no adjacent desk, use chair orientation
+        if (!foundAdjacentDesk && entry.orientation) {
+          facingDir = orientationToFacing(entry.orientation)
         }
 
         // isLounge = true ONLY for SOFA furniture types (idle agents sit on sofas)
@@ -202,6 +222,7 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
           facingDir,
           assigned: false,
           isLounge: isSofa,
+          facesDesk: foundAdjacentDesk,
         })
         seatCount++
       }

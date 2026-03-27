@@ -11,6 +11,10 @@ const BASH_COMMAND_DISPLAY_MAX_LENGTH = 30;
 const TASK_DESCRIPTION_DISPLAY_MAX_LENGTH = 40;
 const IDLE_ACTIVITY_TIMEOUT_MS = 120_000; // 2 min — long-running tools (builds, tests) need time
 
+const KNOWN_RECORD_TYPES = new Set(["assistant", "user", "system", "progress"]);
+// Track warned record types per agent to log only first occurrence
+const warnedRecordTypes = new Map<number, Set<string>>();
+
 // Timer maps (module-level)
 const waitingTimers = new Map<number, ReturnType<typeof setTimeout>>();
 const permissionTimers = new Map<number, ReturnType<typeof setTimeout>>();
@@ -186,6 +190,19 @@ export function processTranscriptLine(
     handleSystemMessage(record, agent, emit);
   } else if (type === "progress") {
     handleProgressMessage(record, agent, emit);
+  } else if (type && !KNOWN_RECORD_TYPES.has(type)) {
+    // Log unrecognized record types (first occurrence per agent)
+    let warned = warnedRecordTypes.get(agent.id);
+    if (!warned) {
+      warned = new Set();
+      warnedRecordTypes.set(agent.id, warned);
+    }
+    if (!warned.has(type)) {
+      warned.add(type);
+      console.warn(
+        `[parser] Agent ${agent.id} (${agent.projectName}): unrecognized JSONL record type "${type}"`,
+      );
+    }
   }
 
   if (statsChanged && onStatsUpdate) {
@@ -502,6 +519,17 @@ function handleProgressMessage(
       }
     }
   }
+}
+
+/** Clean up parser state when an agent is removed */
+export function cleanupAgentParserState(agentId: number): void {
+  warnedRecordTypes.delete(agentId);
+  waitingTimers.get(agentId) && clearTimeout(waitingTimers.get(agentId)!);
+  waitingTimers.delete(agentId);
+  permissionTimers.get(agentId) && clearTimeout(permissionTimers.get(agentId)!);
+  permissionTimers.delete(agentId);
+  idleTimeoutTimers.get(agentId) && clearTimeout(idleTimeoutTimers.get(agentId)!);
+  idleTimeoutTimers.delete(agentId);
 }
 
 function clearAgentActivity(

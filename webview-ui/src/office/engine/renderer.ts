@@ -482,7 +482,7 @@ export function renderBubbles(
 
     const sittingOff = ch.state === CharacterState.TYPE ? BUBBLE_SITTING_OFFSET_PX : 0
 
-    // ── Activity bubble: square box with dynamic text (2 lines, 100px wide), above nameplate ──
+    // ── Activity bubble: square box with dynamic text (2 lines, 150px wide), above nameplate ──
     if (ch.bubbleType === 'activity') {
       let alpha = 1.0
       if (ch.bubbleTimer < ACTIVITY_BUBBLE_FADE_SEC) {
@@ -490,13 +490,13 @@ export function renderBubbles(
       }
       if (alpha <= 0) continue
 
-      const fontSize = 18
+      const fontSize = 20
       ctx.save()
       ctx.font = `${fontSize}px "FS Pixel Sans", sans-serif`
       const text = ch.bubbleText || ''
 
-      // Word-wrap into 2 lines, max 100px wide
-      const maxW = 100
+      // Word-wrap into 2 lines, max 150px wide
+      const maxW = 150
       const words = text.split(/\s+/)
       let line1 = ''
       let line2 = ''
@@ -518,7 +518,7 @@ export function renderBubbles(
           }
         }
       }
-      // If all fit on line1 and line2 is empty, check if we need to truncate
+      // Truncate line2 if too wide
       if (line2 && ctx.measureText(line2).width > maxW) {
         while (ctx.measureText(line2 + '\u2026').width > maxW && line2.length > 1) {
           line2 = line2.slice(0, -1)
@@ -532,15 +532,15 @@ export function renderBubbles(
       const padY = 4
       const boxW = maxW + padX * 2
       const boxH = lineH * lines.length + padY * 2
-      const tailH = 4
+      const tailH = 0
 
-      // Position above the nameplate overlay
-      const extraOffset = 20
+      // Position: bubble bottom edge touches nameplate top edge
+      // ToolOverlay nameplate top (in device px) = offsetY + (ch.y+sit-32)*zoom - 24*dpr
+      const dpr = window.devicePixelRatio || 1
+      const nameplateTop = offsetY + (ch.y + sittingOff - 32) * zoom - 24 * dpr
+      const boxY = Math.round(nameplateTop - boxH - 16 * dpr)
       const cx = Math.round(offsetX + ch.x * zoom)
       const boxX = cx - Math.round(boxW / 2)
-      const boxY = Math.round(
-        offsetY + (ch.y + sittingOff - BUBBLE_VERTICAL_OFFSET_PX - extraOffset) * zoom - boxH - tailH
-      )
 
       // Box background
       ctx.globalAlpha = alpha * 0.9

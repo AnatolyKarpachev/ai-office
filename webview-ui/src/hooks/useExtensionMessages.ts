@@ -389,6 +389,12 @@ export function useExtensionMessages(
             [id]: { ...agentSubs, [parentToolId]: list.map((t) => (t.toolId === toolId ? { ...t, done: true } : t)) },
           }
         })
+        // Set subagent idle so it walks to sofa (reactivates on next subagentToolStart)
+        const subId = os.getSubagentId(id, parentToolId)
+        if (subId !== null) {
+          os.setAgentTool(subId, null)
+          os.setAgentActive(subId, false)
+        }
       } else if (msg.type === 'subagentClear') {
         const id = msg.id as number
         const parentToolId = msg.parentToolId as string

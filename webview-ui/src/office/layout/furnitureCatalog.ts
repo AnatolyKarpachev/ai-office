@@ -32,6 +32,7 @@ export type FurnitureCategory =
   | 'electronics'
   | 'wall'
   | 'misc'
+  | (string & {})
 
 export interface CatalogEntryWithCategory extends FurnitureCatalogEntry {
   category: FurnitureCategory
@@ -331,7 +332,13 @@ export function getActiveCatalog(): CatalogEntryWithCategory[] {
 
 export function getActiveCategories(): Array<{ id: FurnitureCategory; label: string }> {
   const categories = dynamicCategories ?? []
-  return FURNITURE_CATEGORIES.filter((c) => categories.includes(c.id))
+  // Return known categories first (in preferred order), then any new ones
+  const known = FURNITURE_CATEGORIES.filter((c) => categories.includes(c.id))
+  const knownIds = new Set(FURNITURE_CATEGORIES.map((c) => c.id))
+  const extra = categories
+    .filter((c) => !knownIds.has(c))
+    .map((id) => ({ id, label: id.charAt(0).toUpperCase() + id.slice(1).replace(/_/g, ' ') }))
+  return [...known, ...extra]
 }
 
 export const FURNITURE_CATEGORIES: Array<{ id: FurnitureCategory; label: string }> = [
