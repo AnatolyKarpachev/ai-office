@@ -19,7 +19,7 @@ export function RoleBadge({ role, colors }: RoleBadgeProps) {
         borderRadius: 0,
         whiteSpace: 'nowrap',
         flexShrink: 0,
-        textTransform: 'lowercase',
+        textTransform: 'none',
         letterSpacing: '0.5px',
         imageRendering: 'pixelated',
       }}

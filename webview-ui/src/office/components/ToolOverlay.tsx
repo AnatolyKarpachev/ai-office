@@ -201,7 +201,7 @@ export function ToolOverlay({
                     color: roleInfo?.colors?.primary ?? 'rgba(120,160,255,0.9)',
                     border: `1px solid ${roleInfo?.colors?.primary ?? 'rgba(120,160,255,0.3)'}`,
                     borderRadius: 0,
-                    textTransform: 'lowercase',
+                    textTransform: 'none',
                     letterSpacing: '0.5px',
                     fontWeight: 'bold',
                     whiteSpace: 'nowrap',

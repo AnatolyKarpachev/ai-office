@@ -647,28 +647,23 @@ export class OfficeState {
 
   setAgentActive(id: number, active: boolean): void {
     const ch = this.characters.get(id)
-    if (ch) {
-      if (!active) {
-        if (ch.isActive) {
-          // First transition to inactive — grace period then sofa
-          ch.isActive = false
-          ch.seatTimer = IDLE_SEAT_MAX_SEC
-          ch.wanderTimer = 0 // so IDLE agents try sofa immediately
-          ch.path = []
-          ch.moveProgress = 0
-        }
-        // Already inactive — don't reset timer/path (would block sofa walk)
-      } else {
-        ch.isActive = true
-        // Cancel sofa walk — active agent should head back to desk
-        if (ch.loungeTargetSeatId) {
-          ch.loungeTargetSeatId = null
-          ch.path = []
-          ch.moveProgress = 0
-        }
+    if (!ch) return
+    ch.isActive = active
+    if (!active) {
+      // Sentinel -1: signals turn just ended, skip next seat rest timer.
+      // In TYPE state, seatTimer <= 0 triggers immediate IDLE transition.
+      ch.seatTimer = -1
+      ch.path = []
+      ch.moveProgress = 0
+    } else {
+      // Cancel sofa walk — active agent should head back to desk
+      if (ch.loungeTargetSeatId) {
+        ch.loungeTargetSeatId = null
+        ch.path = []
+        ch.moveProgress = 0
       }
-      this.rebuildFurnitureInstances()
     }
+    this.rebuildFurnitureInstances()
   }
 
   /** Rebuild furniture instances with auto-state applied (active agents turn electronics ON) */

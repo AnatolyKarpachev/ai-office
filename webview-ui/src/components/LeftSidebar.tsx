@@ -461,7 +461,7 @@ export function LeftSidebar({
                                   ? <RoleBadge role={subRole.role} colors={subRole.colors} />
                                   : <span style={{
                                       fontSize: '11px', padding: '0 4px', fontWeight: 'bold',
-                                      textTransform: 'lowercase', letterSpacing: '0.5px',
+                                      textTransform: 'none', letterSpacing: '0.5px',
                                       background: 'rgba(120,160,255,0.15)', color: 'rgba(120,160,255,0.9)',
                                       border: '1px solid rgba(120,160,255,0.3)',
                                       borderRadius: 0, whiteSpace: 'nowrap', lineHeight: '16px',

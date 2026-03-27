@@ -199,8 +199,9 @@ export class JsonlWatcher extends EventEmitter {
         /* meta.json may not exist */
       }
 
-      // For subagents: prefer description from meta.json, then agentType, then directory-based name
-      const rawName = description || agentType || extractProjectName(projectDirName);
+      // For subagents: use description from meta.json if available, otherwise directory-based name
+      // (agentType is used for the role badge, not the display name)
+      const rawName = description || extractProjectName(projectDirName);
       projectName = truncateName(rawName);
     } else {
       projectName = extractProjectName(parentDirName);

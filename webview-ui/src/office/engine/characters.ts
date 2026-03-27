@@ -89,6 +89,14 @@ const SUBAGENT_MIN_DISTANCE = 2
 /** Maximum tile distance before subagent starts walking toward parent */
 const SUBAGENT_MAX_DISTANCE = 6
 
+/** Check if character is currently sitting on a lounge seat (sofa/bench) */
+function isOnLoungeSeat(ch: Character, seats: Map<string, Seat>): boolean {
+  for (const seat of seats.values()) {
+    if (seat.isLounge && seat.seatCol === ch.tileCol && seat.seatRow === ch.tileRow) return true
+  }
+  return false
+}
+
 /** Find a free lounge seat (sofa/bench, not at a desk) for an idle agent to sit on */
 function findFreeLoungeSeat(
   seats: Map<string, Seat>,
@@ -160,18 +168,9 @@ export function updateCharacter(
       }
       // If no longer active, stand up and start wandering (after seatTimer expires)
       if (!ch.isActive) {
-        // Cap seat timer for idle agents at desk — don't let them sit idle for minutes
-        // But DON'T cap if they're on a lounge seat (sofa) — they should stay there
-        let onLoungeSeat = false
-        for (const seat of seats.values()) {
-          if (seat.isLounge && seat.seatCol === ch.tileCol && seat.seatRow === ch.tileRow) {
-            onLoungeSeat = true
-            break
-          }
-        }
-        if (!onLoungeSeat && ch.seatTimer > IDLE_SEAT_MAX_SEC) {
-          ch.seatTimer = IDLE_SEAT_MAX_SEC
-        }
+        // On lounge seat (sofa) — stay seated until active again
+        if (isOnLoungeSeat(ch, seats)) break
+
         if (ch.seatTimer > 0) {
           ch.seatTimer -= dt
           break
@@ -180,7 +179,7 @@ export function updateCharacter(
         ch.state = CharacterState.IDLE
         ch.frame = 0
         ch.frameTimer = 0
-        // Try to find a free lounge seat (sofa/bench) and walk there
+        // Immediately try to find a free sofa
         const loungeTarget = findFreeLoungeSeat(seats, ch, allCharacters)
         if (loungeTarget) {
           const path = findPath(ch.tileCol, ch.tileRow, loungeTarget.seatCol, loungeTarget.seatRow, tileMap, blockedTiles)
@@ -194,7 +193,7 @@ export function updateCharacter(
             break
           }
         }
-        // Short retry — sofa may free up soon
+        // No sofa available — wander
         ch.wanderTimer = WANDER_PAUSE_MIN_SEC
         ch.wanderCount = 0
         ch.wanderLimit = randomInt(WANDER_MOVES_BEFORE_REST_MIN, WANDER_MOVES_BEFORE_REST_MAX)
@@ -372,12 +371,11 @@ export function updateCharacter(
             if (seat && ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow) {
               ch.state = CharacterState.TYPE
               ch.dir = seat.facingDir
-              if (ch.isActive) {
-                // Active agents sit and work for a long time
-                ch.seatTimer = randomRange(SEAT_REST_MIN_SEC, SEAT_REST_MAX_SEC)
+              // seatTimer < 0 is sentinel from setAgentActive(false) — skip rest
+              if (ch.seatTimer < 0) {
+                ch.seatTimer = 0
               } else {
-                // Idle agents sit briefly then get up — they're slacking off
-                ch.seatTimer = IDLE_SEAT_MAX_SEC
+                ch.seatTimer = randomRange(SEAT_REST_MIN_SEC, SEAT_REST_MAX_SEC)
               }
               ch.wanderCount = 0
               ch.wanderLimit = randomInt(WANDER_MOVES_BEFORE_REST_MIN, WANDER_MOVES_BEFORE_REST_MAX)

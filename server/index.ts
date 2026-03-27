@@ -165,7 +165,8 @@ function cleanupSpawnedClaudes(): void {
 // In production (esbuild), __dirname is dist/ so assets are at ./public/assets/
 const devAssetsRoot = join(__dirname, "..", "webview-ui", "public", "assets");
 const prodAssetsRoot = join(__dirname, "public", "assets");
-const isDev = existsSync(devAssetsRoot);
+// Production when running from dist/ directory (esbuild output)
+const isDev = !__dirname.endsWith("/dist") && !__dirname.endsWith("\\dist");
 const assetsRoot = isDev ? devAssetsRoot : prodAssetsRoot;
 
 console.log(`[Server] Loading assets from: ${assetsRoot}`);
@@ -387,6 +388,13 @@ function sendInitialData(ws: WebSocket): void {
   // Send agentRole for each active agent
   for (const a of agentList) {
     ws.send(JSON.stringify(buildAgentRoleMessage(a)));
+  }
+
+  // Send idle status for agents with no active tools (so frontend triggers sofa behavior)
+  for (const a of agentList) {
+    if (a.activeTools.size === 0) {
+      ws.send(JSON.stringify({ type: "agentStatus", id: a.id, status: "waiting" }));
+    }
   }
 
   // Send layout (must come after existingAgents — the hook buffers agents until layout arrives)
@@ -828,6 +836,17 @@ watcher.on("fileAdded", (file: WatchedFile) => {
   } else {
     console.log(`Agent ${agent.id} joined: ${agent.projectName} (${file.sessionId.slice(0, 8)})${agent.parentAgentId ? ` [subagent of ${agent.parentAgentId}]` : ""}`);
   }
+
+  // Post-replay idle check: if agent has no active tools after JSONL replay,
+  // it's idle — send "waiting" so frontend triggers sofa behavior.
+  // Small delay to let replay and initial messages settle.
+  setTimeout(() => {
+    if (agent.activeTools.size === 0) {
+      agent.isWaiting = true;
+      agent.activity = "waiting";
+      broadcast({ type: "agentStatus", id: agent.id, status: "waiting" });
+    }
+  }, 1000);
 });
 
 watcher.on("fileRemoved", (file: WatchedFile) => {

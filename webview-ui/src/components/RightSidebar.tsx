@@ -146,7 +146,7 @@ function ToolsView({ currentTools, agentRoles }: { currentTools: ToolsViewEntry[
               {isSubagent ? (
                 <span style={{
                   fontSize: '11px', padding: '0 4px', fontWeight: 'bold',
-                  textTransform: 'lowercase', letterSpacing: '0.5px',
+                  textTransform: 'none', letterSpacing: '0.5px',
                   background: 'rgba(120,160,255,0.15)', color: 'rgba(120,160,255,0.9)',
                   border: '1px solid rgba(120,160,255,0.3)',
                   borderRadius: 0, whiteSpace: 'nowrap', lineHeight: '16px',
@@ -657,7 +657,7 @@ export function RightSidebar({
                   {entry.isSubagent ? (
                     <span style={{
                       fontSize: '10px', padding: '0 3px', fontWeight: 'bold',
-                      textTransform: 'lowercase', letterSpacing: '0.3px',
+                      textTransform: 'none', letterSpacing: '0.3px',
                       background: 'rgba(120,160,255,0.15)', color: 'rgba(120,160,255,0.9)',
                       border: '1px solid rgba(120,160,255,0.3)',
                       borderRadius: 0, whiteSpace: 'nowrap', lineHeight: '14px', flexShrink: 0,
