@@ -439,8 +439,18 @@ export function LeftSidebar({
                             style={{ padding: '4px 6px', marginTop: 2, background: subIsHovered ? 'rgba(255,255,255,0.05)' : 'transparent', border: '1px solid', borderColor: subHasPermission ? 'var(--pixel-status-permission)' : 'transparent', borderRadius: 0, transition: 'background 0.15s ease' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
                               {subDotColor && <span className={subIsActive && !subHasPermission ? 'pixel-agents-pulse' : undefined} style={{ width: 5, height: 5, borderRadius: '50%', background: subDotColor, flexShrink: 0 }} />}
-                              <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.6)', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{sub.label || 'subtask'}</span>
-                              {(() => { const subRole = agentRoles.get(sub.id); return subRole?.role ? <RoleBadge role={subRole.role} colors={subRole.colors} /> : <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.25)', flexShrink: 0 }}>sub</span> })()}
+                              {(() => {
+                                const subRole = agentRoles.get(sub.id)
+                                return subRole?.role
+                                  ? <RoleBadge role={subRole.role} colors={subRole.colors} />
+                                  : <span style={{
+                                      fontSize: '11px', padding: '0 4px', fontWeight: 'bold',
+                                      textTransform: 'lowercase', letterSpacing: '0.5px',
+                                      background: 'rgba(120,160,255,0.15)', color: 'rgba(120,160,255,0.9)',
+                                      border: '1px solid rgba(120,160,255,0.3)',
+                                      borderRadius: 0, whiteSpace: 'nowrap', lineHeight: '16px',
+                                    }}>{sub.label || 'subtask'}</span>
+                              })()}
                             </div>
                             <div style={{ fontSize: '14px', color: subHasPermission ? 'var(--pixel-status-permission)' : subIsActive ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subActivity}</div>
                           </div>

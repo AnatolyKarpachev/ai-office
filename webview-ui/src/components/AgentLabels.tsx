@@ -107,22 +107,20 @@ export function AgentLabels({
                 }}
               />
             )}
-            <span
-              style={{
-                fontSize: isSub ? '16px' : '18px',
-                fontStyle: isSub ? 'italic' : undefined,
-                color: 'var(--vscode-foreground)',
-                background: 'rgba(30,30,46,0.7)',
-                padding: '1px 4px',
-                borderRadius: 2,
-                whiteSpace: 'nowrap',
-                maxWidth: isSub ? 120 : undefined,
-                overflow: isSub ? 'hidden' : undefined,
-                textOverflow: isSub ? 'ellipsis' : undefined,
-              }}
-            >
-              {labelText}
-            </span>
+            {!isSub && (
+              <span
+                style={{
+                  fontSize: '18px',
+                  color: 'var(--vscode-foreground)',
+                  background: 'rgba(30,30,46,0.7)',
+                  padding: '1px 4px',
+                  borderRadius: 2,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {labelText}
+              </span>
+            )}
           </div>
         )
       })}

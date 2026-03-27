@@ -25,6 +25,7 @@ const ROLE_COLOR_MAP: Record<string, RoleColors> = {
   "general-purpose":     { primary: "#aaaaaa", badge: "#444444" },
   "boss":                { primary: "#ff0000", badge: "#8b0000" },
   "slave":               { primary: "#888888", badge: "#333333" },
+  "worker":              { primary: "#8899aa", badge: "#3a4450" },
 };
 
 // Keyword → role mapping for deriving role from description
@@ -59,6 +60,21 @@ const DERIVED_ROLE_COLORS: Record<string, RoleColors> = {
   "refactorer":  { primary: "#dda0ff", badge: "#4a1a5e" },
   "closer":      { primary: "#ff7a4a", badge: "#6e3a1a" },
   "supervisor":  { primary: "#ff4a6a", badge: "#6e1a2a" },
+  "worker":      { primary: "#8899aa", badge: "#3a4450" },
+};
+
+// Normalize raw agentSetting to human-friendly display role
+const AGENT_SETTING_DISPLAY_NAMES: Record<string, string> = {
+  "plan":              "planner",
+  "explore":           "explorer",
+  "code reviewer":     "reviewer",
+  "merge agent":       "merger",
+  "docs agent":        "writer",
+  "ios builder":       "builder",
+  "backend builder":   "builder",
+  "qa tester":         "tester",
+  "claude-code-guide": "guide",
+  "general-purpose":   "worker",
 };
 
 // Default for unknown agentSetting values
@@ -79,11 +95,13 @@ export function resolveDisplayRole(
   description: string | undefined,
   isSubagent?: boolean,
 ): { displayRole: string; colors: RoleColors } {
-  // If agentSetting is a known meaningful role, use it directly
+  // If agentSetting is a known meaningful role, normalize and use it
   if (agentSetting && agentSetting.toLowerCase() !== "general-purpose") {
+    const normalized = AGENT_SETTING_DISPLAY_NAMES[agentSetting.toLowerCase()];
+    const displayName = normalized || agentSetting;
     return {
-      displayRole: agentSetting,
-      colors: getRoleColors(agentSetting),
+      displayRole: displayName,
+      colors: getRoleColors(agentSetting), // colors keyed by original agentSetting
     };
   }
 
@@ -111,12 +129,12 @@ export function resolveDisplayRole(
   }
 
   if (!agentSetting) {
-    return { displayRole: "", colors: DEFAULT_COLORS };
+    return { displayRole: "worker", colors: getRoleColors("worker") };
   }
 
   // agentSetting is "general-purpose" with no useful description
   return {
-    displayRole: agentSetting,
-    colors: getRoleColors(agentSetting),
+    displayRole: "worker",
+    colors: getRoleColors("worker"),
   };
 }

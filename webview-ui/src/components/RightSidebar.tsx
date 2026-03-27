@@ -143,14 +143,25 @@ function ToolsView({ currentTools, agentRoles }: { currentTools: ToolsViewEntry[
           >
             {/* Agent header + status badge */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-              <span style={{
-                fontSize: '16px', fontWeight: 'bold',
-                color: isSubagent ? 'rgba(255,255,255,0.6)' : 'var(--pixel-text)',
-                fontStyle: isSubagent ? 'italic' : 'normal',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
-              }}>
-                {agentName}
-              </span>
+              {isSubagent ? (
+                <span style={{
+                  fontSize: '11px', padding: '0 4px', fontWeight: 'bold',
+                  textTransform: 'lowercase', letterSpacing: '0.5px',
+                  background: 'rgba(120,160,255,0.15)', color: 'rgba(120,160,255,0.9)',
+                  border: '1px solid rgba(120,160,255,0.3)',
+                  borderRadius: 0, whiteSpace: 'nowrap', lineHeight: '16px',
+                }}>
+                  {subLabel || 'subtask'}
+                </span>
+              ) : (
+                <span style={{
+                  fontSize: '16px', fontWeight: 'bold',
+                  color: 'var(--pixel-text)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
+                }}>
+                  {agentName}
+                </span>
+              )}
               {roleInfo?.role && <RoleBadge role={roleInfo.role} colors={roleInfo.colors} />}
               {agentStatus === 'permission' && <StatusBadge label="WAITING" color="var(--pixel-status-permission)" />}
               {agentStatus === 'active' && <StatusBadge label="IN PROGRESS" color="#5a8cff" />}
@@ -643,18 +654,29 @@ export function RightSidebar({
                     {getEntryIcon(entry.type)}
                   </span>
                   {entryRole?.role && <RoleBadge role={entryRole.role} colors={entryRole.colors} />}
-                  <span style={{
-                    fontSize: '14px',
-                    color: entry.isSubagent ? 'rgba(120,160,255,0.7)' : 'rgba(90,140,255,0.8)',
-                    fontStyle: entry.isSubagent ? 'italic' : 'normal',
-                    flexShrink: 0,
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis',
-                    whiteSpace: 'nowrap',
-                    maxWidth: 140,
-                  }}>
-                    {entry.agentName}
-                  </span>
+                  {entry.isSubagent ? (
+                    <span style={{
+                      fontSize: '10px', padding: '0 3px', fontWeight: 'bold',
+                      textTransform: 'lowercase', letterSpacing: '0.3px',
+                      background: 'rgba(120,160,255,0.15)', color: 'rgba(120,160,255,0.9)',
+                      border: '1px solid rgba(120,160,255,0.3)',
+                      borderRadius: 0, whiteSpace: 'nowrap', lineHeight: '14px', flexShrink: 0,
+                    }}>
+                      {entry.agentName.includes(' > ') ? entry.agentName.split(' > ').pop() : entry.agentName}
+                    </span>
+                  ) : (
+                    <span style={{
+                      fontSize: '14px',
+                      color: 'rgba(90,140,255,0.8)',
+                      flexShrink: 0,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      maxWidth: 140,
+                    }}>
+                      {entry.agentName}
+                    </span>
+                  )}
                 </div>
                 <div style={{
                   fontSize: '15px',

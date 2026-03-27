@@ -186,6 +186,13 @@ export function useExtensionMessages(
         setSelectedAgent(id)
         os.addAgent(id, undefined, undefined, undefined, undefined, folderName, parentAgentId)
         saveAgentSeats(os)
+      } else if (msg.type === 'agentRenamed') {
+        const id = msg.id as number
+        const folderName = msg.folderName as string
+        const ch = os.characters.get(id)
+        if (ch) {
+          ch.folderName = folderName
+        }
       } else if (msg.type === 'agentClosed') {
         const id = msg.id as number
         setAgents((prev) => prev.filter((a) => a !== id))

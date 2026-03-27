@@ -8,6 +8,65 @@ const CLAUDE_PROJECTS_DIR = join(homedir(), ".claude", "projects");
 const ACTIVE_THRESHOLD_MS = 300_000; // 5 minutes — dead sessions drop quickly, re-added on new writes
 const POLL_INTERVAL_MS = 1000;
 
+const MAX_PROJECT_NAME_LENGTH = 15;
+
+/**
+ * Extract a human-readable project name from the Claude projects directory name.
+ * - Worktree ISSUE-378 → "#378"
+ * - Home dir only (no project) → "" (empty)
+ * - Named worktree → worktree name
+ */
+function extractProjectName(projectDirName: string): string {
+  const worktreeSep = "--claude-worktrees-";
+  const worktreeIdx = projectDirName.indexOf(worktreeSep);
+
+  if (worktreeIdx !== -1) {
+    const worktreeName = projectDirName.slice(worktreeIdx + worktreeSep.length);
+    const issueMatch = worktreeName.match(/^ISSUE-(\d+)$/);
+    if (issueMatch) {
+      return `#${issueMatch[1]}`;
+    }
+    // Named worktree like "flamboyant-mestorf"
+    return truncateName(worktreeName);
+  }
+
+  // Check if this is just the home directory (e.g., "-Users-grid")
+  const parts = projectDirName.split("-").filter(Boolean);
+  if (parts.length <= 2 && parts[0] === "Users") {
+    return "MegaBoss";
+  }
+
+  return "";
+}
+
+/** Compact a name to fit within maxLen using camelCase (no dashes). */
+function compactName(name: string, maxLen: number): string {
+  if (name.length <= maxLen) return name;
+  const words = name.split(/[-_\s]+/).filter(Boolean);
+  if (words.length === 0) return name.slice(0, maxLen);
+
+  const camel = words[0] + words.slice(1).map(w => w[0].toUpperCase() + w.slice(1)).join("");
+  if (camel.length <= maxLen) return camel;
+
+  const shortened = words.slice();
+  for (let iter = 0; iter < 50; iter++) {
+    const result = shortened[0] + shortened.slice(1).map(w => w[0].toUpperCase() + w.slice(1)).join("");
+    if (result.length <= maxLen) return result;
+    let maxWord = 0, maxWordLen = 0;
+    for (let i = 0; i < shortened.length; i++) {
+      if (shortened[i].length > maxWordLen) { maxWordLen = shortened[i].length; maxWord = i; }
+    }
+    if (maxWordLen <= 3) break;
+    shortened[maxWord] = shortened[maxWord].slice(0, Math.max(3, maxWordLen - 1));
+  }
+  const result = shortened[0] + shortened.slice(1).map(w => w[0].toUpperCase() + w.slice(1)).join("");
+  return result.slice(0, maxLen);
+}
+
+function truncateName(name: string): string {
+  return compactName(name, MAX_PROJECT_NAME_LENGTH);
+}
+
 export interface WatchedFile {
   path: string;
   sessionId: string;
@@ -124,8 +183,6 @@ export class JsonlWatcher extends EventEmitter {
       const sessionDir = dirname(parentDir); // {projectDir}/{parentSessionId}
       parentSessionId = basename(sessionDir); // parentSessionId
       const projectDirName = basename(dirname(sessionDir)); // project dir name
-      const parts = projectDirName.split("-").filter(Boolean);
-      projectName = parts[parts.length - 1] || sessionId.slice(0, 8);
 
       // Try to read companion meta.json for agentType and description
       const metaJsonPath = filePath.replace(/\.jsonl$/, ".meta.json");
@@ -141,11 +198,12 @@ export class JsonlWatcher extends EventEmitter {
       } catch {
         /* meta.json may not exist */
       }
+
+      // For subagents: prefer description from meta.json, then agentType, then directory-based name
+      const rawName = description || agentType || extractProjectName(projectDirName);
+      projectName = truncateName(rawName);
     } else {
-      const projectDirName = parentDirName;
-      // Extract short project name: "-Users-alice-Documents-myproject-657" -> "657"
-      const parts = projectDirName.split("-").filter(Boolean);
-      projectName = parts[parts.length - 1] || sessionId.slice(0, 8);
+      projectName = extractProjectName(parentDirName);
     }
 
     const file: WatchedFile = {

@@ -76,6 +76,7 @@ export type ServerMessage =
   | { type: "externalAssetDirectoriesUpdated"; dirs: string[] }
   | { type: "agentStats"; id: number; model?: string; totalInputTokens: number; totalOutputTokens: number; totalCacheRead: number; totalCacheCreation: number; turnCount: number; totalDurationMs: number; cacheHitRate: number }
   | { type: "agentDetails"; id: number; model?: string; gitBranch?: string; cwd?: string; sessionId: string; version?: string; permissionMode?: string; toolHistory: Array<{ name: string; timestamp: string; durationMs?: number }>; tokenBreakdown: { input: number; output: number; cacheRead: number; cacheCreation: number }; turnCount: number; totalDurationMs: number; startTime?: string }
+  | { type: "agentRenamed"; id: number; folderName: string }
   | { type: "agentRole"; id: number; role: string; autoDetected: boolean; colors: { primary: string; badge: string } }
   | { type: "pipelineIssues"; issues: Array<{ number: number; title: string; labels: string[]; state: string; pipelineState: string; repo: string }> };
 

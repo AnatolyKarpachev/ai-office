@@ -72,7 +72,7 @@ function buildAgentRoleMessage(agent: TrackedAgent): ServerMessage {
   return {
     type: "agentRole",
     id: agent.id,
-    role: displayRole || undefined,  // empty string → undefined → badge hidden
+    role: displayRole,
     autoDetected: true,
     colors,
   };

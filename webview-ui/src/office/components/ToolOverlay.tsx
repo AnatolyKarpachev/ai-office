@@ -190,34 +190,58 @@ export function ToolOverlay({
                   }}
                 />
               )}
-              <span
-                style={{
-                  fontSize: isSub ? '16px' : '18px',
-                  fontStyle: isSub ? 'italic' : undefined,
-                  color: 'var(--pixel-text-dim)',
-                }}
-              >
-                {ch.folderName || (isSub ? 'sub' : `agent-${id}`)}
-              </span>
-              {roleInfo && roleInfo.role && (
+              {isSub ? (
+                /* Subagent: only colored badge, no name */
                 <span
                   style={{
                     fontSize: '11px',
                     lineHeight: 1,
                     padding: '1px 4px',
-                    background: roleInfo.colors.badge,
-                    color: roleInfo.colors.primary,
-                    border: `1px solid ${roleInfo.colors.primary}`,
+                    background: roleInfo?.colors?.badge ?? 'rgba(120,160,255,0.15)',
+                    color: roleInfo?.colors?.primary ?? 'rgba(120,160,255,0.9)',
+                    border: `1px solid ${roleInfo?.colors?.primary ?? 'rgba(120,160,255,0.3)'}`,
                     borderRadius: 0,
-                    textTransform: 'uppercase',
+                    textTransform: 'lowercase',
                     letterSpacing: '0.5px',
                     fontWeight: 'bold',
                     whiteSpace: 'nowrap',
                     flexShrink: 0,
                   }}
                 >
-                  {roleInfo.role}
+                  {roleInfo?.role || ch.folderName || 'sub'}
                 </span>
+              ) : (
+                /* Main agent: name + optional role badge */
+                <>
+                  <span
+                    style={{
+                      fontSize: '18px',
+                      color: 'var(--pixel-text-dim)',
+                    }}
+                  >
+                    {ch.folderName || `agent-${id}`}
+                  </span>
+                  {roleInfo && roleInfo.role && (
+                    <span
+                      style={{
+                        fontSize: '11px',
+                        lineHeight: 1,
+                        padding: '1px 4px',
+                        background: roleInfo.colors.badge,
+                        color: roleInfo.colors.primary,
+                        border: `1px solid ${roleInfo.colors.primary}`,
+                        borderRadius: 0,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.5px',
+                        fontWeight: 'bold',
+                        whiteSpace: 'nowrap',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {roleInfo.role}
+                    </span>
+                  )}
+                </>
               )}
             </div>
 
