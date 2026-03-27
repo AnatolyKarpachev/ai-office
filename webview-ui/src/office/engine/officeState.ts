@@ -16,6 +16,10 @@ import {
   ACTIVITY_BUBBLE_DURATION_SEC,
   ACTIVITY_BUBBLE_MAX_CHARS,
   IDLE_SEAT_MAX_SEC,
+  TEAM_PRIORITY_WEIGHTS,
+  TEAM_SIBLING_BONUS,
+  TEAM_SIBLING_RADIUS,
+  TEAM_MAX_DEPTH,
 } from '../../constants.js'
 import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture } from '../types.js'
 import { createCharacter, updateCharacter } from './characters.js'
@@ -195,6 +199,79 @@ export class OfficeState {
     return !!role && seat.requiredRoles.includes(role)
   }
 
+  // ── Team Clustering ──────────────────────────────────────────
+
+  /** Walk up parent chain to find the root agent and hierarchy depth.
+   *  Returns { priority: 1-4, chainRoot: root agent ID } */
+  getAgentPriority(agentId: number): { priority: number; chainRoot: number } {
+    let current = agentId
+    let depth = 0
+    for (let i = 0; i < TEAM_MAX_DEPTH; i++) {
+      const ch = this.characters.get(current)
+      const meta = this.subagentMeta.get(current)
+      const parentId = ch?.parentAgentId ?? meta?.parentAgentId
+      if (parentId == null || !this.characters.has(parentId)) break
+      current = parentId
+      depth++
+    }
+    return { priority: Math.min(depth + 1, 4), chainRoot: current }
+  }
+
+  /** Collect all characters belonging to the cluster rooted at chainRoot */
+  private getClusterMembers(chainRoot: number): Array<{ id: number; col: number; row: number; weight: number }> {
+    const members: Array<{ id: number; col: number; row: number; weight: number }> = []
+    // Add root
+    const rootCh = this.characters.get(chainRoot)
+    if (rootCh && !rootCh.matrixEffect) {
+      members.push({ id: chainRoot, col: rootCh.tileCol, row: rootCh.tileRow, weight: TEAM_PRIORITY_WEIGHTS[1] })
+    }
+    // Find all descendants
+    for (const ch of this.characters.values()) {
+      if (ch.id === chainRoot || ch.matrixEffect) continue
+      const info = this.getAgentPriority(ch.id)
+      if (info.chainRoot === chainRoot) {
+        members.push({ id: ch.id, col: ch.tileCol, row: ch.tileRow, weight: TEAM_PRIORITY_WEIGHTS[info.priority] ?? 0.5 })
+      }
+    }
+    return members
+  }
+
+  /** Compute weighted centroid of a cluster */
+  private getClusterCentroid(chainRoot: number): { col: number; row: number; members: Array<{ id: number; col: number; row: number; weight: number }> } {
+    const members = this.getClusterMembers(chainRoot)
+    if (members.length === 0) return { col: 0, row: 0, members }
+    let wSum = 0, cCol = 0, cRow = 0
+    for (const m of members) {
+      wSum += m.weight
+      cCol += m.weight * m.col
+      cRow += m.weight * m.row
+    }
+    return { col: cCol / wSum, row: cRow / wSum, members }
+  }
+
+  /** Score a seat for team clustering.
+   *  Lower score = better seat.
+   *  β·d(seat,parent) + α·d(seat,centroid) + γ·nearby_teammates */
+  private scoreClusterSeat(
+    seat: Seat,
+    parentCol: number, parentRow: number,
+    centroidCol: number, centroidRow: number,
+    priority: number,
+    teammates: Array<{ col: number; row: number }>,
+  ): number {
+    const beta = Math.max(0, 4 - priority)  // P1:3, P2:2, P3:1, P4:0
+    const alpha = priority - 1               // P1:0, P2:1, P3:2, P4:3
+    const dParent = Math.abs(seat.seatCol - parentCol) + Math.abs(seat.seatRow - parentRow)
+    const dCentroid = Math.abs(seat.seatCol - centroidCol) + Math.abs(seat.seatRow - centroidRow)
+    let nearbyCount = 0
+    for (const t of teammates) {
+      if (Math.abs(seat.seatCol - t.col) + Math.abs(seat.seatRow - t.row) <= TEAM_SIBLING_RADIUS) {
+        nearbyCount++
+      }
+    }
+    return beta * dParent + alpha * dCentroid + TEAM_SIBLING_BONUS * nearbyCount
+  }
+
   /** Check if a seat is role-restricted and the agent's role matches */
   private isRoleSeatForAgent(seat: Seat, agentId: number): boolean {
     if (!seat.requiredRoles) return false
@@ -225,49 +302,58 @@ export class OfficeState {
     return null
   }
 
-  /** Find the closest free seat to a given parent agent's position.
-   *  Priority: role-restricted (for matching role) > desk-facing non-lounge > non-lounge. */
+  /** Find the best free seat using team cluster scoring.
+   *  Uses weighted centroid + parent proximity + sibling attraction. */
   private findFreeSeatNear(parentAgentId: number, agentId?: number): string | null {
     const parentCh = this.characters.get(parentAgentId)
     if (!parentCh) return this.findFreeSeat(agentId)
 
     const parentCol = parentCh.tileCol
     const parentRow = parentCh.tileRow
-    const dist = (seat: Seat) => Math.abs(seat.seatCol - parentCol) + Math.abs(seat.seatRow - parentRow)
+
+    // Compute cluster info for team-aware scoring
+    const { chainRoot, priority } = agentId !== undefined
+      ? { chainRoot: this.getAgentPriority(parentAgentId).chainRoot, priority: Math.min(this.getAgentPriority(parentAgentId).priority + 1, 4) }
+      : { chainRoot: parentAgentId, priority: 2 }
+    const cluster = this.getClusterCentroid(chainRoot)
+    const teammates = cluster.members.map(m => ({ col: m.col, row: m.row }))
+
+    const score = (seat: Seat) => this.scoreClusterSeat(
+      seat, parentCol, parentRow, cluster.col, cluster.row, priority, teammates,
+    )
 
     let bestSeatId: string | null = null
-    let bestDist = Infinity
+    let bestScore = Infinity
 
-    // Role-restricted seats near parent (boss/lead/megaboss)
+    // Role-restricted seats (boss/lead/megaboss)
     if (agentId !== undefined) {
       for (const [uid, seat] of this.seats) {
         if (seat.assigned || seat.isLounge || this.isSeatClaimed(uid)) continue
         if (!this.isRoleSeatForAgent(seat, agentId)) continue
-        const d = dist(seat)
-        if (d < bestDist) { bestDist = d; bestSeatId = uid }
+        const s = score(seat)
+        if (s < bestScore) { bestScore = s; bestSeatId = uid }
       }
       if (bestSeatId) return bestSeatId
-      bestDist = Infinity
+      bestScore = Infinity
     }
 
-    // Priority 1: desk-facing non-lounge seats near parent (skip role-restricted)
+    // Desk-facing non-lounge seats, scored by cluster proximity
     for (const [uid, seat] of this.seats) {
       if (seat.assigned || seat.isLounge || !seat.facesDesk || this.isSeatClaimed(uid)) continue
       if (agentId !== undefined && !this.canSitInSeat(seat, agentId)) continue
-      const d = dist(seat)
-      if (d < bestDist) { bestDist = d; bestSeatId = uid }
+      const s = score(seat)
+      if (s < bestScore) { bestScore = s; bestSeatId = uid }
     }
-    // Priority 2: any non-lounge seats near parent (skip role-restricted)
+    // Any non-lounge seats
     if (!bestSeatId) {
-      bestDist = Infinity
+      bestScore = Infinity
       for (const [uid, seat] of this.seats) {
         if (seat.assigned || seat.isLounge || this.isSeatClaimed(uid)) continue
         if (agentId !== undefined && !this.canSitInSeat(seat, agentId)) continue
-        const d = dist(seat)
-        if (d < bestDist) { bestDist = d; bestSeatId = uid }
+        const s = score(seat)
+        if (s < bestScore) { bestScore = s; bestSeatId = uid }
       }
     }
-    // Lounge seats (sofas, benches) are NEVER assigned as workstations
     return bestSeatId
   }
 
@@ -372,28 +458,17 @@ export class OfficeState {
 
     // If agent has a role, check for matching role-restricted seats first
     const agentRole = this.agentRoles.get(id)
-    const roleSeatCandidates: string[] = []
-    for (const [uid, seat] of this.seats) {
-      if (seat.requiredRoles) roleSeatCandidates.push(`${uid}(roles=${seat.requiredRoles.join(',')},assigned=${seat.assigned},claimed=${this.isSeatClaimed(uid)})`)
-    }
-    console.log(`[addAgent] id=${id} role=${agentRole ?? 'none'} preferredSeat=${preferredSeatId ?? 'none'} roleSeatCandidates=[${roleSeatCandidates.join(', ')}]`)
-
     if (agentRole) {
       for (const [uid, seat] of this.seats) {
         if (seat.requiredRoles && seat.requiredRoles.includes(agentRole)
             && !seat.assigned && !this.isSeatClaimed(uid)) {
-          if (this.claimSeat(uid)) {
-            seatId = uid
-            console.log(`[addAgent] id=${id} → role-restricted seat ${uid}`)
-            break
-          }
+          if (this.claimSeat(uid)) { seatId = uid; break }
         }
       }
     }
 
     if (!seatId && preferredSeatId && this.claimSeat(preferredSeatId)) {
       seatId = preferredSeatId
-      console.log(`[addAgent] id=${id} → preferred seat ${preferredSeatId}`)
     }
     if (!seatId && parentAgentId !== undefined) {
       seatId = this.findFreeSeatNear(parentAgentId, id)
@@ -467,6 +542,7 @@ export class OfficeState {
     }
     if (this.selectedAgentId === id) this.selectedAgentId = null
     if (this.cameraFollowId === id) this.cameraFollowId = null
+    this.agentRoles.delete(id)
     // Start despawn animation instead of immediate delete
     ch.matrixEffect = 'despawn'
     ch.matrixEffectTimer = 0
@@ -578,57 +654,45 @@ export class OfficeState {
     const palette = parentCh ? parentCh.palette : 0
     const hueShift = parentCh ? parentCh.hueShift : 0
 
-    // Find the free seat closest to the parent agent
+    // Cluster-aware seat scoring: find seat closest to team cluster
     const parentCol = parentCh ? parentCh.tileCol : 0
     const parentRow = parentCh ? parentCh.tileRow : 0
-    const dist = (c: number, r: number) =>
-      Math.abs(c - parentCol) + Math.abs(r - parentRow)
+    const { chainRoot } = this.getAgentPriority(parentAgentId)
+    const cluster = this.getClusterCentroid(chainRoot)
+    const teammates = cluster.members.map(m => ({ col: m.col, row: m.row }))
+    const priority = Math.min(this.getAgentPriority(parentAgentId).priority + 1, 4)
 
-    // Collect existing sibling subagent positions to avoid clustering
-    const siblingPositions: Array<{ col: number; row: number }> = []
-    for (const [, meta] of this.subagentMeta) {
-      if (meta.parentAgentId === parentAgentId) {
-        const sibCh = this.characters.get(
-          this.subagentIdMap.get(`${meta.parentAgentId}:${meta.parentToolId}`) ?? -999
-        )
-        if (sibCh) siblingPositions.push({ col: sibCh.tileCol, row: sibCh.tileRow })
-      }
-    }
-    // Anti-clustering penalty: seats too close to siblings get a distance penalty
-    const effectiveDist = (seat: Seat) => {
-      let d = dist(seat.seatCol, seat.seatRow)
-      for (const sib of siblingPositions) {
-        const sibDist = Math.abs(seat.seatCol - sib.col) + Math.abs(seat.seatRow - sib.row)
-        if (sibDist <= 1) d += 4 // penalize seats directly adjacent to siblings
-      }
-      return d
-    }
+    const clusterScore = (seat: Seat) => this.scoreClusterSeat(
+      seat, parentCol, parentRow, cluster.col, cluster.row, priority, teammates,
+    )
 
     let bestSeatId: string | null = null
-    let bestDist = Infinity
+    let bestScore = Infinity
 
-    // Priority 1: desk-facing non-lounge seats near parent
+    // Priority 1: desk-facing non-lounge seats scored by cluster
     for (const [uid, seat] of this.seats) {
       if (seat.assigned || seat.isLounge || !seat.facesDesk || this.isSeatClaimed(uid)) continue
-      const d = effectiveDist(seat)
-      if (d < bestDist) { bestDist = d; bestSeatId = uid }
+      if (!this.canSitInSeat(seat, id)) continue
+      const s = clusterScore(seat)
+      if (s < bestScore) { bestScore = s; bestSeatId = uid }
     }
-    // Priority 2: any non-lounge seats near parent
+    // Priority 2: any non-lounge seats
     if (!bestSeatId) {
-      bestDist = Infinity
+      bestScore = Infinity
       for (const [uid, seat] of this.seats) {
         if (seat.assigned || seat.isLounge || this.isSeatClaimed(uid)) continue
-        const d = effectiveDist(seat)
-        if (d < bestDist) { bestDist = d; bestSeatId = uid }
+        if (!this.canSitInSeat(seat, id)) continue
+        const s = clusterScore(seat)
+        if (s < bestScore) { bestScore = s; bestSeatId = uid }
       }
     }
     // Priority 3: allow lounge seats
     if (!bestSeatId) {
-      bestDist = Infinity
+      bestScore = Infinity
       for (const [uid, seat] of this.seats) {
         if (seat.assigned || this.isSeatClaimed(uid)) continue
-        const d = effectiveDist(seat)
-        if (d < bestDist) { bestDist = d; bestSeatId = uid }
+        const s = clusterScore(seat)
+        if (s < bestScore) { bestScore = s; bestSeatId = uid }
       }
     }
 
@@ -637,23 +701,16 @@ export class OfficeState {
       const seat = this.seats.get(bestSeatId)!
       ch = createCharacter(id, palette, bestSeatId, seat, hueShift)
     } else {
-      // No seats — spawn at closest walkable tile to parent, avoiding siblings
+      // No seats — spawn at closest walkable tile to cluster
       let spawn = { col: 1, row: 1 }
       if (this.walkableTiles.length > 0) {
         let closest = this.walkableTiles[0]
         let closestScore = Infinity
-        for (let i = 0; i < this.walkableTiles.length; i++) {
-          const t = this.walkableTiles[i]
-          let score = dist(t.col, t.row)
-          // Anti-clustering for walkable tile fallback
-          for (const sib of siblingPositions) {
-            const sibDist = Math.abs(t.col - sib.col) + Math.abs(t.row - sib.row)
-            if (sibDist <= 1) score += 3
-          }
-          if (score < closestScore) {
-            closest = t
-            closestScore = score
-          }
+        for (const t of this.walkableTiles) {
+          const dParent = Math.abs(t.col - parentCol) + Math.abs(t.row - parentRow)
+          const dCentroid = Math.abs(t.col - cluster.col) + Math.abs(t.row - cluster.row)
+          const s = dParent + dCentroid
+          if (s < closestScore) { closest = t; closestScore = s }
         }
         spawn = closest
       }

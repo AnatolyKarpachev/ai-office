@@ -118,3 +118,13 @@ export const CHARACTER_HIT_HALF_WIDTH = 8
 export const CHARACTER_HIT_HEIGHT = 24
 export const TOOL_OVERLAY_VERTICAL_OFFSET = 32
 export const PULSE_ANIMATION_DURATION_SEC = 1.5
+
+// ── Team Clustering ─────────────────────────────────────────
+/** Centroid weights by priority level (index = priority 0-4, 0 unused) */
+export const TEAM_PRIORITY_WEIGHTS = [0, 4.0, 2.0, 1.0, 0.5]
+/** Bonus per nearby teammate (negative = attraction, lower score = better) */
+export const TEAM_SIBLING_BONUS = -0.3
+/** L1 radius for counting nearby teammates */
+export const TEAM_SIBLING_RADIUS = 2
+/** Max parent chain depth to prevent infinite loops */
+export const TEAM_MAX_DEPTH = 10

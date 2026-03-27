@@ -589,8 +589,8 @@ wss.on("connection", (ws) => {
         const leadId = nextAgentId; // remember lead id before incrementing
         for (let i = 0; i < count; i++) {
           const id = nextAgentId++;
-          const isSubagent = false; // all test agents are independent for seat testing
-          const parentId = undefined;
+          const isSubagent = i > 0; // first is lead, rest are subagents
+          const parentId = isSubagent ? leadId : undefined;
           const names = ["Lead", "Explorer", "Coder", "Reviewer", "Tester", "Builder", "Planner", "Fixer", "Writer", "Auditor", "Runner", "Helper"];
           const folderName = names[i % names.length];
           broadcast({
@@ -613,7 +613,7 @@ wss.on("connection", (ws) => {
             cacheHitRate: Math.floor(Math.random() * 80) + 10,
           });
           // Send fake role
-          const roles = ["boss", "boss", "boss", "boss", "boss", "boss"];
+          const roles = ["boss", "Explore", "Code Reviewer", "Plan", "general-purpose", "test-runner"];
           const role = roles[i % roles.length];
           broadcast({
             type: "agentRole",
