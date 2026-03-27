@@ -399,6 +399,80 @@ export class OfficeState {
     }
   }
 
+  /** Force-sweep: move all agents with roles to their role-restricted seats.
+   *  Called after initial load and after any seat save to prevent drift. */
+  enforceRoleSeats(): void {
+    // Collect agents that qualify for role-restricted seats, sorted by priority (P1 first)
+    const candidates: Array<{ id: number; priority: number }> = []
+    for (const [id, role] of this.agentRoles) {
+      const ch = this.characters.get(id)
+      if (!ch || ch.matrixEffect === 'despawn') continue
+      // Check if any role-restricted seat exists for this role
+      let hasRoleSeat = false
+      for (const seat of this.seats.values()) {
+        if (seat.requiredRoles && seat.requiredRoles.includes(role)) { hasRoleSeat = true; break }
+      }
+      if (!hasRoleSeat) continue
+      // Check if already in a role-restricted seat
+      if (ch.seatId) {
+        const currentSeat = this.seats.get(ch.seatId)
+        if (currentSeat?.requiredRoles && currentSeat.requiredRoles.includes(role)) continue // already correct
+      }
+      candidates.push({ id, priority: this.getAgentPriority(id).priority })
+    }
+    // Sort: lower priority number = higher rank = first pick
+    candidates.sort((a, b) => a.priority - b.priority)
+
+    for (const { id } of candidates) {
+      const ch = this.characters.get(id)
+      if (!ch) continue
+      const role = this.agentRoles.get(id)
+      if (!role) continue
+
+      // Find best free role-restricted seat
+      let bestUid: string | null = null
+      let bestDist = Infinity
+      for (const [uid, seat] of this.seats) {
+        if (!seat.requiredRoles || !seat.requiredRoles.includes(role)) continue
+        if (seat.assigned || this.isSeatClaimed(uid)) continue
+        const d = Math.abs(seat.seatCol - ch.tileCol) + Math.abs(seat.seatRow - ch.tileRow)
+        if (d < bestDist) { bestDist = d; bestUid = uid }
+      }
+      if (!bestUid) continue
+
+      // Vacate current seat
+      if (ch.seatId) {
+        const old = this.seats.get(ch.seatId)
+        if (old) old.assigned = false
+        ch.seatId = null
+      }
+      // Claim new role-restricted seat
+      if (this.claimSeat(bestUid)) {
+        ch.seatId = bestUid
+        const seat = this.seats.get(bestUid)!
+        // Walk to new seat
+        const path = this.withOwnSeatUnblocked(ch, () =>
+          findPath(ch.tileCol, ch.tileRow, seat.seatCol, seat.seatRow, this.tileMap, this.blockedTiles)
+        )
+        if (path.length > 0) {
+          ch.path = path
+          ch.moveProgress = 0
+          ch.state = CharacterState.WALK
+          ch.frame = 0
+          ch.frameTimer = 0
+        } else {
+          // Already there or no path — snap
+          ch.tileCol = seat.seatCol
+          ch.tileRow = seat.seatRow
+          ch.x = seat.seatCol * TILE_SIZE + TILE_SIZE / 2
+          ch.y = seat.seatRow * TILE_SIZE + TILE_SIZE / 2
+          ch.state = CharacterState.TYPE
+          ch.dir = seat.facingDir
+        }
+      }
+    }
+  }
+
   /**
    * Pick a diverse palette for a new agent based on currently active agents.
    * First 6 agents each get a unique skin (random order). Beyond 6, skins
@@ -820,6 +894,27 @@ export class OfficeState {
         ch.loungeTargetSeatId = null
         ch.path = []
         ch.moveProgress = 0
+      }
+      // Ensure boss/lead agents return to role-restricted seat, not any random chair
+      const role = this.agentRoles.get(id)
+      if (role && ch.seatId) {
+        const currentSeat = this.seats.get(ch.seatId)
+        // If current seat is NOT role-restricted but one is available, switch
+        if (!currentSeat?.requiredRoles || !currentSeat.requiredRoles.includes(role)) {
+          for (const [uid, seat] of this.seats) {
+            if (seat.requiredRoles && seat.requiredRoles.includes(role)
+                && !seat.assigned && !this.isSeatClaimed(uid)) {
+              // Vacate old seat
+              if (currentSeat) currentSeat.assigned = false
+              ch.seatId = null
+              // Claim role seat
+              if (this.claimSeat(uid)) {
+                ch.seatId = uid
+                break
+              }
+            }
+          }
+        }
       }
     }
     this.rebuildFurnitureInstances()

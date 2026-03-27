@@ -171,6 +171,8 @@ export function useExtensionMessages(
           os.addAgent(p.id, p.palette, p.hueShift, p.seatId, true, p.folderName, p.parentAgentId)
         }
         pendingAgents = []
+        // Force-sweep: ensure all boss/lead agents sit in role-restricted seats
+        os.enforceRoleSeats()
         layoutReadyRef.current = true
         setLayoutReady(true)
         if (msg.wasReset) {
