@@ -7,7 +7,7 @@ import { renderFrame } from '../engine/renderer.js'
 import { TILE_SIZE, EditTool } from '../types.js'
 import { CAMERA_FOLLOW_LERP, CAMERA_FOLLOW_SNAP_THRESHOLD, ZOOM_MIN, ZOOM_MAX, ZOOM_SCROLL_THRESHOLD, PAN_MARGIN_FRACTION } from '../../constants.js'
 import { getCatalogEntry, isRotatable } from '../layout/furnitureCatalog.js'
-import { canPlaceFurniture, getWallPlacementRow } from '../editor/editorActions.js'
+import { canPlaceFurniture, getWallPlacementRow, hitTestFurniture } from '../editor/editorActions.js'
 import { vscode } from '../../vscodeApi.js'
 import { unlockAudio } from '../../notificationSound.js'
 
@@ -101,6 +101,13 @@ export function OfficeCanvas({ officeState, onClick, onDoubleClick, isEditMode, 
           const showGhostBorder = editorState.activeTool === EditTool.TILE_PAINT || editorState.activeTool === EditTool.WALL_PAINT || editorState.activeTool === EditTool.ERASE
           editorRender = {
             showGrid: true,
+            showCoords: editorState.showCoords ?? false,
+            showTypes: editorState.showTypes ?? false,
+            typesData: (editorState.showTypes) ? {
+              seats: new Map(Array.from(officeState.seats).map(([uid, s]) => [`${s.seatCol},${s.seatRow}`, { isLounge: s.isLounge }])),
+              blockedTiles: officeState.blockedTiles,
+              walkableTiles: new Set(officeState.walkableTiles.map(t => `${t.col},${t.row}`)),
+            } : undefined,
             ghostSprite: null,
             ghostMirrored: false,
             ghostCol: editorState.ghostCol,
@@ -165,11 +172,14 @@ export function OfficeCanvas({ officeState, onClick, onDoubleClick, isEditMode, 
             if (item) {
               const entry = getCatalogEntry(item.type)
               if (entry) {
+                // Use visual dimensions (sprite size) so selection box wraps the whole visual area
+                const visualW = Math.ceil((entry.sprite[0]?.length ?? 0) / TILE_SIZE) || entry.footprintW
+                const visualH = Math.ceil(entry.sprite.length / TILE_SIZE) || entry.footprintH
                 editorRender.hasSelection = true
                 editorRender.selectedCol = item.col
                 editorRender.selectedRow = item.row
-                editorRender.selectedW = entry.footprintW
-                editorRender.selectedH = entry.footprintH
+                editorRender.selectedW = visualW
+                editorRender.selectedH = visualH
                 editorRender.isRotatable = isRotatable(item.type)
               }
             }
@@ -455,12 +465,13 @@ export function OfficeCanvas({ officeState, onClick, onDoubleClick, isEditMode, 
         (editorState.activeTool === EditTool.FURNITURE_PLACE && editorState.selectedFurnitureType === '')
       if (actAsSelect && tile) {
         const layout = officeState.getLayout()
-        // Find all furniture at clicked tile, prefer surface items (on top of desks)
+        // Find all furniture at clicked tile (using visual area, not just footprint),
+        // prefer surface items (on top of desks)
         let hitFurniture = null as typeof layout.furniture[0] | null
         for (const f of layout.furniture) {
           const entry = getCatalogEntry(f.type)
           if (!entry) continue
-          if (tile.col >= f.col && tile.col < f.col + entry.footprintW && tile.row >= f.row && tile.row < f.row + entry.footprintH) {
+          if (hitTestFurniture(tile.col, tile.row, f, entry)) {
             if (!hitFurniture || entry.canPlaceOnSurfaces) hitFurniture = f
           }
         }

@@ -285,6 +285,81 @@ export function renderGridOverlay(
   }
 }
 
+/** Draw coordinate labels on each tile */
+export function renderCoordOverlay(
+  ctx: CanvasRenderingContext2D,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+  cols: number,
+  rows: number,
+): void {
+  const s = TILE_SIZE * zoom
+  // Only show coords when tiles are large enough to read
+  if (s < 20) return
+  const fontSize = Math.max(7, Math.min(10, s * 0.35))
+  ctx.save()
+  ctx.font = `${fontSize}px monospace`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillStyle = 'rgba(255, 255, 200, 0.6)'
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = offsetX + c * s + s / 2
+      const y = offsetY + r * s + s / 2
+      ctx.fillText(`${c},${r}`, x, y)
+    }
+  }
+  ctx.restore()
+}
+
+/** Draw tile type overlay: red=desk, blue=lounge, yellow=blocked, purple=unreachable seat */
+export function renderTypesOverlay(
+  ctx: CanvasRenderingContext2D,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+  cols: number,
+  rows: number,
+  tileMap: TileTypeVal[][],
+  data: { seats: Map<string, { isLounge: boolean }>; blockedTiles: Set<string>; walkableTiles: Set<string> },
+): void {
+  const s = TILE_SIZE * zoom
+  const bw = Math.max(1, Math.min(3, zoom * 1.5)) // border width scales with zoom
+  ctx.save()
+  ctx.lineWidth = bw
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const key = `${c},${r}`
+      const t = tileMap[r]?.[c]
+      const isWall = t === TileType.WALL || t === TileType.VOID
+      const blocked = data.blockedTiles.has(key)
+      const walkable = !isWall && !blocked
+      const seat = data.seats.get(key)
+
+      let color: string | null = null
+      if (seat && !seat.isLounge && walkable) {
+        color = 'rgba(255, 60, 60, 0.8)' // red — desk (work seat)
+      } else if (seat && seat.isLounge && walkable) {
+        color = 'rgba(60, 120, 255, 0.8)' // blue — lounge seat
+      } else if (seat && !walkable) {
+        color = 'rgba(180, 60, 255, 0.8)' // purple — seat but unreachable
+      } else if (!walkable && !isWall) {
+        color = 'rgba(255, 200, 0, 0.6)' // yellow — blocked (not wall)
+      }
+
+      if (color) {
+        const x = offsetX + c * s
+        const y = offsetY + r * s
+        ctx.strokeStyle = color
+        ctx.strokeRect(x + bw / 2, y + bw / 2, s - bw, s - bw)
+      }
+    }
+  }
+  ctx.restore()
+}
+
 /** Draw faint expansion placeholders 1 tile outside grid bounds (ghost border). */
 export function renderGhostBorder(
   ctx: CanvasRenderingContext2D,
@@ -606,6 +681,10 @@ export type RotateButtonBounds = ButtonBounds
 
 export interface EditorRenderState {
   showGrid: boolean
+  showCoords: boolean
+  showTypes: boolean
+  /** Precomputed seat/blocked data for types overlay */
+  typesData?: { seats: Map<string, { isLounge: boolean }>; blockedTiles: Set<string>; walkableTiles: Set<string> }
   ghostSprite: SpriteData | null
   ghostMirrored: boolean
   ghostCol: number
@@ -694,6 +773,12 @@ export function renderFrame(
   if (editor) {
     if (editor.showGrid) {
       renderGridOverlay(ctx, offsetX, offsetY, zoom, cols, rows, tileMap)
+    }
+    if (editor.showCoords) {
+      renderCoordOverlay(ctx, offsetX, offsetY, zoom, cols, rows)
+    }
+    if (editor.showTypes && editor.typesData) {
+      renderTypesOverlay(ctx, offsetX, offsetY, zoom, cols, rows, tileMap, editor.typesData)
     }
     if (editor.showGhostBorder) {
       renderGhostBorder(ctx, offsetX, offsetY, zoom, cols, rows, editor.ghostBorderHoverCol, editor.ghostBorderHoverRow)

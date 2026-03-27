@@ -112,7 +112,7 @@ export function flattenManifest(node: ManifestNode, inherited: InheritedProps): 
         isDesk: inherited.category === 'desks',
         canPlaceOnWalls: inherited.canPlaceOnWalls,
         canPlaceOnSurfaces: inherited.canPlaceOnSurfaces,
-        backgroundTiles: inherited.backgroundTiles,
+        backgroundTiles: asset.backgroundTiles ?? inherited.backgroundTiles,
         groupId: inherited.groupId,
         ...(orientation ? { orientation } : {}),
         ...(state ? { state } : {}),

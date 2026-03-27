@@ -68,6 +68,8 @@ export interface Seat {
   isLounge: boolean
   /** True if the seat faces a desk/PC — preferred for agent placement */
   facesDesk: boolean
+  /** If set, only agents with one of these roles can be assigned here */
+  requiredRoles: string[] | null
 }
 
 export interface FurnitureInstance {

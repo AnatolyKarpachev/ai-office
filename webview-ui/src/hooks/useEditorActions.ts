@@ -4,7 +4,7 @@ import type { EditorState } from '../office/editor/editorState.js'
 import { EditTool } from '../office/types.js'
 import { TileType } from '../office/types.js'
 import type { OfficeLayout, EditTool as EditToolType, TileType as TileTypeVal, FloorColor, PlacedFurniture } from '../office/types.js'
-import { paintTile, placeFurniture, removeFurniture, moveFurniture, rotateFurniture, toggleFurnitureState, canPlaceFurniture, getWallPlacementRow, expandLayout } from '../office/editor/editorActions.js'
+import { paintTile, placeFurniture, removeFurniture, moveFurniture, rotateFurniture, toggleFurnitureState, canPlaceFurniture, getWallPlacementRow, expandLayout, hitTestFurniture } from '../office/editor/editorActions.js'
 import type { ExpandDirection } from '../office/editor/editorActions.js'
 import { getCatalogEntry, getRotatedType, getToggledType } from '../office/layout/furnitureCatalog.js'
 import { defaultZoom } from '../office/toolUtils.js'
@@ -424,11 +424,11 @@ export function useEditorActions(
     } else if (editorState.activeTool === EditTool.FURNITURE_PLACE) {
       const type = editorState.selectedFurnitureType
       if (type === '') {
-        // No item selected — act like SELECT (find furniture hit)
+        // No item selected — act like SELECT (find furniture hit by visual area)
         const hit = layout.furniture.find((f) => {
           const entry = getCatalogEntry(f.type)
           if (!entry) return false
-          return col >= f.col && col < f.col + entry.footprintW && row >= f.row && row < f.row + entry.footprintH
+          return hitTestFurniture(col, row, f, entry)
         })
         editorState.selectedFurnitureUid = hit ? hit.uid : null
         setEditorTick((n) => n + 1)
@@ -446,11 +446,11 @@ export function useEditorActions(
         }
       }
     } else if (editorState.activeTool === EditTool.FURNITURE_PICK) {
-      // Find furniture at clicked tile, copy its type and color for placement
+      // Find furniture at clicked tile (visual area), copy its type and color for placement
       const hit = layout.furniture.find((f) => {
         const entry = getCatalogEntry(f.type)
         if (!entry) return false
-        return col >= f.col && col < f.col + entry.footprintW && row >= f.row && row < f.row + entry.footprintH
+        return hitTestFurniture(col, row, f, entry)
       })
       if (hit) {
         editorState.selectedFurnitureType = hit.type
@@ -481,7 +481,7 @@ export function useEditorActions(
       const hit = layout.furniture.find((f) => {
         const entry = getCatalogEntry(f.type)
         if (!entry) return false
-        return col >= f.col && col < f.col + entry.footprintW && row >= f.row && row < f.row + entry.footprintH
+        return hitTestFurniture(col, row, f, entry)
       })
       editorState.selectedFurnitureUid = hit ? hit.uid : null
       setEditorTick((n) => n + 1)

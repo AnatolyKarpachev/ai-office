@@ -507,6 +507,8 @@ export function useExtensionMessages(
           next.set(id, roleInfo)
           return next
         })
+        // Notify OfficeState so role-restricted seats are respected
+        os.setAgentRole(id, roleInfo.role)
       } else if (msg.type === 'pipelineIssues') {
         const issues = msg.issues as PipelineIssue[]
         setPipelineIssues(issues)

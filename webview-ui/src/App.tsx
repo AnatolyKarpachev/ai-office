@@ -341,6 +341,10 @@ function App() {
             onWallSetChange={editor.handleWallSetChange}
             onSelectedFurnitureColorChange={editor.handleSelectedFurnitureColorChange}
             onFurnitureTypeChange={editor.handleFurnitureTypeChange}
+            showCoords={editorState.showCoords}
+            onToggleCoords={() => { editorState.showCoords = !editorState.showCoords }}
+            showTypes={editorState.showTypes}
+            onToggleTypes={() => { editorState.showTypes = !editorState.showTypes }}
             loadedAssets={loadedAssets}
           />
         )

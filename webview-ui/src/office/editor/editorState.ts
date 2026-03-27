@@ -41,6 +41,12 @@ export class EditorState {
   // Dirty flag — true when layout differs from last save
   isDirty = false
 
+  // Show coordinate labels on tiles
+  showCoords = false
+
+  // Show tile type overlay (desk/lounge/blocked)
+  showTypes = false
+
   // Drag-to-move state
   dragUid: string | null = null
   dragStartCol = 0

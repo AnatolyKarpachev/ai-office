@@ -63,6 +63,10 @@ interface EditorToolbarProps {
   onWallSetChange: (setIndex: number) => void
   onSelectedFurnitureColorChange: (color: FloorColor | null) => void
   onFurnitureTypeChange: (type: string) => void
+  showCoords: boolean
+  onToggleCoords: () => void
+  showTypes: boolean
+  onToggleTypes: () => void
   loadedAssets?: LoadedAssetData
 }
 
@@ -226,6 +230,10 @@ export function EditorToolbar({
   onWallSetChange,
   onSelectedFurnitureColorChange,
   onFurnitureTypeChange,
+  showCoords,
+  onToggleCoords,
+  showTypes,
+  onToggleTypes,
   loadedAssets,
 }: EditorToolbarProps) {
   const [activeCategory, setActiveCategory] = useState<FurnitureCategory>('desks')
@@ -330,6 +338,20 @@ export function EditorToolbar({
           title="Place furniture"
         >
           Furniture
+        </button>
+        <button
+          style={showCoords ? activeBtnStyle : btnStyle}
+          onClick={onToggleCoords}
+          title="Show tile coordinates"
+        >
+          Coords
+        </button>
+        <button
+          style={showTypes ? activeBtnStyle : btnStyle}
+          onClick={onToggleTypes}
+          title="Red=desk, Blue=lounge, Yellow=blocked, Purple=unreachable seat"
+        >
+          Types
         </button>
       </div>
 

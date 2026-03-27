@@ -100,6 +100,7 @@ const agents = new Map<string, TrackedAgent>(); // sessionId -> agent
 let nextAgentId = 1;
 const clients = new Set<WebSocket>();
 const testAgentIds = new Set<number>();
+const testAgentData = new Map<number, { folderName: string; role: string; parentAgentId?: number; model: string }>();
 let lastActivityTime = Date.now();
 const spawnedClaudes = new Set<ChildProcess>();
 
@@ -285,7 +286,14 @@ const persistedSeats = loadPersistedSeats();
 // Express app
 const app = express();
 // Serve production build
-app.use(express.static(join(__dirname, "public")));
+app.use(express.static(join(__dirname, "public"), {
+  etag: false,
+  lastModified: false,
+  setHeaders: (res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.setHeader("Pragma", "no-cache");
+  },
+}));
 
 const server = createServer(app);
 
@@ -403,6 +411,17 @@ function sendInitialData(ws: WebSocket): void {
   } else {
     // Send null layout to trigger default layout creation in the UI
     ws.send(JSON.stringify({ type: "layoutLoaded", layout: null, version: 0, wasReset: false }));
+  }
+
+  // Re-send test agents so they survive page refresh
+  for (const [id, data] of testAgentData) {
+    ws.send(JSON.stringify({ type: "agentCreated", id, folderName: data.folderName, parentAgentId: data.parentAgentId }));
+    ws.send(JSON.stringify({ type: "agentRole", id, role: data.role, autoDetected: true, colors: getRoleColors(data.role) }));
+    ws.send(JSON.stringify({
+      type: "agentStats", id, model: data.model,
+      totalInputTokens: 10000, totalOutputTokens: 5000, totalCacheRead: 0,
+      totalCacheCreation: 0, turnCount: 5, totalDurationMs: 60000, cacheHitRate: 0,
+    }));
   }
 }
 
@@ -556,6 +575,7 @@ wss.on("connection", (ws) => {
           broadcast({ type: "agentClosed", id });
         }
         testAgentIds.clear();
+        testAgentData.clear();
         console.log(`[Server] Removed ${toRemove.length} test agents`);
       } else if (msg.type === "spawnTestAgents") {
         // Remove existing test agents first
@@ -563,13 +583,14 @@ wss.on("connection", (ws) => {
           broadcast({ type: "agentClosed", id });
         }
         testAgentIds.clear();
+        testAgentData.clear();
         const count = Math.min(msg.count || 5, 12);
         console.log(`[Server] Spawning ${count} test agents`);
         const leadId = nextAgentId; // remember lead id before incrementing
         for (let i = 0; i < count; i++) {
           const id = nextAgentId++;
-          const isSubagent = i > 0; // first is lead, rest are subagents
-          const parentId = isSubagent ? leadId : undefined;
+          const isSubagent = false; // all test agents are independent for seat testing
+          const parentId = undefined;
           const names = ["Lead", "Explorer", "Coder", "Reviewer", "Tester", "Builder", "Planner", "Fixer", "Writer", "Auditor", "Runner", "Helper"];
           const folderName = names[i % names.length];
           broadcast({
@@ -592,7 +613,7 @@ wss.on("connection", (ws) => {
             cacheHitRate: Math.floor(Math.random() * 80) + 10,
           });
           // Send fake role
-          const roles = ["default", "Explore", "Code Reviewer", "Plan", "general-purpose", "test-runner"];
+          const roles = ["boss", "boss", "boss", "boss", "boss", "boss"];
           const role = roles[i % roles.length];
           broadcast({
             type: "agentRole",
@@ -602,7 +623,9 @@ wss.on("connection", (ws) => {
             colors: getRoleColors(role),
           });
           testAgentIds.add(id);
-          console.log(`  Test agent ${id}: ${folderName}${isSubagent ? ` [sub of ${parentId}]` : ""}`);
+          const model = i % 2 === 0 ? "claude-opus-4-6" : "claude-sonnet-4-6";
+          testAgentData.set(id, { folderName, role, parentAgentId: parentId, model });
+          console.log(`  Test agent ${id}: ${folderName} (role=${role})${isSubagent ? ` [sub of ${parentId}]` : ""}`);
         }
       }
     } catch {

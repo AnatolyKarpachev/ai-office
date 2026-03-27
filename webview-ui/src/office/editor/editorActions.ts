@@ -1,8 +1,19 @@
-import { TileType, MAX_COLS, MAX_ROWS } from '../types.js'
+import { TileType, TILE_SIZE, MAX_COLS, MAX_ROWS } from '../types.js'
 import { DEFAULT_NEUTRAL_COLOR } from '../../constants.js'
-import type { TileType as TileTypeVal, OfficeLayout, PlacedFurniture, FloorColor } from '../types.js'
+import type { TileType as TileTypeVal, OfficeLayout, PlacedFurniture, FloorColor, FurnitureCatalogEntry } from '../types.js'
 import { getCatalogEntry, getRotatedType, getToggledType } from '../layout/furnitureCatalog.js'
 import { getPlacementBlockedTiles } from '../layout/layoutSerializer.js'
+
+/**
+ * Hit-test a tile against a furniture item's visual area (not just its footprint).
+ * Sprites can be taller than the footprint (backgroundTiles, wall art, etc.),
+ * so we use the actual sprite pixel dimensions for the clickable area.
+ */
+export function hitTestFurniture(col: number, row: number, f: PlacedFurniture, entry: FurnitureCatalogEntry): boolean {
+  const visualW = Math.ceil((entry.sprite[0]?.length ?? 0) / TILE_SIZE) || entry.footprintW
+  const visualH = Math.ceil(entry.sprite.length / TILE_SIZE) || entry.footprintH
+  return col >= f.col && col < f.col + visualW && row >= f.row && row < f.row + visualH
+}
 
 /** Paint a single tile with pattern and color. Returns new layout (immutable). */
 export function paintTile(layout: OfficeLayout, col: number, row: number, tileType: TileTypeVal, color?: FloorColor): OfficeLayout {

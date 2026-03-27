@@ -197,21 +197,6 @@ const toggleBtnStyle: React.CSSProperties = {
   cursor: 'pointer',
 }
 
-const tabBtnBase: React.CSSProperties = {
-  flex: 1,
-  padding: '4px 8px',
-  fontSize: '16px',
-  fontWeight: 'bold',
-  textTransform: 'uppercase',
-  letterSpacing: '0.5px',
-  border: 'none',
-  borderBottom: '2px solid transparent',
-  borderRadius: 0,
-  cursor: 'pointer',
-  background: 'transparent',
-  color: 'rgba(255,255,255,0.35)',
-  transition: 'color 0.15s ease',
-}
 
 export function LeftSidebar({
   agents,
@@ -227,10 +212,10 @@ export function LeftSidebar({
   serverMode,
 }: LeftSidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
+  const [tasksCollapsed, setTasksCollapsed] = useState(false)
   const [hoveredAgent, setHoveredAgent] = useState<number | null>(null)
-  const [activeTab, setActiveTab] = useState<'agents' | 'tasks'>('agents')
-
   const toggleCollapse = useCallback(() => setCollapsed((v) => !v), [])
+  const toggleTasksCollapse = useCallback(() => setTasksCollapsed((v) => !v), [])
 
   // Known subagent-type roles spawned by the Agent tool (not real user-facing agents)
   const SPAWNED_AGENT_ROLES = new Set([
@@ -275,30 +260,6 @@ export function LeftSidebar({
 
   const totalCount = mainAgents.length + subagentCharacters.length
 
-  // Find supervisor = the parent agent that orchestrates the pipeline (has the most subagents).
-  // The team lead is the agent that spawns subagents to do work — NOT a random agent.
-  let supervisorId: number | null = null
-  let maxSubs = 0
-  for (const id of mainAgents) {
-    const subCount = subsByParent.get(id)?.length ?? 0
-    if (subCount > maxSubs) {
-      maxSubs = subCount
-      supervisorId = id
-    }
-  }
-  // Secondary: if no agent has subagents, pick the one with the most tool invocations (busiest orchestrator)
-  if (supervisorId === null && mainAgents.length > 0) {
-    let maxTools = -1
-    for (const id of mainAgents) {
-      const tools = agentTools[id]
-      const count = tools?.length ?? 0
-      if (count > maxTools) {
-        maxTools = count
-        supervisorId = id
-      }
-    }
-  }
-
   if (collapsed) {
     return (
       <div style={{ ...sidebarStyle, width: 36, alignItems: 'center', padding: '6px 0' }}>
@@ -313,19 +274,13 @@ export function LeftSidebar({
     )
   }
 
-  const supervisorCh = supervisorId !== null ? officeState.characters.get(supervisorId) : null
-  const supervisorStats = supervisorId !== null ? agentStats.get(supervisorId) : null
-  const supervisorRole = supervisorId !== null ? agentRoles.get(supervisorId) : null
-  const supervisorTools = supervisorId !== null ? agentTools[supervisorId] : undefined
-  const supervisorStatus = getStatusLabel(supervisorId ?? -1, agentTools, agentStatuses, supervisorCh?.isActive ?? false)
-
   return (
     <div style={{ ...sidebarStyle, width: 280 }}>
       {/* Header */}
       <div style={headerStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ fontSize: '18px', color: 'var(--pixel-accent)', fontWeight: 'bold' }}>
-            {activeTab === 'agents' ? 'AGENTS' : 'TASKS'}
+            AGENTS
           </span>
           {serverMode && (
             <span style={{
@@ -343,35 +298,9 @@ export function LeftSidebar({
         <button onClick={toggleCollapse} style={toggleBtnStyle} title="Collapse sidebar">◀</button>
       </div>
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', borderBottom: '2px solid var(--pixel-border)', flexShrink: 0 }}>
-        <button
-          onClick={() => setActiveTab('agents')}
-          style={{
-            ...tabBtnBase,
-            color: activeTab === 'agents' ? 'var(--pixel-accent)' : tabBtnBase.color,
-            borderBottomColor: activeTab === 'agents' ? 'var(--pixel-accent)' : 'transparent',
-          }}
-        >
-          Agents ({totalCount})
-        </button>
-        <button
-          onClick={() => setActiveTab('tasks')}
-          style={{
-            ...tabBtnBase,
-            color: activeTab === 'tasks' ? '#ff9f43' : tabBtnBase.color,
-            borderBottomColor: activeTab === 'tasks' ? '#ff9f43' : 'transparent',
-          }}
-        >
-          Tasks ({pipelineIssues.length})
-        </button>
-      </div>
-
-      {/* Tab content — exactly 50% */}
+      {/* Agents list */}
       <div style={{ flex: '1 1 0', overflowY: 'auto', padding: '4px', minHeight: 0 }}>
-        {activeTab === 'agents' ? (
-          /* ───── Agents Tab ───── */
-          mainAgents.length === 0 ? (
+        {mainAgents.length === 0 ? (
             <div style={{ padding: 16, textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '18px', fontStyle: 'italic' }}>
               No agents active
             </div>
@@ -477,170 +406,125 @@ export function LeftSidebar({
                 </div>
               )
             })
-          )
-        ) : (
-          /* ───── Tasks Tab (Pipeline Issues) ───── */
-          pipelineIssues.length === 0 ? (
-            <div style={{ padding: 16, textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '14px', fontStyle: 'italic' }}>
-              No pipeline issues found
-            </div>
-          ) : (
-            pipelineIssues.map((issue) => (
-              <div key={`${issue.repo}-${issue.number}`} style={{
-                padding: '6px 8px', marginBottom: 3, background: 'rgba(255,255,255,0.02)',
-                border: '2px solid rgba(255,255,255,0.05)', borderRadius: 0,
-              }}>
-                {/* Issue number + repo + pipeline state */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 3 }}>
-                  <span style={{ fontSize: '14px', color: 'var(--pixel-accent)', fontWeight: 'bold', flexShrink: 0 }}>
-                    #{issue.number}
-                  </span>
-                  <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.3)', flexShrink: 0 }}>
-                    {issue.repo}
-                  </span>
-                  {issue.pipelineState && (
-                    <span style={{
-                      fontSize: '12px', padding: '1px 5px', marginLeft: 'auto',
-                      background: `${getPipelineStateColor(issue.pipelineState)}22`,
-                      color: getPipelineStateColor(issue.pipelineState),
-                      border: `1px solid ${getPipelineStateColor(issue.pipelineState)}44`,
-                      borderRadius: 0, whiteSpace: 'nowrap', fontWeight: 'bold',
-                      textTransform: 'uppercase', letterSpacing: '0.3px',
-                    }}>
-                      {getPipelineStateLabel(issue.pipelineState)}
-                    </span>
-                  )}
-                </div>
-                {/* Title */}
-                <div style={{ fontSize: '14px', color: 'var(--pixel-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 3 }}>
-                  {issue.title}
-                </div>
-                {/* Labels */}
-                {issue.labels.length > 0 && (
-                  <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-                    {issue.labels.map((label) => (
-                      <span key={label} style={{
-                        fontSize: '14px', padding: '1px 4px',
-                        background: `${getIssueLabelColor(label)}22`,
-                        color: getIssueLabelColor(label),
-                        border: `1px solid ${getIssueLabelColor(label)}44`,
-                        borderRadius: 0, whiteSpace: 'nowrap',
-                      }}>
-                        {label}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {/* Pipeline progress bar */}
-                {issue.pipelineState && (() => {
-                  const pct = getPipelineProgress(issue.pipelineState)
-                  const isBlocked = pct === -1
-                  const barColor = isBlocked ? '#e55' : getPipelineStateColor(issue.pipelineState)
-                  const displayPct = isBlocked ? 100 : pct
-                  return (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
-                      <div style={{
-                        flex: 1, height: 6,
-                        background: 'rgba(255,255,255,0.08)',
-                        border: '1px solid rgba(255,255,255,0.1)',
-                        borderRadius: 0, overflow: 'hidden',
-                        imageRendering: 'pixelated' as const,
-                      }}>
-                        <div style={{
-                          width: `${displayPct}%`, height: '100%',
-                          background: isBlocked
-                            ? 'repeating-linear-gradient(45deg, #e55, #e55 3px, #a33 3px, #a33 6px)'
-                            : barColor,
-                          borderRadius: 0,
-                          transition: 'width 0.3s ease',
-                          imageRendering: 'pixelated' as const,
-                        }} />
-                      </div>
-                      <span style={{
-                        fontSize: '14px', color: barColor, fontFamily: 'monospace',
-                        fontWeight: 'bold', flexShrink: 0, minWidth: 32, textAlign: 'right',
-                      }}>
-                        {isBlocked ? 'BLK' : `${pct}%`}
-                      </span>
-                    </div>
-                  )
-                })()}
-              </div>
-            ))
-          )
-        )}
+          )}
       </div>
 
-      {/* ───── Supervisor / Lead Section — exactly 50% ───── */}
+      {/* ───── Tasks Section (bottom) ───── */}
       <div style={{
         borderTop: '2px solid var(--pixel-border)',
         background: 'rgba(255,255,255,0.03)',
-        flex: '1 1 0',
+        flex: tasksCollapsed ? '0 0 auto' : '1 1 0',
         minHeight: 0,
-        overflowY: 'auto',
-        padding: '6px 8px',
+        overflowY: tasksCollapsed ? 'hidden' : 'auto',
+        display: 'flex',
+        flexDirection: 'column',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-          <span style={{ fontSize: '14px', color: '#ff9f43', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            LEAD
+        {/* Tasks header — always visible, clickable to toggle */}
+        <div
+          onClick={toggleTasksCollapse}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 4,
+            padding: '6px 8px', cursor: 'pointer', flexShrink: 0,
+          }}
+        >
+          <span style={{
+            fontSize: '14px', color: '#ff9f43', fontWeight: 'bold',
+            textTransform: 'uppercase', letterSpacing: '0.5px', flex: 1,
+          }}>
+            TASKS ({pipelineIssues.length})
           </span>
-          {supervisorRole?.role && (
-            <RoleBadge role={supervisorRole.role} colors={supervisorRole.colors} />
-          )}
+          <span style={{ fontSize: '14px', color: 'var(--pixel-text-dim)' }}>
+            {tasksCollapsed ? '▲' : '▼'}
+          </span>
         </div>
 
-        {supervisorCh ? (
-          <>
-            {/* Lead name & status */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 3 }}>
-              <span style={{
-                width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
-                background: supervisorCh.isActive ? 'var(--pixel-status-active)' : 'rgba(255,255,255,0.3)',
-              }} />
-              <span style={{ fontSize: '16px', color: 'var(--pixel-text)', fontWeight: 'bold' }}>
-                {supervisorCh.folderName || `agent-${supervisorId}`}
-              </span>
-            </div>
-
-            {/* Current activity */}
-            <div style={{ fontSize: '14px', color: 'rgba(255,255,255,0.7)', marginBottom: 4 }}>
-              {supervisorStatus}
-            </div>
-
-            {/* Recent tool calls */}
-            {supervisorTools && supervisorTools.length > 0 && (
-              <div style={{ marginBottom: 2 }}>
-                {supervisorTools.slice(-5).map((tool) => (
-                  <div key={tool.toolId} style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '1px 0' }}>
-                    <span style={{
-                      width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
-                      background: tool.permissionWait ? 'var(--pixel-status-permission)' : tool.done ? 'var(--pixel-green)' : 'var(--pixel-status-active)',
-                    }} />
-                    <span style={{
-                      fontSize: '14px',
-                      color: tool.done ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.6)',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
-                      textDecoration: tool.done ? 'line-through' : 'none',
-                    }}>
-                      {tool.status}
+        {/* Tasks content — hidden when collapsed */}
+        {!tasksCollapsed && (
+          <div style={{ overflowY: 'auto', padding: '0 8px 6px', flex: '1 1 0', minHeight: 0 }}>
+            {pipelineIssues.length === 0 ? (
+              <div style={{ fontSize: '14px', color: 'rgba(255,255,255,0.3)', fontStyle: 'italic' }}>
+                No pipeline issues found
+              </div>
+            ) : (
+              pipelineIssues.map((issue) => (
+                <div key={`bottom-${issue.repo}-${issue.number}`} style={{
+                  padding: '6px 8px', marginBottom: 3, background: 'rgba(255,255,255,0.02)',
+                  border: '2px solid rgba(255,255,255,0.05)', borderRadius: 0,
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 3 }}>
+                    <span style={{ fontSize: '14px', color: 'var(--pixel-accent)', fontWeight: 'bold', flexShrink: 0 }}>
+                      #{issue.number}
                     </span>
+                    <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.3)', flexShrink: 0 }}>
+                      {issue.repo}
+                    </span>
+                    {issue.pipelineState && (
+                      <span style={{
+                        fontSize: '12px', padding: '1px 5px', marginLeft: 'auto',
+                        background: `${getPipelineStateColor(issue.pipelineState)}22`,
+                        color: getPipelineStateColor(issue.pipelineState),
+                        border: `1px solid ${getPipelineStateColor(issue.pipelineState)}44`,
+                        borderRadius: 0, whiteSpace: 'nowrap', fontWeight: 'bold',
+                        textTransform: 'uppercase', letterSpacing: '0.3px',
+                      }}>
+                        {getPipelineStateLabel(issue.pipelineState)}
+                      </span>
+                    )}
                   </div>
-                ))}
-              </div>
+                  <div style={{ fontSize: '14px', color: 'var(--pixel-text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 3 }}>
+                    {issue.title}
+                  </div>
+                  {issue.labels.length > 0 && (
+                    <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                      {issue.labels.map((label) => (
+                        <span key={label} style={{
+                          fontSize: '14px', padding: '1px 4px',
+                          background: `${getIssueLabelColor(label)}22`,
+                          color: getIssueLabelColor(label),
+                          border: `1px solid ${getIssueLabelColor(label)}44`,
+                          borderRadius: 0, whiteSpace: 'nowrap',
+                        }}>
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {issue.pipelineState && (() => {
+                    const pct = getPipelineProgress(issue.pipelineState)
+                    const isBlocked = pct === -1
+                    const barColor = isBlocked ? '#e55' : getPipelineStateColor(issue.pipelineState)
+                    const displayPct = isBlocked ? 100 : pct
+                    return (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                        <div style={{
+                          flex: 1, height: 6,
+                          background: 'rgba(255,255,255,0.08)',
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          borderRadius: 0, overflow: 'hidden',
+                          imageRendering: 'pixelated' as const,
+                        }}>
+                          <div style={{
+                            width: `${displayPct}%`, height: '100%',
+                            background: isBlocked
+                              ? 'repeating-linear-gradient(45deg, #e55, #e55 3px, #a33 3px, #a33 6px)'
+                              : barColor,
+                            borderRadius: 0,
+                            transition: 'width 0.3s ease',
+                            imageRendering: 'pixelated' as const,
+                          }} />
+                        </div>
+                        <span style={{
+                          fontSize: '14px', color: barColor, fontFamily: 'monospace',
+                          fontWeight: 'bold', flexShrink: 0, minWidth: 32, textAlign: 'right',
+                        }}>
+                          {isBlocked ? 'BLK' : `${pct}%`}
+                        </span>
+                      </div>
+                    )
+                  })()}
+                </div>
+              ))
             )}
-
-            {/* Token stats */}
-            {supervisorStats && (
-              <div style={{ display: 'flex', gap: 6, fontSize: '14px', color: 'rgba(255,255,255,0.3)', fontFamily: 'monospace' }}>
-                <span>{formatNumber(supervisorStats.totalInputTokens + supervisorStats.totalOutputTokens)} tok</span>
-                <span>{supervisorStats.turnCount} turns</span>
-                <span>{formatDuration(supervisorStats.totalDurationMs)}</span>
-              </div>
-            )}
-          </>
-        ) : (
-          <div style={{ fontSize: '14px', color: 'rgba(255,255,255,0.3)', fontStyle: 'italic' }}>
-            No lead agent detected
           </div>
         )}
       </div>

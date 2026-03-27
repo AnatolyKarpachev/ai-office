@@ -220,12 +220,15 @@ export function updateCharacter(
             ch.state = CharacterState.WALK
             ch.frame = 0
             ch.frameTimer = 0
-          } else {
-            // Already at seat or no path — sit down
+          } else if (ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow) {
+            // Already at seat — sit down
             ch.state = CharacterState.TYPE
             ch.dir = seat.facingDir
             ch.frame = 0
             ch.frameTimer = 0
+          } else {
+            // Can't reach seat (blocked path) — stay idle, retry on next wander cycle
+            ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
           }
         }
         break

@@ -18,6 +18,8 @@ export function layoutToTileMap(layout: OfficeLayout): TileTypeVal[][] {
 
 /** Convert placed furniture into renderable FurnitureInstance[] */
 export function layoutToFurnitureInstances(furniture: PlacedFurniture[]): FurnitureInstance[] {
+  // Pre-compute desk tiles set (for chair z-sorting: detect "back to camera" seats)
+  const deskTilesSet = new Set<string>()
   // Pre-compute desk zY per tile so surface items can sort in front of desks
   const deskZByTile = new Map<string, number>()
   for (const item of furniture) {
@@ -27,6 +29,7 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[]): Furnit
     for (let dr = 0; dr < entry.footprintH; dr++) {
       for (let dc = 0; dc < entry.footprintW; dc++) {
         const key = `${item.col + dc},${item.row + dr}`
+        deskTilesSet.add(key)
         const prev = deskZByTile.get(key)
         if (prev === undefined || deskZY > prev) deskZByTile.set(key, deskZY)
       }
@@ -42,11 +45,36 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[]): Furnit
     const spriteH = entry.sprite.length
     let zY = y + spriteH
 
-    // Chair z-sorting: ensure characters sitting on chairs render correctly
-    if (entry.category === 'chairs') {
-      if (entry.orientation === 'back') {
-        // Back-facing chairs render IN FRONT of the seated character
-        // (the chair back visually occludes the character behind it)
+    // Chair/sofa z-sorting: ensure characters sitting on them render correctly
+    if (entry.category === 'chairs' || entry.category === 'sofa') {
+      // Detect if the seated character faces away from camera (back to viewer).
+      // In that case the chair renders IN FRONT to show chair back occluding character.
+      // Cases: explicit 'back' orientation, or no orientation + adjacent desk
+      // (desk proximity implies character faces the desk with back to camera).
+      const seatFacesAway = (() => {
+        if (entry.orientation === 'back') return true
+        if (entry.orientation === 'front' || entry.orientation === 'side'
+            || entry.orientation === 'left' || entry.orientation === 'right') return false
+        // No explicit orientation — check if any seat tile has an adjacent desk
+        // (character will face the desk, potentially with back to camera)
+        const bgRows = Math.min(entry.backgroundTiles || 0, entry.footprintH - 1)
+        for (let dr = bgRows; dr < entry.footprintH; dr++) {
+          for (let dc = 0; dc < entry.footprintW; dc++) {
+            const sc = item.col + dc
+            const sr = item.row + dr
+            // Check all 4 directions for adjacent desk
+            if (deskTilesSet.has(`${sc},${sr - 1}`)   // desk above
+                || deskTilesSet.has(`${sc},${sr + 1}`) // desk below
+                || deskTilesSet.has(`${sc - 1},${sr}`) // desk left
+                || deskTilesSet.has(`${sc + 1},${sr}`) // desk right
+            ) return true
+          }
+        }
+        return false
+      })()
+
+      if (seatFacesAway) {
+        // Chair renders IN FRONT of the seated character
         zY = (item.row + entry.footprintH) * TILE_SIZE + 1
       } else {
         // All other chairs: cap zY to first row bottom so characters
@@ -90,9 +118,12 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[]): Furnit
  *  Skips top backgroundTiles rows so characters can walk through them. */
 export function getBlockedTiles(furniture: PlacedFurniture[], excludeTiles?: Set<string>): Set<string> {
   const tiles = new Set<string>()
+  // Categories that don't block walking
+  const WALKABLE_CATEGORIES = new Set(['chairs', 'sofa', 'floor_decor'])
   for (const item of furniture) {
     const entry = getCatalogEntry(item.type)
     if (!entry) continue
+    if (WALKABLE_CATEGORIES.has(entry.category)) continue // walkable furniture never blocks
     const bgRows = entry.backgroundTiles || 0
     for (let dr = 0; dr < entry.footprintH; dr++) {
       if (dr < bgRows) continue // skip background rows — characters can walk through
@@ -122,6 +153,11 @@ export function getPlacementBlockedTiles(furniture: PlacedFurniture[], excludeUi
     }
   }
   return tiles
+}
+
+/** Chair types reserved for specific roles. Key = furniture type, value = list of allowed roles. */
+const ROLE_RESTRICTED_CHAIRS: Record<string, string[]> = {
+  'MO_112': ['boss', 'lead', 'megaboss'],
 }
 
 /** Map chair orientation to character facing direction */
@@ -154,13 +190,15 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
     }
   }
 
-  // Build set of all non-chair furniture tiles (including background rows)
-  // to prevent phantom seats on bookshelf tops and other decorative areas
+  // Build set of non-chair furniture tiles that physically block (skip background rows).
+  // Prevents phantom seats on bookshelf tops, but allows seats under PC/desk background rows.
   const nonChairFurnitureTiles = new Set<string>()
   for (const item of furniture) {
     const entry = getCatalogEntry(item.type)
-    if (!entry || entry.category === 'chairs') continue
+    if (!entry || entry.category === 'chairs' || entry.category === 'sofa') continue
+    const bgRows = entry.backgroundTiles || 0
     for (let dr = 0; dr < entry.footprintH; dr++) {
+      if (dr < bgRows) continue // background rows don't block seats
       for (let dc = 0; dc < entry.footprintW; dc++) {
         nonChairFurnitureTiles.add(`${item.col + dc},${item.row + dr}`)
       }
@@ -178,9 +216,11 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
   // Skips top backgroundTiles rows (e.g. chair backs) — agents sit on the seat, not the back.
   for (const item of furniture) {
     const entry = getCatalogEntry(item.type)
-    if (!entry || entry.category !== 'chairs') continue
+    if (!entry || (entry.category !== 'chairs' && entry.category !== 'sofa')) continue
 
-    const bgRows = entry.backgroundTiles || 0
+    // Clamp bgRows so chairs always generate at least one seat row
+    const rawBgRows = entry.backgroundTiles || 0
+    const bgRows = Math.min(rawBgRows, entry.footprintH - 1)
     let seatCount = 0
     for (let dr = 0; dr < entry.footprintH; dr++) {
       if (dr < bgRows) continue // skip background rows (chair backs)
@@ -190,6 +230,11 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
 
         // Skip seats that overlap with non-chair furniture (e.g. bookshelf tops)
         if (nonChairFurnitureTiles.has(`${tileCol},${tileRow}`)) continue
+
+        // isLounge = true for rest furniture (sofas, beds) — idle agents sit here
+        // Benches are workstations, not lounge
+        const upper = item.type.toUpperCase()
+        const isSofa = upper.startsWith('SOFA') || upper.startsWith('BED')
 
         // Determine facing direction:
         // 1) Adjacent desk direction (highest priority — face the desk)
@@ -205,13 +250,15 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
             break
           }
         }
-        // If no adjacent desk, use chair orientation
-        if (!foundAdjacentDesk && entry.orientation) {
-          facingDir = orientationToFacing(entry.orientation)
+        // If no adjacent desk, use chair orientation (but sofas always face forward)
+        if (!foundAdjacentDesk) {
+          if (isSofa) {
+            // Lounge seats: characters always face forward (toward camera) for natural look
+            facingDir = Direction.DOWN
+          } else if (entry.orientation) {
+            facingDir = orientationToFacing(entry.orientation)
+          }
         }
-
-        // isLounge = true ONLY for SOFA furniture types (idle agents sit on sofas)
-        const isSofa = item.type.toUpperCase().startsWith('SOFA')
 
         // First seat uses chair uid (backward compat), subsequent use uid:N
         const seatUid = seatCount === 0 ? item.uid : `${item.uid}:${seatCount}`
@@ -223,6 +270,7 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
           assigned: false,
           isLounge: isSofa,
           facesDesk: foundAdjacentDesk,
+          requiredRoles: ROLE_RESTRICTED_CHAIRS[item.type] ?? null,
         })
         seatCount++
       }

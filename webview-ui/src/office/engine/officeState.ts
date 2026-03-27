@@ -51,6 +51,8 @@ export class OfficeState {
   subagentIdMap: Map<string, number> = new Map()
   /** Reverse lookup: sub-agent character ID → parent info */
   subagentMeta: Map<number, { parentAgentId: number; parentToolId: string }> = new Map()
+  /** Agent role strings (e.g. "boss") — used for role-restricted seat assignment */
+  agentRoles: Map<number, string> = new Map()
   private nextSubagentId = -1
 
   constructor(layout?: OfficeLayout) {
@@ -186,27 +188,48 @@ export class OfficeState {
     return true
   }
 
-  private findFreeSeat(): string | null {
-    // Priority 1: desk-facing non-lounge seats (workstations)
-    for (const [uid, seat] of this.seats) {
-      if (!seat.assigned && !seat.isLounge && seat.facesDesk && !this.isSeatClaimed(uid)) return uid
+  /** Check if an agent's role allows them to sit in a given seat */
+  private canSitInSeat(seat: Seat, agentId: number): boolean {
+    if (!seat.requiredRoles) return true // unrestricted seat
+    const role = this.agentRoles.get(agentId)
+    return !!role && seat.requiredRoles.includes(role)
+  }
+
+  /** Check if a seat is role-restricted and the agent's role matches */
+  private isRoleSeatForAgent(seat: Seat, agentId: number): boolean {
+    if (!seat.requiredRoles) return false
+    const role = this.agentRoles.get(agentId)
+    return !!role && seat.requiredRoles.includes(role)
+  }
+
+  private findFreeSeat(agentId?: number): string | null {
+    // Priority 0: role-restricted seats for matching agents (boss/lead/megaboss)
+    if (agentId !== undefined) {
+      for (const [uid, seat] of this.seats) {
+        if (!seat.assigned && !seat.isLounge && !this.isSeatClaimed(uid)
+            && this.isRoleSeatForAgent(seat, agentId)) return uid
+      }
     }
-    // Priority 2: any non-lounge seats
+
+    // Priority 1: desk-facing non-lounge seats (workstations), skip role-restricted seats
     for (const [uid, seat] of this.seats) {
-      if (!seat.assigned && !seat.isLounge && !this.isSeatClaimed(uid)) return uid
+      if (!seat.assigned && !seat.isLounge && seat.facesDesk && !this.isSeatClaimed(uid)
+          && (agentId === undefined || this.canSitInSeat(seat, agentId))) return uid
     }
-    // Priority 3: lounge seats
+    // Priority 2: any non-lounge seats, skip role-restricted seats
     for (const [uid, seat] of this.seats) {
-      if (!seat.assigned && !this.isSeatClaimed(uid)) return uid
+      if (!seat.assigned && !seat.isLounge && !this.isSeatClaimed(uid)
+          && (agentId === undefined || this.canSitInSeat(seat, agentId))) return uid
     }
+    // Lounge seats (sofas, benches) are NEVER assigned as workstations
     return null
   }
 
   /** Find the closest free seat to a given parent agent's position.
-   *  Priority: desk-facing non-lounge > non-lounge > lounge. */
-  private findFreeSeatNear(parentAgentId: number): string | null {
+   *  Priority: role-restricted (for matching role) > desk-facing non-lounge > non-lounge. */
+  private findFreeSeatNear(parentAgentId: number, agentId?: number): string | null {
     const parentCh = this.characters.get(parentAgentId)
-    if (!parentCh) return this.findFreeSeat()
+    if (!parentCh) return this.findFreeSeat(agentId)
 
     const parentCol = parentCh.tileCol
     const parentRow = parentCh.tileRow
@@ -215,31 +238,79 @@ export class OfficeState {
     let bestSeatId: string | null = null
     let bestDist = Infinity
 
-    // Priority 1: desk-facing non-lounge seats near parent
+    // Role-restricted seats near parent (boss/lead/megaboss)
+    if (agentId !== undefined) {
+      for (const [uid, seat] of this.seats) {
+        if (seat.assigned || seat.isLounge || this.isSeatClaimed(uid)) continue
+        if (!this.isRoleSeatForAgent(seat, agentId)) continue
+        const d = dist(seat)
+        if (d < bestDist) { bestDist = d; bestSeatId = uid }
+      }
+      if (bestSeatId) return bestSeatId
+      bestDist = Infinity
+    }
+
+    // Priority 1: desk-facing non-lounge seats near parent (skip role-restricted)
     for (const [uid, seat] of this.seats) {
       if (seat.assigned || seat.isLounge || !seat.facesDesk || this.isSeatClaimed(uid)) continue
+      if (agentId !== undefined && !this.canSitInSeat(seat, agentId)) continue
       const d = dist(seat)
       if (d < bestDist) { bestDist = d; bestSeatId = uid }
     }
-    // Priority 2: any non-lounge seats near parent
+    // Priority 2: any non-lounge seats near parent (skip role-restricted)
     if (!bestSeatId) {
       bestDist = Infinity
       for (const [uid, seat] of this.seats) {
         if (seat.assigned || seat.isLounge || this.isSeatClaimed(uid)) continue
+        if (agentId !== undefined && !this.canSitInSeat(seat, agentId)) continue
         const d = dist(seat)
         if (d < bestDist) { bestDist = d; bestSeatId = uid }
       }
     }
-    // Priority 3: lounge seats near parent
-    if (!bestSeatId) {
-      bestDist = Infinity
-      for (const [uid, seat] of this.seats) {
-        if (seat.assigned || this.isSeatClaimed(uid)) continue
-        const d = dist(seat)
-        if (d < bestDist) { bestDist = d; bestSeatId = uid }
-      }
-    }
+    // Lounge seats (sofas, benches) are NEVER assigned as workstations
     return bestSeatId
+  }
+
+  /** Update agent role and reassign to a role-appropriate seat if needed */
+  setAgentRole(agentId: number, role: string): void {
+    this.agentRoles.set(agentId, role)
+    const ch = this.characters.get(agentId)
+    if (!ch) return
+
+    // Check if current seat is appropriate for the new role
+    if (ch.seatId) {
+      const currentSeat = this.seats.get(ch.seatId)
+      if (currentSeat) {
+        // If in a role-restricted seat that doesn't match, vacate
+        if (currentSeat.requiredRoles && !currentSeat.requiredRoles.includes(role)) {
+          currentSeat.assigned = false
+          ch.seatId = null
+        }
+        // If there's a role-restricted seat available and agent qualifies, move there
+        else if (!currentSeat.requiredRoles) {
+          for (const [uid, seat] of this.seats) {
+            if (seat.requiredRoles && seat.requiredRoles.includes(role)
+                && !seat.assigned && !this.isSeatClaimed(uid)) {
+              currentSeat.assigned = false
+              if (this.claimSeat(uid)) {
+                ch.seatId = uid
+                this.sendToSeat(agentId)
+              }
+              return
+            }
+          }
+        }
+      }
+    }
+
+    // If no seat yet, find one matching the role
+    if (!ch.seatId) {
+      const seatId = this.findFreeSeat(agentId)
+      if (seatId && this.claimSeat(seatId)) {
+        ch.seatId = seatId
+        this.sendToSeat(agentId)
+      }
+    }
   }
 
   /**
@@ -294,17 +365,41 @@ export class OfficeState {
       hueShift = pick.hueShift
     }
 
-    // Try preferred seat first, then find a seat near parent (if subagent), then any free seat
+    // Try role-restricted seat first (boss/lead agents get priority for their chairs),
+    // then preferred seat, then find a seat near parent (if subagent), then any free seat.
     // Hard invariant: one seat = one character, verified by claimSeat
     let seatId: string | null = null
-    if (preferredSeatId && this.claimSeat(preferredSeatId)) {
+
+    // If agent has a role, check for matching role-restricted seats first
+    const agentRole = this.agentRoles.get(id)
+    const roleSeatCandidates: string[] = []
+    for (const [uid, seat] of this.seats) {
+      if (seat.requiredRoles) roleSeatCandidates.push(`${uid}(roles=${seat.requiredRoles.join(',')},assigned=${seat.assigned},claimed=${this.isSeatClaimed(uid)})`)
+    }
+    console.log(`[addAgent] id=${id} role=${agentRole ?? 'none'} preferredSeat=${preferredSeatId ?? 'none'} roleSeatCandidates=[${roleSeatCandidates.join(', ')}]`)
+
+    if (agentRole) {
+      for (const [uid, seat] of this.seats) {
+        if (seat.requiredRoles && seat.requiredRoles.includes(agentRole)
+            && !seat.assigned && !this.isSeatClaimed(uid)) {
+          if (this.claimSeat(uid)) {
+            seatId = uid
+            console.log(`[addAgent] id=${id} → role-restricted seat ${uid}`)
+            break
+          }
+        }
+      }
+    }
+
+    if (!seatId && preferredSeatId && this.claimSeat(preferredSeatId)) {
       seatId = preferredSeatId
+      console.log(`[addAgent] id=${id} → preferred seat ${preferredSeatId}`)
     }
     if (!seatId && parentAgentId !== undefined) {
-      seatId = this.findFreeSeatNear(parentAgentId)
+      seatId = this.findFreeSeatNear(parentAgentId, id)
     }
     if (!seatId) {
-      seatId = this.findFreeSeat()
+      seatId = this.findFreeSeat(id)
     }
     // Claim the found seat (findFreeSeat doesn't mark assigned)
     if (seatId && !this.seats.get(seatId)?.assigned) {
@@ -341,6 +436,9 @@ export class OfficeState {
       ch.y = spawn.row * TILE_SIZE + TILE_SIZE / 2
       ch.tileCol = spawn.col
       ch.tileRow = spawn.row
+      // No seat — don't type on the floor, stay idle
+      ch.state = CharacterState.IDLE
+      ch.wanderTimer = 0
     }
 
     if (folderName) {

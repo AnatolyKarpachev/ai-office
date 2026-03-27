@@ -100,7 +100,7 @@ export function ZoomControls({ zoom, onZoomChange }: ZoomControlsProps) {
         style={{
           position: 'absolute',
           top: 8,
-          left: 8,
+          left: 300,
           zIndex: 'var(--pixel-controls-z)',
           display: 'flex',
           flexDirection: 'column',

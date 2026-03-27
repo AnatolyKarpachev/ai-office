@@ -223,6 +223,7 @@ export function loadFurnitureAssets(assetsRoot: string): LoadedFurnitureAssets |
               canPlaceOnSurfaces: manifest.canPlaceOnSurfaces,
               backgroundTiles: manifest.backgroundTiles,
               groupId: manifest.id,
+              ...((manifest as Record<string, unknown>).orientation ? { orientation: (manifest as Record<string, unknown>).orientation as string } : {}),
             },
           ];
         } else {
