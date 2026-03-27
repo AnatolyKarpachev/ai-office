@@ -132,10 +132,14 @@ export function ToolOverlay({
         const isActive = ch.isActive
 
         let dotColor: string | null = null
+        let pauseIcon = false
         if (hasPermission) {
           dotColor = 'var(--pixel-status-permission)'
         } else if (isActive && hasActiveTools) {
           dotColor = 'var(--pixel-status-active)'
+        } else if (!isActive) {
+          dotColor = '#ffcc00'
+          pauseIcon = true
         }
 
         // Role & stats
@@ -179,16 +183,20 @@ export function ToolOverlay({
               }}
             >
               {dotColor && (
-                <span
-                  className={isActive && !hasPermission ? 'pixel-agents-pulse' : undefined}
-                  style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: '50%',
-                    background: dotColor,
-                    flexShrink: 0,
-                  }}
-                />
+                pauseIcon ? (
+                  <span style={{ fontSize: '10px', lineHeight: 1, color: '#ffcc00', flexShrink: 0 }}>⏸</span>
+                ) : (
+                  <span
+                    className={isActive && !hasPermission ? 'pixel-agents-pulse' : undefined}
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: '50%',
+                      background: dotColor,
+                      flexShrink: 0,
+                    }}
+                  />
+                )
               )}
               {isSub ? (
                 /* Subagent: only colored badge, no name */

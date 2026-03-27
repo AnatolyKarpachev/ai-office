@@ -371,8 +371,8 @@ export function updateCharacter(
             if (seat && ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow) {
               ch.state = CharacterState.TYPE
               ch.dir = seat.facingDir
-              // seatTimer < 0 is sentinel from setAgentActive(false) — skip rest
-              if (ch.seatTimer < 0) {
+              if (!ch.isActive) {
+                // Idle agents: never rest at desk — transition to IDLE immediately
                 ch.seatTimer = 0
               } else {
                 ch.seatTimer = randomRange(SEAT_REST_MIN_SEC, SEAT_REST_MAX_SEC)

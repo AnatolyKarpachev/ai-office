@@ -335,6 +335,7 @@ export function useExtensionMessages(
           }
         })
         os.showPermissionBubble(id)
+        os.setAgentActive(id, false) // permission wait = idle, go rest
         playDoneSound()
       } else if (msg.type === 'subagentToolPermission') {
         const id = msg.id as number
@@ -343,6 +344,7 @@ export function useExtensionMessages(
         const subId = os.getSubagentId(id, parentToolId)
         if (subId !== null) {
           os.showPermissionBubble(subId)
+          os.setAgentActive(subId, false) // permission wait = idle
         }
         playDoneSound()
       } else if (msg.type === 'agentToolPermissionClear') {

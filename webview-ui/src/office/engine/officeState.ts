@@ -36,6 +36,8 @@ export class OfficeState {
   tileMap: TileTypeVal[][]
   seats: Map<string, Seat>
   blockedTiles: Set<string>
+  /** Empty blocked tiles for idle agents — they can walk through furniture */
+  idleBlockedTiles: Set<string> = new Set()
   furniture: FurnitureInstance[]
   walkableTiles: Array<{ col: number; row: number }>
   characters: Map<number, Character> = new Map()
@@ -157,12 +159,13 @@ export class OfficeState {
     return `${seat.seatCol},${seat.seatRow}`
   }
 
-  /** Temporarily unblock a character's own seat, run fn, then re-block */
+  /** Temporarily unblock a character's own seat, run fn, then restore original state */
   private withOwnSeatUnblocked<T>(ch: Character, fn: () => T): T {
     const key = this.ownSeatKey(ch)
+    const wasBlocked = key ? this.blockedTiles.has(key) : false
     if (key) this.blockedTiles.delete(key)
     const result = fn()
-    if (key) this.blockedTiles.add(key)
+    if (key && wasBlocked) this.blockedTiles.add(key)
     return result
   }
 
@@ -826,10 +829,18 @@ export class OfficeState {
         continue // skip normal FSM while effect is active
       }
 
-      // Temporarily unblock own seat so character can pathfind to it
-      this.withOwnSeatUnblocked(ch, () =>
-        updateCharacter(ch, dt, this.walkableTiles, this.seats, this.tileMap, this.blockedTiles, this.characters)
-      )
+      if (!ch.isActive) {
+        // Idle agents: use empty blockedTiles so they can walk through furniture to reach sofas
+        // (they need to step off their desk/chair area which is surrounded by blocked desk tiles)
+        updateCharacter(ch, dt, this.walkableTiles, this.seats, this.tileMap, this.idleBlockedTiles, this.characters)
+      } else {
+        // Active agents: normal furniture blocking, unblock own seat
+        this.withOwnSeatUnblocked(ch, () =>
+          updateCharacter(ch, dt, this.walkableTiles, this.seats, this.tileMap, this.blockedTiles, this.characters)
+        )
+      }
+      // Expose state for debugging
+      ;(globalThis as any).__pixelAgentsOS = this;
 
       // Tick bubble timer for waiting / activity bubbles
       if (ch.bubbleType === 'waiting' || ch.bubbleType === 'activity') {
