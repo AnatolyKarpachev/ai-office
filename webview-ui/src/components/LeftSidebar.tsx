@@ -398,6 +398,25 @@ export function LeftSidebar({
                               })()}
                             </div>
                             <div style={{ fontSize: '14px', color: subHasPermission ? 'var(--pixel-status-permission)' : subIsActive ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subActivity}</div>
+                            {(() => {
+                              const subStats = agentStats.get(sub.id)
+                              if (!subStats) return null
+                              const subTotalTokens = subStats.totalInputTokens + subStats.totalOutputTokens
+                              const subContextLimit = getContextLimit(subStats.model)
+                              if (subTotalTokens === 0) return null
+                              return (
+                                <>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                                    <TokenBar totalTokens={subTotalTokens} contextLimit={subContextLimit} model={subStats.model} turnCount={subStats.turnCount} visible={true} />
+                                    <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.25)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{formatNumber(subTotalTokens)} tok</span>
+                                  </div>
+                                  <div style={{ display: 'flex', gap: 6, marginTop: 1, fontSize: '12px', color: 'rgba(255,255,255,0.2)', fontFamily: 'monospace' }}>
+                                    <span>{subStats.turnCount} turns</span>
+                                    <span>{formatDuration(subStats.totalDurationMs)}</span>
+                                  </div>
+                                </>
+                              )
+                            })()}
                           </div>
                         )
                       })}
