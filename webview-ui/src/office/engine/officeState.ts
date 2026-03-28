@@ -1163,6 +1163,13 @@ export class OfficeState {
           }
         }
       }
+      // Force pathfind to assigned seat on activation (skip multi-tick state machine delay)
+      if (ch.seatId) {
+        const seat = this.seats.get(ch.seatId)
+        if (seat && (ch.tileCol !== seat.seatCol || ch.tileRow !== seat.seatRow)) {
+          this.sendToSeat(id)
+        }
+      }
     }
     this.rebuildFurnitureInstances()
   }

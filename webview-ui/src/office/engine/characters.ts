@@ -200,6 +200,21 @@ export function updateCharacter(
         ch.state = CharacterState.IDLE
         ch.frame = 0
         ch.frameTimer = 0
+        // Boss/lead: prefer returning to role-restricted seat over sofa
+        if (ch.seatId) {
+          const ownSeat = seats.get(ch.seatId)
+          if (ownSeat?.requiredRoles && (ch.tileCol !== ownSeat.seatCol || ch.tileRow !== ownSeat.seatRow)) {
+            const ownPath = findPath(ch.tileCol, ch.tileRow, ownSeat.seatCol, ownSeat.seatRow, tileMap, blockedTiles)
+            if (ownPath.length > 0) {
+              ch.path = ownPath
+              ch.moveProgress = 0
+              ch.state = CharacterState.WALK
+              ch.frame = 0
+              ch.frameTimer = 0
+              break
+            }
+          }
+        }
         // Immediately try to find a free sofa
         const loungeTarget = findFreeLoungeSeat(seats, ch, allCharacters, tileMap, blockedTiles)
         if (loungeTarget) {
@@ -270,8 +285,25 @@ export function updateCharacter(
       // Countdown wander timer
       ch.wanderTimer -= dt
       if (ch.wanderTimer <= 0) {
-        // Idle agents: try to find a lounge seat (sofa/bench) every wander cycle
+        // Idle agents: boss/lead prefers role-restricted seat; others seek lounge
         if (!ch.isActive) {
+          // Boss/lead: walk to own role-restricted seat instead of sofa
+          if (ch.seatId) {
+            const ownSeat = seats.get(ch.seatId)
+            if (ownSeat?.requiredRoles && (ch.tileCol !== ownSeat.seatCol || ch.tileRow !== ownSeat.seatRow)) {
+              const ownPath = findPath(ch.tileCol, ch.tileRow, ownSeat.seatCol, ownSeat.seatRow, tileMap, blockedTiles)
+              if (ownPath.length > 0) {
+                ch.path = ownPath
+                ch.moveProgress = 0
+                ch.state = CharacterState.WALK
+                ch.frame = 0
+                ch.frameTimer = 0
+                ch.wanderCount++
+                ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
+                break
+              }
+            }
+          }
           const loungeTarget = findFreeLoungeSeat(seats, ch, allCharacters, tileMap, blockedTiles)
           if (loungeTarget) {
             const path = findPath(ch.tileCol, ch.tileRow, loungeTarget.seatCol, loungeTarget.seatRow, tileMap, blockedTiles)
@@ -417,8 +449,8 @@ export function updateCharacter(
               ch.state = CharacterState.TYPE
               ch.dir = seat.facingDir
               if (!ch.isActive) {
-                // Idle agents: never rest at desk — transition to IDLE immediately
-                ch.seatTimer = 0
+                // Role-restricted seat (boss chair): stay like on sofa; regular desk: leave immediately
+                ch.seatTimer = seat.requiredRoles ? 9999 : 0
               } else {
                 ch.seatTimer = randomRange(SEAT_REST_MIN_SEC, SEAT_REST_MAX_SEC)
               }
