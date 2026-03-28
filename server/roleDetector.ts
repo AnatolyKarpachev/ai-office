@@ -137,6 +137,168 @@ const AGENT_SETTING_DISPLAY_NAMES: Record<string, string> = {
   "general-purpose":   "worker",
 };
 
+// ── Qualified Role Naming ─────────────────────────────────────────────
+// When multiple agents share the same agentSetting, qualify with a keyword from description
+
+const MAX_QUALIFIED_ROLE_LENGTH = 15;
+
+interface QualifiedBase {
+  preferred: string; // Full descriptive base (used when qualifier is short)
+  compact: string;   // Shorter fallback (used when qualifier is long)
+}
+
+const AGENT_SETTING_QUALIFIED_BASE: Record<string, QualifiedBase> = {
+  "plan":              { preferred: "Planner",     compact: "Planner" },
+  "explore":           { preferred: "Explorer",    compact: "Explorer" },
+  "code reviewer":     { preferred: "Reviewer",    compact: "Reviewer" },
+  "merge agent":       { preferred: "Merger",      compact: "Merger" },
+  "docs agent":        { preferred: "Writer",      compact: "Writer" },
+  "ios builder":       { preferred: "iOSBuilder",  compact: "IosDev" },
+  "backend builder":   { preferred: "BackendDev",  compact: "BackDev" },
+  "qa tester":         { preferred: "QAValidator",  compact: "QA" },
+  "claude-code-guide": { preferred: "Guide",       compact: "Guide" },
+};
+
+const KNOWN_ABBREVIATIONS: Record<string, string> = {
+  "architecture":    "arch",
+  "observability":   "obs",
+  "performance":     "perf",
+  "infrastructure":  "infra",
+  "configuration":   "config",
+  "authentication":  "auth",
+  "authorization":   "authz",
+  "documentation":   "docs",
+  "development":     "dev",
+  "production":      "prod",
+  "environment":     "env",
+  "application":     "app",
+  "implementation":  "impl",
+  "specification":   "spec",
+  "security":        "sec",
+  "database":        "db",
+  "repository":      "repo",
+  "dependencies":    "deps",
+  "integration":     "integ",
+  "kubernetes":      "k8s",
+  "notification":    "notif",
+  "management":      "mgmt",
+  "pipeline":        "pipe",
+  "capabilities":    "caps",
+  "screenshots":     "screens",
+  "changelog":       "changelog",
+  "frontend":        "frontend",
+  "backend":         "backend",
+  "worktree":        "worktree",
+};
+
+// Short domain terms that are already ideal qualifiers — returned immediately
+const PRIORITY_QUALIFIERS = new Set([
+  "ui", "ux", "ios", "api", "e2e", "ci", "cd", "db", "ml", "ai",
+  "auth", "ssl", "tls", "http", "grpc", "rest", "graphql",
+]);
+
+const QUALIFIER_NOISE_WORDS = new Set([
+  // Articles & determiners
+  "a", "an", "the", "this", "that", "these", "those", "some", "any", "all",
+  "each", "every", "no", "not",
+  // Prepositions & conjunctions
+  "of", "for", "in", "on", "to", "with", "and", "or", "by", "from", "at",
+  "into", "about", "via", "using", "through", "between", "within", "across",
+  // Generic verbs
+  "analyze", "check", "ensure", "investigate", "examine", "verify", "study",
+  "review", "assess", "evaluate", "perform", "run", "execute", "handle",
+  "process", "look", "determine", "identify", "resolve", "address", "fix",
+  // Generic nouns
+  "code", "agent", "task", "work", "issue", "issues", "problem", "system",
+  "project", "file", "files", "changes", "module", "main", "master",
+  // Common adjectives (not domain-specific)
+  "existing", "current", "new", "old", "available", "latest", "specific",
+  "basic", "simple", "complex", "full", "complete", "partial",
+]);
+
+const AGENT_TYPE_STOP_WORDS: Record<string, string[]> = {
+  "plan":            ["plan", "planning", "design", "designing"],
+  "explore":         ["explore", "exploration", "exploring", "find", "finding", "discovery", "search", "searching"],
+  "code reviewer":   ["review", "reviewing", "reviewer", "code", "audit", "auditing"],
+  "merge agent":     ["merge", "merging"],
+  "docs agent":      ["doc", "docs", "documentation", "write", "writing"],
+  "ios builder":     ["build", "building", "builder", "ios"],
+  "backend builder": ["build", "building", "builder", "backend"],
+  "qa tester":       ["test", "testing", "tester", "validate", "validation", "qa"],
+  "claude-code-guide": ["guide", "help", "explain"],
+};
+
+function extractQualifierFromDescription(description: string, agentSetting: string): string | null {
+  const tokens = description.toLowerCase().split(/[\s\-_:,;.+/()[\]{}]+/).filter(w => w.length > 0);
+
+  // Build combined noise set
+  const typeStops = AGENT_TYPE_STOP_WORDS[agentSetting] || [];
+  const noise = new Set([...QUALIFIER_NOISE_WORDS, ...typeStops]);
+
+  // Remove noise, keep meaningful tokens
+  const meaningful = tokens.filter(t => !noise.has(t) && !/^\d+$/.test(t));
+
+  // Priority 1: known short domain terms — return immediately
+  for (const word of meaningful) {
+    if (PRIORITY_QUALIFIERS.has(word)) return word;
+  }
+
+  // Priority 2: score remaining words (>= 3 chars)
+  const candidates = meaningful.filter(w => w.length >= 3);
+  if (candidates.length === 0) return null;
+
+  const preferredBase = AGENT_SETTING_QUALIFIED_BASE[agentSetting]?.preferred || "";
+  const budget = MAX_QUALIFIED_ROLE_LENGTH - preferredBase.length;
+
+  let bestWord: string | null = null;
+  let bestScore = -Infinity;
+
+  for (const word of candidates) {
+    let score = 0;
+    // +10 if we have a clean known abbreviation
+    if (KNOWN_ABBREVIATIONS[word]) score += 10;
+    // +5 if the full word fits within budget
+    if (word.length <= budget) score += 5;
+    // +length (longer words tend to be more specific)
+    score += word.length;
+    // -5 for abstract nouns (suffix -ity, -ness, -ment, -ance, -ence)
+    if (/(?:ity|ness|ment|ance|ence)$/i.test(word)) score -= 5;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestWord = word;
+    }
+  }
+
+  return bestWord;
+}
+
+function composeQualifiedRole(qualifier: string, bases: QualifiedBase, maxLen: number): string {
+  const abbr = KNOWN_ABBREVIATIONS[qualifier] ?? null;
+
+  // 1. Full qualifier + preferred base
+  if ((qualifier + bases.preferred).length <= maxLen) {
+    return qualifier + bases.preferred;
+  }
+  // 2. Known abbreviation + preferred base
+  if (abbr && (abbr + bases.preferred).length <= maxLen) {
+    return abbr + bases.preferred;
+  }
+  // 3. Full qualifier + compact base
+  if ((qualifier + bases.compact).length <= maxLen) {
+    return qualifier + bases.compact;
+  }
+  // 4. Known abbreviation + compact base
+  if (abbr && (abbr + bases.compact).length <= maxLen) {
+    return abbr + bases.compact;
+  }
+  // 5. Last resort: truncate qualifier to fit compact base
+  const budgetLeft = maxLen - bases.compact.length;
+  if (budgetLeft < 2) return bases.compact;
+  const truncated = qualifier.slice(0, budgetLeft);
+  return truncated + bases.compact;
+}
+
 // ── Level 1: Direct role/abbreviation mentions ─────────────────────────
 // Patterns like "as PM", "act as QA", or standalone abbreviations in text
 const ABBREVIATION_MAP: Record<string, string> = {
@@ -304,13 +466,29 @@ export function resolveDisplayRole(
   description: string | undefined,
   isSubagent?: boolean,
 ): { displayRole: string; colors: RoleColors } {
-  // If agentSetting is a known meaningful role, normalize and use it
+  // If agentSetting is a known meaningful role, try qualified naming first
   if (agentSetting && agentSetting.toLowerCase() !== "general-purpose") {
-    const normalized = AGENT_SETTING_DISPLAY_NAMES[agentSetting.toLowerCase()];
+    const settingLower = agentSetting.toLowerCase();
+
+    // Try to qualify the role using a keyword from description
+    const bases = AGENT_SETTING_QUALIFIED_BASE[settingLower];
+    if (bases && description) {
+      const qualifier = extractQualifierFromDescription(description, settingLower);
+      if (qualifier) {
+        const qualifiedRole = composeQualifiedRole(qualifier, bases, MAX_QUALIFIED_ROLE_LENGTH);
+        return {
+          displayRole: qualifiedRole,
+          colors: getRoleColors(agentSetting),
+        };
+      }
+    }
+
+    // Fallback: unqualified display name
+    const normalized = AGENT_SETTING_DISPLAY_NAMES[settingLower];
     const displayName = normalized || agentSetting;
     return {
       displayRole: displayName,
-      colors: getRoleColors(agentSetting), // colors keyed by original agentSetting
+      colors: getRoleColors(agentSetting),
     };
   }
 

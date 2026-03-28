@@ -229,6 +229,7 @@ export function processTranscriptLine(
       const truncated = compactName(agentName, MAX_AGENT_NAME_LENGTH);
       agent.projectName = truncated;
       emit({ type: "agentRenamed", id: agent.id, folderName: truncated });
+      statsChanged = true; // trigger syncRoleAndBroadcast → role re-resolution
     }
   }
 
