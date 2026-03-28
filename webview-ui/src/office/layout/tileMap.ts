@@ -34,6 +34,43 @@ export function getWalkableTiles(
   return tiles
 }
 
+/** BFS flood-fill from a single source. Returns walking distance to every reachable tile. */
+export function bfsDistanceMap(
+  startCol: number,
+  startRow: number,
+  tileMap: TileType[][],
+  blockedTiles: Set<string>,
+): Map<string, number> {
+  const key = (c: number, r: number) => `${c},${r}`
+  const dist = new Map<string, number>()
+  dist.set(key(startCol, startRow), 0)
+
+  const queue: Array<{ col: number; row: number }> = [{ col: startCol, row: startRow }]
+  const dirs = [
+    { dc: 0, dr: -1 },
+    { dc: 0, dr: 1 },
+    { dc: -1, dr: 0 },
+    { dc: 1, dr: 0 },
+  ]
+
+  while (queue.length > 0) {
+    const curr = queue.shift()!
+    const currDist = dist.get(key(curr.col, curr.row))!
+
+    for (const d of dirs) {
+      const nc = curr.col + d.dc
+      const nr = curr.row + d.dr
+      const nk = key(nc, nr)
+      if (dist.has(nk)) continue
+      if (!isWalkable(nc, nr, tileMap, blockedTiles)) continue
+      dist.set(nk, currDist + 1)
+      queue.push({ col: nc, row: nr })
+    }
+  }
+
+  return dist
+}
+
 /** BFS pathfinding on 4-connected grid (no diagonals). Returns path excluding start, including end. */
 export function findPath(
   startCol: number,

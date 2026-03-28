@@ -1,7 +1,7 @@
 import { CharacterState, Direction, TILE_SIZE } from '../types.js'
 import type { Character, Seat, SpriteData, TileType as TileTypeVal } from '../types.js'
 import type { CharacterSprites } from '../sprites/spriteData.js'
-import { findPath } from '../layout/tileMap.js'
+import { findPath, bfsDistanceMap } from '../layout/tileMap.js'
 import {
   WALK_SPEED_PX_PER_SEC,
   WALK_FRAME_DURATION_SEC,
@@ -98,11 +98,14 @@ function isOnLoungeSeat(ch: Character, seats: Map<string, Seat>): boolean {
   return false
 }
 
-/** Find a free lounge seat (sofa/bench, not at a desk) for an idle agent to sit on */
+/** Find a free lounge seat (sofa/bench, not at a desk) for an idle agent to sit on.
+ *  Uses BFS walking distance to pick the nearest reachable seat. */
 function findFreeLoungeSeat(
   seats: Map<string, Seat>,
   ch: Character,
   allCharacters?: Map<number, Character>,
+  tileMap?: TileTypeVal[][],
+  blockedTiles?: Set<string>,
 ): Seat | null {
   // Build set of claimed seat UIDs (characters walking toward or sitting on a seat)
   const claimedSeats = new Set<string>()
@@ -116,6 +119,11 @@ function findFreeLoungeSeat(
     }
   }
 
+  // Use BFS walking distance if tile map available, otherwise fall back to Manhattan
+  const distMap = tileMap && blockedTiles
+    ? bfsDistanceMap(ch.tileCol, ch.tileRow, tileMap, blockedTiles)
+    : null
+
   let bestSeat: Seat | null = null
   let bestDist = Infinity
   for (const seat of seats.values()) {
@@ -124,7 +132,9 @@ function findFreeLoungeSeat(
     if (claimedSeats.has(seat.uid)) continue
     if (ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow) continue
     if (occupied.has(`${seat.seatCol},${seat.seatRow}`)) continue
-    const dist = Math.abs(seat.seatCol - ch.tileCol) + Math.abs(seat.seatRow - ch.tileRow)
+    const dist = distMap
+      ? (distMap.get(`${seat.seatCol},${seat.seatRow}`) ?? Infinity)
+      : Math.abs(seat.seatCol - ch.tileCol) + Math.abs(seat.seatRow - ch.tileRow)
     if (dist < bestDist) {
       bestDist = dist
       bestSeat = seat
@@ -181,7 +191,7 @@ export function updateCharacter(
         ch.frame = 0
         ch.frameTimer = 0
         // Immediately try to find a free sofa
-        const loungeTarget = findFreeLoungeSeat(seats, ch, allCharacters)
+        const loungeTarget = findFreeLoungeSeat(seats, ch, allCharacters, tileMap, blockedTiles)
         if (loungeTarget) {
           const path = findPath(ch.tileCol, ch.tileRow, loungeTarget.seatCol, loungeTarget.seatRow, tileMap, blockedTiles)
           if (path.length > 0) {
@@ -241,7 +251,7 @@ export function updateCharacter(
       if (ch.wanderTimer <= 0) {
         // Idle agents: try to find a lounge seat (sofa/bench) every wander cycle
         if (!ch.isActive) {
-          const loungeTarget = findFreeLoungeSeat(seats, ch, allCharacters)
+          const loungeTarget = findFreeLoungeSeat(seats, ch, allCharacters, tileMap, blockedTiles)
           if (loungeTarget) {
             const path = findPath(ch.tileCol, ch.tileRow, loungeTarget.seatCol, loungeTarget.seatRow, tileMap, blockedTiles)
             if (path.length > 0) {

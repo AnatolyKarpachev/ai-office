@@ -24,7 +24,7 @@ import {
 import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture } from '../types.js'
 import { createCharacter, updateCharacter } from './characters.js'
 import { matrixEffectSeeds } from './matrixEffect.js'
-import { isWalkable, getWalkableTiles, findPath } from '../layout/tileMap.js'
+import { isWalkable, getWalkableTiles, findPath, bfsDistanceMap } from '../layout/tileMap.js'
 import {
   createDefaultLayout,
   layoutToTileMap,
@@ -74,6 +74,8 @@ export class OfficeState {
   /** Agent role strings (e.g. "boss") — used for role-restricted seat assignment */
   agentRoles: Map<number, string> = new Map()
   private nextSubagentId = -1
+  /** BFS distance map cache: key = "col,row" source → Map of distances to all reachable tiles */
+  private distanceCache = new Map<string, Map<string, number>>()
 
   constructor(layout?: OfficeLayout) {
     this.layout = layout || createDefaultLayout()
@@ -110,6 +112,7 @@ export class OfficeState {
     this.idleBlockedTiles = getIdleBlockedTiles(layout.furniture, seatTiles)
     this.rebuildFurnitureInstances()
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles)
+    this.distanceCache.clear()
 
     // Shift character positions when grid expands left/up
     if (shift && (shift.col !== 0 || shift.row !== 0)) {
@@ -284,6 +287,50 @@ export class OfficeState {
     return { col: cCol / wSum, row: cRow / wSum, members }
   }
 
+  /** Snap fractional coordinates to the nearest walkable tile */
+  private snapToWalkable(col: number, row: number): { col: number; row: number } {
+    const c = Math.round(col)
+    const r = Math.round(row)
+    if (isWalkable(c, r, this.tileMap, this.blockedTiles)) return { col: c, row: r }
+    // Search in expanding radius for nearest walkable tile
+    for (let radius = 1; radius <= 10; radius++) {
+      let bestDist = Infinity
+      let best = { col: c, row: r }
+      for (let dc = -radius; dc <= radius; dc++) {
+        for (let dr = -radius; dr <= radius; dr++) {
+          if (Math.abs(dc) + Math.abs(dr) > radius) continue
+          const nc = c + dc, nr = r + dr
+          if (isWalkable(nc, nr, this.tileMap, this.blockedTiles)) {
+            const d = Math.abs(nc - col) + Math.abs(nr - row)
+            if (d < bestDist) { bestDist = d; best = { col: nc, row: nr } }
+          }
+        }
+      }
+      if (bestDist < Infinity) return best
+    }
+    return { col: c, row: r }
+  }
+
+  /** Get BFS distance map from a source tile (cached) */
+  private getBfsDistanceMap(col: number, row: number): Map<string, number> {
+    const key = `${col},${row}`
+    let cached = this.distanceCache.get(key)
+    if (!cached) {
+      cached = bfsDistanceMap(col, row, this.tileMap, this.blockedTiles)
+      this.distanceCache.set(key, cached)
+    }
+    return cached
+  }
+
+  /** Get walking distance between two tiles. Returns Manhattan*3 penalty if unreachable. */
+  private getWalkingDistance(fromCol: number, fromRow: number, toCol: number, toRow: number): number {
+    const distMap = this.getBfsDistanceMap(fromCol, fromRow)
+    const d = distMap.get(`${toCol},${toRow}`)
+    if (d !== undefined) return d
+    // Unreachable — heavy penalty
+    return (Math.abs(fromCol - toCol) + Math.abs(fromRow - toRow)) * 3
+  }
+
   /** Score a seat for team clustering.
    *  Lower score = better seat.
    *  β·d(seat,parent) + α·d(seat,centroid) + γ·nearby_teammates */
@@ -296,11 +343,13 @@ export class OfficeState {
   ): number {
     const beta = Math.max(0, 4 - priority)  // P1:3, P2:2, P3:1, P4:0
     const alpha = priority - 1               // P1:0, P2:1, P3:2, P4:3
-    const dParent = Math.abs(seat.seatCol - parentCol) + Math.abs(seat.seatRow - parentRow)
-    const dCentroid = Math.abs(seat.seatCol - centroidCol) + Math.abs(seat.seatRow - centroidRow)
+    const dParent = this.getWalkingDistance(parentCol, parentRow, seat.seatCol, seat.seatRow)
+    const centroidSnap = this.snapToWalkable(centroidCol, centroidRow)
+    const dCentroid = this.getWalkingDistance(centroidSnap.col, centroidSnap.row, seat.seatCol, seat.seatRow)
     let nearbyCount = 0
     for (const t of teammates) {
-      if (Math.abs(seat.seatCol - t.col) + Math.abs(seat.seatRow - t.row) <= TEAM_SIBLING_RADIUS) {
+      const tSnap = this.snapToWalkable(t.col, t.row)
+      if (this.getWalkingDistance(tSnap.col, tSnap.row, seat.seatCol, seat.seatRow) <= TEAM_SIBLING_RADIUS) {
         nearbyCount++
       }
     }
@@ -416,10 +465,11 @@ export class OfficeState {
           const cluster = this.getClusterCentroid(this.getAgentPriority(agentId).chainRoot)
           let bestUid: string | null = null
           let bestDist = Infinity
+          const centroidSnap = this.snapToWalkable(cluster.col, cluster.row)
           for (const [uid, seat] of this.seats) {
             if (!seat.requiredRoles || !seat.requiredRoles.includes(role)) continue
             if (seat.assigned || this.isSeatClaimed(uid)) continue
-            const d = Math.abs(seat.seatCol - cluster.col) + Math.abs(seat.seatRow - cluster.row)
+            const d = this.getWalkingDistance(centroidSnap.col, centroidSnap.row, seat.seatCol, seat.seatRow)
             if (d < bestDist) { bestDist = d; bestUid = uid }
           }
           if (bestUid) {
@@ -474,14 +524,15 @@ export class OfficeState {
       const role = this.agentRoles.get(id)
       if (!role) continue
 
-      // Find best free role-restricted seat — closest to team cluster, not current wandering position
+      // Find best free role-restricted seat — closest to team cluster by walking distance
       const cluster = this.getClusterCentroid(this.getAgentPriority(id).chainRoot)
+      const centroidSnap = this.snapToWalkable(cluster.col, cluster.row)
       let bestUid: string | null = null
       let bestDist = Infinity
       for (const [uid, seat] of this.seats) {
         if (!seat.requiredRoles || !seat.requiredRoles.includes(role)) continue
         if (seat.assigned || this.isSeatClaimed(uid)) continue
-        const d = Math.abs(seat.seatCol - cluster.col) + Math.abs(seat.seatRow - cluster.row)
+        const d = this.getWalkingDistance(centroidSnap.col, centroidSnap.row, seat.seatCol, seat.seatRow)
         if (d < bestDist) { bestDist = d; bestUid = uid }
       }
       if (!bestUid) continue
@@ -936,14 +987,18 @@ export class OfficeState {
       const seat = this.seats.get(bestSeatId)!
       ch = createCharacter(id, palette, bestSeatId, seat, hueShift)
     } else {
-      // No seats — spawn at closest walkable tile to cluster
+      // No seats — spawn at closest walkable tile to cluster (by walking distance)
       let spawn = { col: 1, row: 1 }
       if (this.walkableTiles.length > 0) {
+        const parentDistMap = this.getBfsDistanceMap(parentCol, parentRow)
+        const centroidSnap = this.snapToWalkable(cluster.col, cluster.row)
+        const centroidDistMap = this.getBfsDistanceMap(centroidSnap.col, centroidSnap.row)
         let closest = this.walkableTiles[0]
         let closestScore = Infinity
         for (const t of this.walkableTiles) {
-          const dParent = Math.abs(t.col - parentCol) + Math.abs(t.row - parentRow)
-          const dCentroid = Math.abs(t.col - cluster.col) + Math.abs(t.row - cluster.row)
+          const tKey = `${t.col},${t.row}`
+          const dParent = parentDistMap.get(tKey) ?? (Math.abs(t.col - parentCol) + Math.abs(t.row - parentRow)) * 3
+          const dCentroid = centroidDistMap.get(tKey) ?? (Math.abs(t.col - cluster.col) + Math.abs(t.row - cluster.row)) * 3
           const s = dParent + dCentroid
           if (s < closestScore) { closest = t; closestScore = s }
         }
