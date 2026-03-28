@@ -221,6 +221,47 @@ export class OfficeState {
     return result
   }
 
+  /** Temporarily unblock desk tiles near a character's own seat and current position,
+   *  run fn, then restore. Unlike idleBlockedTiles which makes ALL desks walkable,
+   *  this only unblocks desk tiles around the character's own workspace so they can
+   *  leave their desk area without walking through every table in the office. */
+  private withOwnWorkspaceUnblocked<T>(ch: Character, fn: () => T): T {
+    const unblockedKeys: string[] = []
+
+    // Collect tiles to check: area around seat + area around current position
+    const seen = new Set<string>()
+    const check = (col: number, row: number, radius: number) => {
+      for (let dr = -radius; dr <= radius; dr++) {
+        for (let dc = -radius; dc <= radius; dc++) {
+          const key = `${col + dc},${row + dr}`
+          if (seen.has(key)) continue
+          seen.add(key)
+          // Unblock only desk tiles: present in blockedTiles but absent in idleBlockedTiles
+          if (this.blockedTiles.has(key) && !this.idleBlockedTiles.has(key)) {
+            this.blockedTiles.delete(key)
+            unblockedKeys.push(key)
+          }
+        }
+      }
+    }
+
+    // Unblock desk tiles near own seat (radius 2)
+    if (ch.seatId) {
+      const seat = this.seats.get(ch.seatId)
+      if (seat) check(seat.seatCol, seat.seatRow, 2)
+    }
+    // Unblock desk tiles near current position (radius 1) in case agent is mid-walk
+    check(ch.tileCol, ch.tileRow, 1)
+
+    const result = fn()
+
+    // Restore all temporarily unblocked tiles
+    for (const k of unblockedKeys) {
+      this.blockedTiles.add(k)
+    }
+    return result
+  }
+
   /** Check if a seatId is already claimed by any live character (skip despawning).
    *  @param excludeId  Optional character ID to exclude from the check (e.g. the character itself) */
   private isSeatClaimed(seatId: string, excludeId?: number): boolean {
@@ -1358,9 +1399,11 @@ export class OfficeState {
       }
 
       if (!ch.isActive) {
-        // Idle agents: use empty blockedTiles so they can walk through furniture to reach sofas
-        // (they need to step off their desk/chair area which is surrounded by blocked desk tiles)
-        updateCharacter(ch, dt, this.walkableTiles, this.seats, this.tileMap, this.idleBlockedTiles, this.characters)
+        // Idle agents: unblock only desk tiles near their own seat so they can leave workspace,
+        // but keep all other desks/tables blocked to prevent walking through them
+        this.withOwnWorkspaceUnblocked(ch, () =>
+          updateCharacter(ch, dt, this.walkableTiles, this.seats, this.tileMap, this.blockedTiles, this.characters)
+        )
       } else {
         // Active agents: normal furniture blocking, unblock own seat
         this.withOwnSeatUnblocked(ch, () =>

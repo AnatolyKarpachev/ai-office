@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
 import type { OfficeState } from '../office/engine/officeState.js'
-import type { AgentStats, AgentRoleInfo, SubagentCharacter } from '../hooks/useExtensionMessages.js'
+import type { AgentStats, AgentRoleInfo, SubagentCharacter, ConversationMessage, AgentDetails } from '../hooks/useExtensionMessages.js'
 import type { ToolActivity } from '../office/types.js'
 import { RoleBadge } from './RoleBadge.js'
 
@@ -231,6 +231,223 @@ function ToolsView({ currentTools, agentRoles }: { currentTools: ToolsViewEntry[
   )
 }
 
+// ── ConversationView component ────────────────────────────────────────
+
+function renderMessageText(text: string): React.ReactNode {
+  const parts = text.split(/(```[\s\S]*?```)/g)
+  return parts.map((part, i) => {
+    if (part.startsWith('```') && part.endsWith('```')) {
+      const code = part.slice(3, -3).replace(/^\w+\n/, '')
+      return (
+        <pre key={i} style={{
+          background: 'rgba(0,0,0,0.3)',
+          padding: '4px 6px',
+          margin: '4px 0',
+          fontSize: '12px',
+          fontFamily: 'monospace',
+          borderRadius: 0,
+          border: '1px solid rgba(255,255,255,0.1)',
+          overflow: 'auto',
+          maxHeight: 150,
+          whiteSpace: 'pre-wrap',
+          wordBreak: 'break-word',
+        }}>
+          {code}
+        </pre>
+      )
+    }
+    return part.split(/(`[^`]+`)/g).map((seg, j) => {
+      if (seg.startsWith('`') && seg.endsWith('`')) {
+        return (
+          <code key={`${i}-${j}`} style={{
+            background: 'rgba(255,255,255,0.1)',
+            padding: '1px 3px',
+            fontSize: '12px',
+            fontFamily: 'monospace',
+          }}>
+            {seg.slice(1, -1)}
+          </code>
+        )
+      }
+      return <span key={`${i}-${j}`}>{seg}</span>
+    })
+  })
+}
+
+function ConversationView({
+  messages,
+  selectedAgentId,
+}: {
+  messages: ConversationMessage[]
+  selectedAgentId: number | null
+}) {
+  if (selectedAgentId === null) {
+    return (
+      <div style={{ padding: 16, textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '18px' }}>
+        Select an agent to view conversation
+      </div>
+    )
+  }
+
+  if (messages.length === 0) {
+    return (
+      <div style={{ padding: 16, textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '18px', fontStyle: 'italic' }}>
+        No messages yet...
+      </div>
+    )
+  }
+
+  return (
+    <>
+      {messages.map((msg, i) => (
+        <div key={i} style={{
+          padding: '6px 8px',
+          marginBottom: 4,
+          borderLeft: `3px solid ${msg.role === 'assistant' ? '#6c5ce7' : '#00b894'}`,
+          background: msg.role === 'assistant'
+            ? 'rgba(108,92,231,0.08)'
+            : 'rgba(0,184,148,0.08)',
+        }}>
+          <div style={{
+            display: 'flex', justifyContent: 'space-between',
+            marginBottom: 2,
+          }}>
+            <span style={{
+              fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase',
+              color: msg.role === 'assistant' ? '#a29bfe' : '#55efc4',
+            }}>
+              {msg.role}
+            </span>
+            <span style={{
+              fontSize: '11px', color: 'rgba(255,255,255,0.3)', fontFamily: 'monospace',
+            }}>
+              {formatTime(new Date(msg.timestamp).getTime())}
+            </span>
+          </div>
+          {msg.toolNames && msg.toolNames.length > 0 && (
+            <div style={{
+              fontSize: '10px', color: 'rgba(90,140,255,0.6)',
+              marginBottom: 3,
+            }}>
+              tools: {msg.toolNames.join(', ')}
+            </div>
+          )}
+          <div style={{
+            fontSize: '13px',
+            color: 'rgba(255,255,255,0.75)',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            lineHeight: '1.4',
+            maxHeight: 200,
+            overflow: 'hidden',
+          }}>
+            {renderMessageText(msg.text)}
+          </div>
+        </div>
+      ))}
+    </>
+  )
+}
+
+// ── AgentDetailsView component ────────────────────────────────────────
+
+function formatNumberCompact(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`
+  return n.toLocaleString()
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`
+  const mins = Math.floor(ms / 60_000)
+  const secs = Math.floor((ms % 60_000) / 1000)
+  return `${mins}m ${secs}s`
+}
+
+function formatIsoTime(isoString: string): string {
+  try {
+    const d = new Date(isoString)
+    return d.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  } catch { return isoString }
+}
+
+function PixelBar({ value, max, color }: { value: number; max: number; color: string }) {
+  const totalBlocks = 8
+  const filled = max > 0 ? Math.round((value / max) * totalBlocks) : 0
+  const blocks: string[] = []
+  for (let i = 0; i < totalBlocks; i++) blocks.push(i < filled ? '\u2588' : '\u2591')
+  return <span style={{ fontFamily: 'monospace', letterSpacing: '1px', color, fontSize: '12px' }}>{blocks.join('')}</span>
+}
+
+const detailLabelStyle: React.CSSProperties = { fontSize: '12px', color: 'rgba(255,255,255,0.45)', minWidth: 55, flexShrink: 0 }
+const detailValueStyle: React.CSSProperties = { fontSize: '12px', color: 'rgba(255,255,255,0.8)' }
+const detailRowStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, padding: '1px 0' }
+const detailSectionTitle: React.CSSProperties = { fontSize: '11px', color: '#8888bb', marginBottom: 2, marginTop: 6, textTransform: 'uppercase', letterSpacing: '1px' }
+
+function AgentDetailsView({ details, folderName, onClose }: { details: AgentDetails; folderName?: string; onClose: () => void }) {
+  const d = details
+  const modelShort = d.model ? d.model.replace('claude-', '').replace(/-\d+$/, '') : '?'
+  const totalTokens = d.tokenBreakdown.input + d.tokenBreakdown.output
+  const contextLimit = 200_000
+  const cacheHitRate = d.tokenBreakdown.input > 0 ? Math.round((d.tokenBreakdown.cacheRead / Math.max(d.tokenBreakdown.input, 1)) * 100) : 0
+  const avgTurnMs = d.turnCount > 0 ? d.totalDurationMs / d.turnCount : 0
+  const reversedHistory = [...d.toolHistory].reverse().slice(0, 20)
+
+  return (
+    <div style={{ borderTop: '2px solid var(--pixel-border)', background: 'rgba(255,255,255,0.02)', overflowY: 'auto', flexShrink: 0, maxHeight: '45%' }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px', background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <span style={{ fontSize: '13px', color: '#fff', fontWeight: 'bold' }}>
+          {folderName ?? `#${d.id}`} <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 'normal' }}>({modelShort})</span>
+        </span>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: '14px', cursor: 'pointer', padding: '0 4px' }}>[X]</button>
+      </div>
+
+      <div style={{ padding: '2px 8px 6px' }}>
+        {/* Info */}
+        {(d.gitBranch || d.permissionMode || d.startTime) && (
+          <>
+            <div style={detailSectionTitle}>Info</div>
+            {d.gitBranch && <div style={detailRowStyle}><span style={detailLabelStyle}>Branch:</span><span style={{ ...detailValueStyle, color: '#7cb3ff' }}>{d.gitBranch}</span></div>}
+            {d.permissionMode && <div style={detailRowStyle}><span style={detailLabelStyle}>Perms:</span><span style={{ ...detailValueStyle, color: d.permissionMode === 'bypassPermissions' ? '#e5c07b' : '#98c379' }}>{d.permissionMode}</span></div>}
+            {d.startTime && <div style={detailRowStyle}><span style={detailLabelStyle}>Started:</span><span style={detailValueStyle}>{formatIsoTime(d.startTime)}</span></div>}
+          </>
+        )}
+
+        {/* Tokens */}
+        <div style={detailSectionTitle}>Tokens</div>
+        <div style={detailRowStyle}><span style={detailLabelStyle}>Input:</span><PixelBar value={d.tokenBreakdown.input} max={contextLimit} color="#5a8cff" /><span style={{ ...detailValueStyle, marginLeft: 4 }}>{formatNumberCompact(d.tokenBreakdown.input)}</span></div>
+        <div style={detailRowStyle}><span style={detailLabelStyle}>Output:</span><PixelBar value={d.tokenBreakdown.output} max={contextLimit} color="#5ac88c" /><span style={{ ...detailValueStyle, marginLeft: 4 }}>{formatNumberCompact(d.tokenBreakdown.output)}</span></div>
+        <div style={detailRowStyle}><span style={detailLabelStyle}>Cache:</span><PixelBar value={d.tokenBreakdown.cacheRead} max={contextLimit} color="#c678dd" /><span style={{ ...detailValueStyle, marginLeft: 4 }}>{formatNumberCompact(d.tokenBreakdown.cacheRead)}</span></div>
+        <div style={detailRowStyle}><span style={detailLabelStyle}>Total:</span><PixelBar value={totalTokens} max={contextLimit} color="#e5c07b" /><span style={{ ...detailValueStyle, marginLeft: 4 }}>{formatNumberCompact(totalTokens)}/{formatNumberCompact(contextLimit)}</span></div>
+
+        {/* Performance */}
+        <div style={detailSectionTitle}>Performance</div>
+        <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)' }}>
+          Turns: {d.turnCount} | Avg: {formatDuration(avgTurnMs)} | Cache: {cacheHitRate}% | Total: {formatDuration(d.totalDurationMs)}
+        </div>
+
+        {/* Tool History */}
+        {reversedHistory.length > 0 && (
+          <>
+            <div style={detailSectionTitle}>Tools (last {reversedHistory.length})</div>
+            <div style={{ maxHeight: 120, overflowY: 'auto', background: '#151528', border: '1px solid #333355', padding: '2px 0' }}>
+              {reversedHistory.map((entry, i) => (
+                <div key={`${entry.timestamp}-${i}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 6px', fontSize: '11px', color: 'rgba(255,255,255,0.6)' }}>
+                  <span style={{ color: 'rgba(255,255,255,0.35)', minWidth: 55 }}>{formatIsoTime(entry.timestamp)}</span>
+                  <span style={{ flex: 1, marginLeft: 4, color: '#7cb3ff' }}>{entry.name}</span>
+                  <span style={{ minWidth: 45, textAlign: 'right', color: 'rgba(255,255,255,0.4)' }}>{entry.durationMs !== undefined ? formatDuration(entry.durationMs) : '...'}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 interface RightSidebarProps {
   agents: number[]
   agentTools: Record<number, ToolActivity[]>
@@ -240,6 +457,12 @@ interface RightSidebarProps {
   subagentCharacters: SubagentCharacter[]
   subagentTools: Record<number, Record<string, ToolActivity[]>>
   officeState: OfficeState
+  selectedAgentId: number | null
+  agentConversation: { id: number; messages: ConversationMessage[] } | null
+  requestAgentConversation: (id: number) => void
+  agentDetails: AgentDetails | null
+  inspectedAgentId: number | null
+  onCloseInspection: () => void
 }
 
 const sidebarStyle: React.CSSProperties = {
@@ -303,9 +526,15 @@ export function RightSidebar({
   subagentCharacters,
   subagentTools,
   officeState,
+  selectedAgentId,
+  agentConversation,
+  requestAgentConversation,
+  agentDetails,
+  inspectedAgentId,
+  onCloseInspection,
 }: RightSidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
-  const [activeTab, setActiveTab] = useState<'activity' | 'tools'>('activity')
+  const [activeTab, setActiveTab] = useState<'activity' | 'tools' | 'chat'>('activity')
   const [entries, setEntries] = useState<ActivityEntry[]>([])
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -501,12 +730,26 @@ export function RightSidebar({
     }
   }, [agents, agentTools, agentStatuses, subagentCharacters, subagentTools, officeState])
 
+  // Auto-switch to Chat tab when agent is inspected
+  useEffect(() => {
+    if (inspectedAgentId !== null) {
+      setActiveTab('chat')
+    }
+  }, [inspectedAgentId])
+
+  // Auto-request conversation when Chat tab is active
+  useEffect(() => {
+    if (activeTab === 'chat' && selectedAgentId !== null) {
+      requestAgentConversation(selectedAgentId)
+    }
+  }, [activeTab, selectedAgentId, requestAgentConversation])
+
   // Auto-scroll
   useEffect(() => {
-    if (scrollRef.current) {
+    if (scrollRef.current && (activeTab === 'activity' || activeTab === 'chat')) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [entries])
+  }, [entries, agentConversation?.messages.length, activeTab])
 
   const toggleCollapse = useCallback(() => setCollapsed((v) => !v), [])
 
@@ -571,10 +814,10 @@ export function RightSidebar({
       <div style={headerStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ fontSize: '18px', color: 'var(--pixel-accent)', fontWeight: 'bold' }}>
-            {activeTab === 'activity' ? 'ACTIVITY' : 'TOOLS'}
+            {activeTab === 'activity' ? 'ACTIVITY' : activeTab === 'tools' ? 'TOOLS' : 'CHAT'}
           </span>
           <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.4)' }}>
-            ({activeTab === 'activity' ? entries.length : currentTools.length})
+            ({activeTab === 'activity' ? entries.length : activeTab === 'tools' ? currentTools.length : agentConversation?.messages.length ?? 0})
           </span>
         </div>
         <button
@@ -612,9 +855,37 @@ export function RightSidebar({
         >
           Tools
         </button>
+        <button
+          onClick={() => setActiveTab('chat')}
+          style={{
+            ...tabBtnBase,
+            color: activeTab === 'chat' ? '#e056fd' : tabBtnBase.color,
+            borderBottomColor: activeTab === 'chat' ? '#e056fd' : 'transparent',
+          }}
+        >
+          Chat
+        </button>
       </div>
 
       {/* Content */}
+      {activeTab === 'chat' ? (
+        /* Chat tab: split view — Chat top + Agent Details bottom */
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '4px', minHeight: 0 }}>
+            <ConversationView
+              messages={agentConversation?.id === selectedAgentId ? agentConversation.messages : []}
+              selectedAgentId={selectedAgentId}
+            />
+          </div>
+          {inspectedAgentId !== null && agentDetails && agentDetails.id === inspectedAgentId && (
+            <AgentDetailsView
+              details={agentDetails}
+              folderName={officeState.characters.get(inspectedAgentId)?.folderName}
+              onClose={onCloseInspection}
+            />
+          )}
+        </div>
+      ) : (
       <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '4px' }}>
         {activeTab === 'activity' ? (
           /* Activity Feed */
@@ -700,6 +971,7 @@ export function RightSidebar({
           />
         )}
       </div>
+      )}
     </div>
   )
 }

@@ -124,7 +124,7 @@ function App() {
 
   const isEditDirty = useCallback(() => editor.isEditMode && editor.isDirty, [editor.isEditMode, editor.isDirty])
 
-  const { agents, selectedAgent, agentTools, agentStatuses, subagentTools, subagentCharacters, layoutReady, layoutWasReset, loadedAssets, workspaceFolders, externalAssetDirectories, agentStats, agentRoles, agentDetails, requestAgentDetails, pipelineIssues, serverMode } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty)
+  const { agents, selectedAgent, agentTools, agentStatuses, subagentTools, subagentCharacters, layoutReady, layoutWasReset, loadedAssets, workspaceFolders, externalAssetDirectories, agentStats, agentRoles, agentDetails, requestAgentDetails, agentConversation, requestAgentConversation, pipelineIssues, serverMode } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty)
 
   // Deep inspection panel state
   const [inspectedAgentId, setInspectedAgentId] = useState<number | null>(null)
@@ -132,7 +132,8 @@ function App() {
   const handleInspectAgent = useCallback((agentId: number) => {
     setInspectedAgentId(agentId)
     requestAgentDetails(agentId)
-  }, [requestAgentDetails])
+    requestAgentConversation(agentId)
+  }, [requestAgentDetails, requestAgentConversation])
 
   const handleCloseInspection = useCallback(() => {
     setInspectedAgentId(null)
@@ -265,6 +266,12 @@ function App() {
           subagentCharacters={subagentCharacters}
           subagentTools={subagentTools}
           officeState={officeState}
+          selectedAgentId={selectedAgent ?? inspectedAgentId ?? null}
+          agentConversation={agentConversation}
+          requestAgentConversation={requestAgentConversation}
+          agentDetails={agentDetails}
+          inspectedAgentId={inspectedAgentId}
+          onCloseInspection={handleCloseInspection}
         />
       )}
 
@@ -377,14 +384,7 @@ function App() {
         />
       )}
 
-      {inspectedAgentId !== null && (
-        <InspectionPanel
-          agentId={inspectedAgentId}
-          agentDetails={agentDetails}
-          folderName={inspectedAgentId !== null ? officeState.characters.get(inspectedAgentId)?.folderName : undefined}
-          onClose={handleCloseInspection}
-        />
-      )}
+      {/* InspectionPanel is now embedded in RightSidebar */}
 
     </div>
   )

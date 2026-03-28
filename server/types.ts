@@ -46,6 +46,13 @@ export interface TrackedAgent {
   agentDescription?: string; // description from meta.json (e.g. "Review code for security issues")
   role?: string;           // resolved = agentSetting or derived from description
   toolCounts?: Record<string, number>;  // tool name -> invocation count
+  // Conversation history (text blocks from assistant/user messages)
+  conversation: Array<{
+    role: 'assistant' | 'user'
+    text: string
+    timestamp: string
+    toolNames?: string[]
+  }>;
   // Parent-child relationship for subagent JSONL files
   parentSessionId?: string;  // session ID of the parent agent (from file path)
   parentAgentId?: number;    // resolved numeric ID of the parent agent
@@ -78,7 +85,9 @@ export type ServerMessage =
   | { type: "agentDetails"; id: number; model?: string; gitBranch?: string; cwd?: string; sessionId: string; version?: string; permissionMode?: string; toolHistory: Array<{ name: string; timestamp: string; durationMs?: number }>; tokenBreakdown: { input: number; output: number; cacheRead: number; cacheCreation: number }; turnCount: number; totalDurationMs: number; startTime?: string }
   | { type: "agentRenamed"; id: number; folderName: string }
   | { type: "agentRole"; id: number; role: string; autoDetected: boolean; colors: { primary: string; badge: string } }
-  | { type: "pipelineIssues"; issues: Array<{ number: number; title: string; labels: string[]; state: string; pipelineState: string; repo: string }> };
+  | { type: "pipelineIssues"; issues: Array<{ number: number; title: string; labels: string[]; state: string; pipelineState: string; repo: string }> }
+  | { type: "agentConversation"; id: number; messages: Array<{ role: string; text: string; timestamp: string; toolNames?: string[] }> }
+  | { type: "agentConversationUpdate"; id: number; message: { role: string; text: string; timestamp: string; toolNames?: string[] } };
 
 // Messages sent from client to server
 export type ClientMessage =
@@ -92,4 +101,5 @@ export type ClientMessage =
   | { type: "openClaude" }
   | { type: "openClaudeBypass" }
   | { type: "requestAgentDetails"; id: number }
+  | { type: "requestAgentConversation"; id: number }
   | { type: "setAgentRole"; id: number; role: string };

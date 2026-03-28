@@ -7,6 +7,8 @@ const PERMISSION_TIMER_DELAY_MS = 7000;
 const TEXT_IDLE_DELAY_MS = 5000;
 const TOOL_DONE_DELAY_MS = 300;
 const MAX_TOOL_HISTORY = 50;
+const MAX_CONVERSATION_MESSAGES = 100;
+const MAX_CONVERSATION_TEXT_LENGTH = 3000;
 const BASH_COMMAND_DISPLAY_MAX_LENGTH = 30;
 const TASK_DESCRIPTION_DISPLAY_MAX_LENGTH = 40;
 const MAX_AGENT_NAME_LENGTH = 15;
@@ -330,6 +332,29 @@ function handleAssistantMessage(
 
   const hasToolUse = content.some((b) => b.type === "tool_use");
 
+  // Extract text blocks for conversation history
+  const textBlocks = content.filter((b) => b.type === "text" && b.text);
+  if (textBlocks.length > 0) {
+    const fullText = textBlocks.map((b) => b.text as string).join("\n");
+    const truncated = fullText.length > MAX_CONVERSATION_TEXT_LENGTH
+      ? fullText.slice(0, MAX_CONVERSATION_TEXT_LENGTH) + "\u2026"
+      : fullText;
+    const toolNames = content
+      .filter((b) => b.type === "tool_use")
+      .map((b) => (b.name as string) || "unknown");
+    const convMsg = {
+      role: "assistant" as const,
+      text: truncated,
+      timestamp: (record.timestamp as string) || new Date().toISOString(),
+      toolNames: toolNames.length > 0 ? toolNames : undefined,
+    };
+    agent.conversation.push(convMsg);
+    if (agent.conversation.length > MAX_CONVERSATION_MESSAGES) {
+      agent.conversation.shift();
+    }
+    emit({ type: "agentConversationUpdate", id: agent.id, message: convMsg });
+  }
+
   if (hasToolUse) {
     cancelTimer(agent.id, waitingTimers);
     agent.isWaiting = false;
@@ -443,12 +468,45 @@ function handleUserMessage(
       cancelTimer(agent.id, idleTimeoutTimers);
       clearAgentActivity(agent, emit);
       agent.hadToolsInTurn = false;
+      // Extract user prompt text for conversation history
+      const userTextBlocks = blocks.filter((b) => b.type === "text" && b.text);
+      if (userTextBlocks.length > 0) {
+        const fullText = userTextBlocks.map((b) => b.text as string).join("\n");
+        const truncated = fullText.length > MAX_CONVERSATION_TEXT_LENGTH
+          ? fullText.slice(0, MAX_CONVERSATION_TEXT_LENGTH) + "\u2026"
+          : fullText;
+        const convMsg = {
+          role: "user" as const,
+          text: truncated,
+          timestamp: (record.timestamp as string) || new Date().toISOString(),
+        };
+        agent.conversation.push(convMsg);
+        if (agent.conversation.length > MAX_CONVERSATION_MESSAGES) {
+          agent.conversation.shift();
+        }
+        emit({ type: "agentConversationUpdate", id: agent.id, message: convMsg });
+      }
     }
   } else if (typeof content === "string" && (content as string).trim()) {
     cancelTimer(agent.id, waitingTimers);
     cancelTimer(agent.id, idleTimeoutTimers);
     clearAgentActivity(agent, emit);
     agent.hadToolsInTurn = false;
+    // Plain string user prompt
+    const text = content as string;
+    const truncated = text.length > MAX_CONVERSATION_TEXT_LENGTH
+      ? text.slice(0, MAX_CONVERSATION_TEXT_LENGTH) + "\u2026"
+      : text;
+    const convMsg = {
+      role: "user" as const,
+      text: truncated,
+      timestamp: (record.timestamp as string) || new Date().toISOString(),
+    };
+    agent.conversation.push(convMsg);
+    if (agent.conversation.length > MAX_CONVERSATION_MESSAGES) {
+      agent.conversation.shift();
+    }
+    emit({ type: "agentConversationUpdate", id: agent.id, message: convMsg });
   }
 }
 

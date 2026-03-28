@@ -551,6 +551,18 @@ wss.on("connection", (ws) => {
             break;
           }
         }
+      } else if (msg.type === "requestAgentConversation") {
+        const requestedId = msg.id as number;
+        for (const agent of agents.values()) {
+          if (agent.id === requestedId) {
+            ws.send(JSON.stringify({
+              type: "agentConversation",
+              id: agent.id,
+              messages: agent.conversation || [],
+            }));
+            break;
+          }
+        }
       } else if (msg.type === "setAgentRole") {
         const targetId = msg.id as number;
         const newRole = msg.role as string;
@@ -803,6 +815,7 @@ watcher.on("fileAdded", (file: WatchedFile) => {
     totalDurationMs: 0,
     toolHistory: [],
     toolCounts: {},
+    conversation: [],
   };
 
   // Restore role from persisted state if available

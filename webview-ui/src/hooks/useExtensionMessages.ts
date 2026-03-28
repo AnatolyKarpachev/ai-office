@@ -77,6 +77,13 @@ export interface AgentDetails {
   startTime?: string
 }
 
+export interface ConversationMessage {
+  role: 'assistant' | 'user'
+  text: string
+  timestamp: string
+  toolNames?: string[]
+}
+
 export interface PipelineIssue {
   number: number
   title: string
@@ -102,6 +109,8 @@ export interface ExtensionMessageState {
   agentRoles: Map<number, AgentRoleInfo>
   agentDetails: AgentDetails | null
   requestAgentDetails: (id: number) => void
+  agentConversation: { id: number; messages: ConversationMessage[] } | null
+  requestAgentConversation: (id: number) => void
   pipelineIssues: PipelineIssue[]
 }
 
@@ -133,11 +142,16 @@ export function useExtensionMessages(
   const [agentStatsMap, setAgentStatsMap] = useState<Map<number, AgentStats>>(new Map())
   const [agentRolesMap, setAgentRolesMap] = useState<Map<number, AgentRoleInfo>>(new Map())
   const [agentDetailsState, setAgentDetailsState] = useState<AgentDetails | null>(null)
+  const [agentConversationState, setAgentConversationState] = useState<{ id: number; messages: ConversationMessage[] } | null>(null)
   const [pipelineIssues, setPipelineIssues] = useState<PipelineIssue[]>([])
   const [serverMode, setServerMode] = useState<string>('...')
 
   const requestAgentDetails = useCallback((id: number) => {
     vscode.postMessage({ type: 'requestAgentDetails', id })
+  }, [])
+
+  const requestAgentConversation = useCallback((id: number) => {
+    vscode.postMessage({ type: 'requestAgentConversation', id })
   }, [])
 
   // Track whether initial layout has been loaded (ref to avoid re-render)
@@ -497,6 +511,18 @@ export function useExtensionMessages(
           startTime: msg.startTime as string | undefined,
         }
         setAgentDetailsState(details)
+      } else if (msg.type === 'agentConversation') {
+        setAgentConversationState({
+          id: msg.id as number,
+          messages: msg.messages as ConversationMessage[],
+        })
+      } else if (msg.type === 'agentConversationUpdate') {
+        const newMsg = msg.message as ConversationMessage
+        const agentId = msg.id as number
+        setAgentConversationState((prev) => {
+          if (!prev || prev.id !== agentId) return prev
+          return { ...prev, messages: [...prev.messages, newMsg] }
+        })
       } else if (msg.type === 'agentRole') {
         const id = msg.id as number
         const roleInfo: AgentRoleInfo = {
@@ -537,6 +563,8 @@ export function useExtensionMessages(
     agentRoles: agentRolesMap,
     agentDetails: agentDetailsState,
     requestAgentDetails,
+    agentConversation: agentConversationState,
+    requestAgentConversation,
     pipelineIssues,
     serverMode,
   }
