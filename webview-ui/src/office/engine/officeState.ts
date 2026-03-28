@@ -1169,14 +1169,16 @@ export class OfficeState {
       // Sentinel -1: signals turn just ended, skip next seat rest timer.
       // In TYPE state, seatTimer <= 0 triggers immediate IDLE transition.
       ch.seatTimer = -1
-      ch.path = []
-      ch.moveProgress = 0
-    } else {
-      // Cancel sofa walk — active agent should head back to desk
-      if (ch.loungeTargetSeatId) {
-        ch.loungeTargetSeatId = null
+      // If walking, let the character finish the path before changing behavior
+      if (ch.state !== CharacterState.WALK) {
         ch.path = []
         ch.moveProgress = 0
+      }
+    } else {
+      // Cancel sofa target — active agent should head back to desk
+      if (ch.loungeTargetSeatId) {
+        ch.loungeTargetSeatId = null
+        // Don't clear path — WALK state will repath to seat after current step
       }
       // Ensure boss/lead agents return to role-restricted seat closest to team cluster
       const role = this.agentRoles.get(id)
@@ -1205,7 +1207,8 @@ export class OfficeState {
         }
       }
       // Force pathfind to assigned seat on activation (skip multi-tick state machine delay)
-      if (ch.seatId) {
+      // If walking, let WALK state handler repath to seat after current step
+      if (ch.seatId && ch.state !== CharacterState.WALK) {
         const seat = this.seats.get(ch.seatId)
         if (seat && (ch.tileCol !== seat.seatCol || ch.tileRow !== seat.seatRow)) {
           this.sendToSeat(id)
