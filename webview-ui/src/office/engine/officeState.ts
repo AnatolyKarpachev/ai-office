@@ -85,6 +85,11 @@ export class OfficeState {
     const seatTiles = getSeatTiles(this.seats)
     this.blockedTiles = getBlockedTiles(this.layout.furniture, seatTiles)
     this.idleBlockedTiles = getIdleBlockedTiles(this.layout.furniture, seatTiles)
+    // Door bridge tiles must always be passable — unblock them globally
+    for (const k of DOOR_BRIDGE_TILES) {
+      this.blockedTiles.delete(k)
+      this.idleBlockedTiles.delete(k)
+    }
     this.furniture = layoutToFurnitureInstances(this.layout.furniture)
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles)
   }
@@ -110,6 +115,11 @@ export class OfficeState {
     const seatTiles = getSeatTiles(this.seats)
     this.blockedTiles = getBlockedTiles(layout.furniture, seatTiles)
     this.idleBlockedTiles = getIdleBlockedTiles(layout.furniture, seatTiles)
+    // Door bridge tiles must always be passable — unblock them globally
+    for (const k of DOOR_BRIDGE_TILES) {
+      this.blockedTiles.delete(k)
+      this.idleBlockedTiles.delete(k)
+    }
     this.rebuildFurnitureInstances()
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles)
     this.distanceCache.clear()

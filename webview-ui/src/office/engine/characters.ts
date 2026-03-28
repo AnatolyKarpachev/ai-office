@@ -98,6 +98,14 @@ function isOnLoungeSeat(ch: Character, seats: Map<string, Seat>): boolean {
   return false
 }
 
+/** Check if character is sitting at their own assigned role-restricted seat (boss chair) */
+function isOnRoleRestrictedSeat(ch: Character, seats: Map<string, Seat>): boolean {
+  if (!ch.seatId) return false
+  const seat = seats.get(ch.seatId)
+  if (!seat || !seat.requiredRoles) return false
+  return seat.seatCol === ch.tileCol && seat.seatRow === ch.tileRow
+}
+
 /** Find a free lounge seat (sofa/bench, not at a desk) for an idle agent to sit on.
  *  Uses BFS walking distance to pick the nearest reachable seat. */
 function findFreeLoungeSeat(
@@ -181,6 +189,8 @@ export function updateCharacter(
       if (!ch.isActive) {
         // On lounge seat (sofa) — stay seated until active again
         if (isOnLoungeSeat(ch, seats)) break
+        // Boss/lead: stay at role-restricted chair even when idle
+        if (isOnRoleRestrictedSeat(ch, seats)) break
 
         if (ch.seatTimer > 0) {
           ch.seatTimer -= dt
@@ -221,30 +231,41 @@ export function updateCharacter(
       // If became active, pathfind to seat
       if (ch.isActive) {
         if (!ch.seatId) {
-          // No seat assigned — stay standing (don't sit in air)
-          break
-        }
-        const seat = seats.get(ch.seatId)
-        if (seat) {
-          const path = findPath(ch.tileCol, ch.tileRow, seat.seatCol, seat.seatRow, tileMap, blockedTiles)
-          if (path.length > 0) {
-            ch.path = path
-            ch.moveProgress = 0
-            ch.state = CharacterState.WALK
-            ch.frame = 0
-            ch.frameTimer = 0
-          } else if (ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow) {
-            // Already at seat — sit down
-            ch.state = CharacterState.TYPE
-            ch.dir = seat.facingDir
-            ch.frame = 0
-            ch.frameTimer = 0
-          } else {
-            // Can't reach seat (blocked path) — stay idle, retry on next wander cycle
+          // No seat assigned — wander until one is assigned (don't freeze)
+          if (ch.wanderTimer <= 0) {
             ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
           }
+          // Fall through to wander logic below
+        } else {
+          const seat = seats.get(ch.seatId)
+          if (!seat) {
+            // Seat removed from layout — clear stale reference, wander
+            ch.seatId = null
+            if (ch.wanderTimer <= 0) {
+              ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
+            }
+            // Fall through to wander logic below
+          } else {
+            const path = findPath(ch.tileCol, ch.tileRow, seat.seatCol, seat.seatRow, tileMap, blockedTiles)
+            if (path.length > 0) {
+              ch.path = path
+              ch.moveProgress = 0
+              ch.state = CharacterState.WALK
+              ch.frame = 0
+              ch.frameTimer = 0
+            } else if (ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow) {
+              // Already at seat — sit down
+              ch.state = CharacterState.TYPE
+              ch.dir = seat.facingDir
+              ch.frame = 0
+              ch.frameTimer = 0
+            } else {
+              // Can't reach seat (blocked path) — stay idle, retry on next wander cycle
+              ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
+            }
+            break
+          }
         }
-        break
       }
       // Countdown wander timer
       ch.wanderTimer -= dt
