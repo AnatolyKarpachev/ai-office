@@ -81,6 +81,7 @@ export function createCharacter(
     matrixEffectTimer: 0,
     matrixEffectSeeds: [],
     loungeTargetSeatId: null,
+    leavingOffice: false,
   }
 }
 
@@ -205,6 +206,8 @@ export function updateCharacter(
       // No idle animation — static pose
       ch.frame = 0
       if (ch.seatTimer < 0) ch.seatTimer = 0 // safety: clear negative values
+      // If leaving office, do nothing — just wait for deletion
+      if (ch.leavingOffice) break
       // If became active, pathfind to seat
       if (ch.isActive) {
         if (!ch.seatId) {
@@ -339,6 +342,14 @@ export function updateCharacter(
         ch.x = center.x
         ch.y = center.y
 
+        // If leaving office, stay put — officeState will handle deletion
+        if (ch.leavingOffice) {
+          ch.state = CharacterState.IDLE
+          ch.frame = 0
+          ch.frameTimer = 0
+          break
+        }
+
         if (ch.isActive) {
           if (!ch.seatId) {
             // No seat — stay standing idle (don't sit in air)
@@ -417,8 +428,8 @@ export function updateCharacter(
         ch.moveProgress = 0
       }
 
-      // If became active while wandering, repath to seat
-      if (ch.isActive && ch.seatId) {
+      // If became active while wandering, repath to seat (skip if leaving office)
+      if (ch.isActive && ch.seatId && !ch.leavingOffice) {
         const seat = seats.get(ch.seatId)
         if (seat) {
           const lastStep = ch.path[ch.path.length - 1]

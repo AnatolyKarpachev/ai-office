@@ -36,6 +36,21 @@ import {
 } from '../layout/layoutSerializer.js'
 import { getAnimationFrames, getCatalogEntry, getOnStateType } from '../layout/furnitureCatalog.js'
 
+/** Entrance tile where characters appear/disappear (office door) */
+const ENTRANCE_COL = 39
+const ENTRANCE_ROW = 39
+
+/** Door bridge tiles — blocked by furniture but characters walk through to enter/exit */
+const DOOR_BRIDGE_TILES = new Set(['26,37', '26,38', '27,38', '26,39', '27,39'])
+
+/** Facing direction overrides for specific seat positions (col,row → Direction) */
+const SEAT_FACING_OVERRIDES = new Map<string, Direction>([
+  ['4,17', Direction.UP],      // sofa — back to viewer
+  ['5,15', Direction.DOWN],    // face toward viewer
+  ['24,36', Direction.RIGHT],  // face right
+  ['26,36', Direction.LEFT],   // face left
+])
+
 export class OfficeState {
   layout: OfficeLayout
   tileMap: TileTypeVal[][]
@@ -64,6 +79,7 @@ export class OfficeState {
     this.layout = layout || createDefaultLayout()
     this.tileMap = layoutToTileMap(this.layout)
     this.seats = layoutToSeats(this.layout.furniture)
+    this.applySeatFacingOverrides()
     const seatTiles = getSeatTiles(this.seats)
     this.blockedTiles = getBlockedTiles(this.layout.furniture, seatTiles)
     this.idleBlockedTiles = getIdleBlockedTiles(this.layout.furniture, seatTiles)
@@ -73,10 +89,22 @@ export class OfficeState {
 
   /** Rebuild all derived state from a new layout. Reassigns existing characters.
    *  @param shift Optional pixel shift to apply when grid expands left/up */
+  /** Apply facing direction overrides for specific seat positions */
+  private applySeatFacingOverrides(): void {
+    for (const [, seat] of this.seats) {
+      const key = `${seat.seatCol},${seat.seatRow}`
+      const override = SEAT_FACING_OVERRIDES.get(key)
+      if (override !== undefined) {
+        seat.facingDir = override
+      }
+    }
+  }
+
   rebuildFromLayout(layout: OfficeLayout, shift?: { col: number; row: number }): void {
     this.layout = layout
     this.tileMap = layoutToTileMap(layout)
     this.seats = layoutToSeats(layout.furniture)
+    this.applySeatFacingOverrides()
     const seatTiles = getSeatTiles(this.seats)
     this.blockedTiles = getBlockedTiles(layout.furniture, seatTiles)
     this.idleBlockedTiles = getIdleBlockedTiles(layout.furniture, seatTiles)
@@ -518,6 +546,97 @@ export class OfficeState {
     return { palette, hueShift }
   }
 
+  /** Get blocked tiles with door bridge tiles unblocked for entrance/exit pathfinding */
+  private getEntranceBlockedTiles(): Set<string> {
+    const bt = new Set(this.blockedTiles)
+    for (const k of DOOR_BRIDGE_TILES) bt.delete(k)
+    return bt
+  }
+
+  /** Build a path from the entrance tile to a target tile, unblocking door tiles */
+  private buildPathFromEntrance(toCol: number, toRow: number): Array<{ col: number; row: number }> {
+    const bt = this.getEntranceBlockedTiles()
+    // Try direct pathfinding with door unblocked
+    const direct = findPath(ENTRANCE_COL, ENTRANCE_ROW, toCol, toRow, this.tileMap, bt)
+    if (direct.length > 0) return direct
+
+    // Fallback: find nearest walkable tile to entrance and build manual bridge
+    let nearest: { col: number; row: number } | null = null
+    let bestDist = Infinity
+    for (const t of this.walkableTiles) {
+      const d = Math.abs(t.col - ENTRANCE_COL) + Math.abs(t.row - ENTRANCE_ROW)
+      if (d < bestDist) { bestDist = d; nearest = t }
+    }
+    if (!nearest) return []
+
+    const manual: Array<{ col: number; row: number }> = []
+    let cx = ENTRANCE_COL, cy = ENTRANCE_ROW
+    while (cx !== nearest.col || cy !== nearest.row) {
+      if (cx !== nearest.col) cx += Math.sign(nearest.col - cx)
+      else cy += Math.sign(nearest.row - cy)
+      manual.push({ col: cx, row: cy })
+    }
+
+    const bfs = findPath(nearest.col, nearest.row, toCol, toRow, this.tileMap, bt)
+    if (bfs.length === 0 && (nearest.col !== toCol || nearest.row !== toRow)) return []
+
+    return [...manual, ...bfs]
+  }
+
+  /** Build a path from a source tile to the entrance tile, unblocking door tiles */
+  private buildPathToEntrance(fromCol: number, fromRow: number): Array<{ col: number; row: number }> {
+    const bt = this.getEntranceBlockedTiles()
+    // Try direct pathfinding with door unblocked
+    const direct = findPath(fromCol, fromRow, ENTRANCE_COL, ENTRANCE_ROW, this.tileMap, bt)
+    if (direct.length > 0) return direct
+
+    // Fallback: find nearest walkable tile to entrance and build manual bridge
+    let nearest: { col: number; row: number } | null = null
+    let bestDist = Infinity
+    for (const t of this.walkableTiles) {
+      const d = Math.abs(t.col - ENTRANCE_COL) + Math.abs(t.row - ENTRANCE_ROW)
+      if (d < bestDist) { bestDist = d; nearest = t }
+    }
+    if (!nearest) return []
+
+    const bfs = findPath(fromCol, fromRow, nearest.col, nearest.row, this.tileMap, bt)
+    if (bfs.length === 0 && (fromCol !== nearest.col || fromRow !== nearest.row)) return []
+
+    const manual: Array<{ col: number; row: number }> = []
+    let cx = nearest.col, cy = nearest.row
+    while (cx !== ENTRANCE_COL || cy !== ENTRANCE_ROW) {
+      if (cx !== ENTRANCE_COL) cx += Math.sign(ENTRANCE_COL - cx)
+      else cy += Math.sign(ENTRANCE_ROW - cy)
+      manual.push({ col: cx, row: cy })
+    }
+
+    return [...bfs, ...manual]
+  }
+
+  /** Start the leave-office sequence: walk to entrance and despawn */
+  private startLeaveOffice(ch: Character): void {
+    ch.leavingOffice = true
+    ch.isActive = false
+    ch.bubbleType = null
+    ch.bubbleTimer = 0
+    ch.loungeTargetSeatId = null
+    // Build path to entrance
+    const path = this.buildPathToEntrance(ch.tileCol, ch.tileRow)
+    if (path.length > 0) {
+      ch.path = path
+      ch.moveProgress = 0
+      ch.state = CharacterState.WALK
+      ch.frame = 0
+      ch.frameTimer = 0
+    } else {
+      // No path to entrance — fall back to matrix despawn at current position
+      ch.leavingOffice = false
+      ch.matrixEffect = 'despawn'
+      ch.matrixEffectTimer = 0
+      ch.matrixEffectSeeds = matrixEffectSeeds()
+    }
+  }
+
   addAgent(id: number, preferredPalette?: number, preferredHueShift?: number, preferredSeatId?: string, skipSpawnEffect?: boolean, folderName?: string, parentAgentId?: number): void {
     if (this.characters.has(id)) return
 
@@ -616,9 +735,30 @@ export class OfficeState {
       ch.parentAgentId = parentAgentId
     }
     if (!skipSpawnEffect) {
-      ch.matrixEffect = 'spawn'
-      ch.matrixEffectTimer = 0
-      ch.matrixEffectSeeds = matrixEffectSeeds()
+      // Enter through the office door: spawn at entrance and walk to seat
+      const targetCol = ch.tileCol
+      const targetRow = ch.tileRow
+      ch.x = ENTRANCE_COL * TILE_SIZE + TILE_SIZE / 2
+      ch.y = ENTRANCE_ROW * TILE_SIZE + TILE_SIZE / 2
+      ch.tileCol = ENTRANCE_COL
+      ch.tileRow = ENTRANCE_ROW
+      const path = this.buildPathFromEntrance(targetCol, targetRow)
+      if (path.length > 0) {
+        ch.path = path
+        ch.moveProgress = 0
+        ch.state = CharacterState.WALK
+        ch.frame = 0
+        ch.frameTimer = 0
+      } else {
+        // No path from entrance — fall back to matrix spawn at seat
+        ch.x = targetCol * TILE_SIZE + TILE_SIZE / 2
+        ch.y = targetRow * TILE_SIZE + TILE_SIZE / 2
+        ch.tileCol = targetCol
+        ch.tileRow = targetRow
+        ch.matrixEffect = 'spawn'
+        ch.matrixEffectTimer = 0
+        ch.matrixEffectSeeds = matrixEffectSeeds()
+      }
     }
     this.characters.set(id, ch)
   }
@@ -626,6 +766,7 @@ export class OfficeState {
   removeAgent(id: number): void {
     const ch = this.characters.get(id)
     if (!ch) return
+    if (ch.leavingOffice) return // already leaving
     if (ch.matrixEffect === 'despawn') return // already despawning
     // Free seat and clear selection immediately
     if (ch.seatId) {
@@ -636,11 +777,8 @@ export class OfficeState {
     if (this.selectedAgentId === id) this.selectedAgentId = null
     if (this.cameraFollowId === id) this.cameraFollowId = null
     this.agentRoles.delete(id)
-    // Start despawn animation instead of immediate delete
-    ch.matrixEffect = 'despawn'
-    ch.matrixEffectTimer = 0
-    ch.matrixEffectSeeds = matrixEffectSeeds()
-    ch.bubbleType = null
+    // Walk to entrance and despawn there
+    this.startLeaveOffice(ch)
   }
 
   /** Find seat uid at a given tile position, or null */
@@ -819,9 +957,30 @@ export class OfficeState {
     }
     ch.isSubagent = true
     ch.parentAgentId = parentAgentId
-    ch.matrixEffect = 'spawn'
-    ch.matrixEffectTimer = 0
-    ch.matrixEffectSeeds = matrixEffectSeeds()
+    // Enter through the office door: spawn at entrance and walk to seat
+    const targetCol = ch.tileCol
+    const targetRow = ch.tileRow
+    ch.x = ENTRANCE_COL * TILE_SIZE + TILE_SIZE / 2
+    ch.y = ENTRANCE_ROW * TILE_SIZE + TILE_SIZE / 2
+    ch.tileCol = ENTRANCE_COL
+    ch.tileRow = ENTRANCE_ROW
+    const entrancePath = this.buildPathFromEntrance(targetCol, targetRow)
+    if (entrancePath.length > 0) {
+      ch.path = entrancePath
+      ch.moveProgress = 0
+      ch.state = CharacterState.WALK
+      ch.frame = 0
+      ch.frameTimer = 0
+    } else {
+      // No path from entrance — fall back to matrix spawn at seat
+      ch.x = targetCol * TILE_SIZE + TILE_SIZE / 2
+      ch.y = targetRow * TILE_SIZE + TILE_SIZE / 2
+      ch.tileCol = targetCol
+      ch.tileRow = targetRow
+      ch.matrixEffect = 'spawn'
+      ch.matrixEffectTimer = 0
+      ch.matrixEffectSeeds = matrixEffectSeeds()
+    }
     this.characters.set(id, ch)
 
     this.subagentIdMap.set(key, id)
@@ -837,8 +996,8 @@ export class OfficeState {
 
     const ch = this.characters.get(id)
     if (ch) {
-      if (ch.matrixEffect === 'despawn') {
-        // Already despawning — just clean up maps
+      if (ch.leavingOffice || ch.matrixEffect === 'despawn') {
+        // Already leaving/despawning — just clean up maps
         this.subagentIdMap.delete(key)
         this.subagentMeta.delete(id)
         return
@@ -846,12 +1005,10 @@ export class OfficeState {
       if (ch.seatId) {
         const seat = this.seats.get(ch.seatId)
         if (seat) seat.assigned = false
+        ch.seatId = null
       }
-      // Start despawn animation — keep character in map for rendering
-      ch.matrixEffect = 'despawn'
-      ch.matrixEffectTimer = 0
-      ch.matrixEffectSeeds = matrixEffectSeeds()
-      ch.bubbleType = null
+      // Walk to entrance and despawn there
+      this.startLeaveOffice(ch)
     }
     // Clean up tracking maps immediately so keys don't collide
     this.subagentIdMap.delete(key)
@@ -868,8 +1025,8 @@ export class OfficeState {
       if (meta && meta.parentAgentId === parentAgentId) {
         const ch = this.characters.get(id)
         if (ch) {
-          if (ch.matrixEffect === 'despawn') {
-            // Already despawning — just clean up maps
+          if (ch.leavingOffice || ch.matrixEffect === 'despawn') {
+            // Already leaving/despawning — just clean up maps
             this.subagentMeta.delete(id)
             toRemove.push(key)
             continue
@@ -877,12 +1034,10 @@ export class OfficeState {
           if (ch.seatId) {
             const seat = this.seats.get(ch.seatId)
             if (seat) seat.assigned = false
+            ch.seatId = null
           }
-          // Start despawn animation
-          ch.matrixEffect = 'despawn'
-          ch.matrixEffectTimer = 0
-          ch.matrixEffectSeeds = matrixEffectSeeds()
-          ch.bubbleType = null
+          // Walk to entrance and despawn there
+          this.startLeaveOffice(ch)
         }
         this.subagentMeta.delete(id)
         if (this.selectedAgentId === id) this.selectedAgentId = null
@@ -1153,6 +1308,14 @@ export class OfficeState {
         }
       }
     }
+    // Check for characters that arrived at the entrance — start despawn effect
+    for (const ch of this.characters.values()) {
+      if (ch.leavingOffice && ch.path.length === 0 && !ch.matrixEffect) {
+        ch.matrixEffect = 'despawn'
+        ch.matrixEffectTimer = 0
+        ch.matrixEffectSeeds = matrixEffectSeeds()
+      }
+    }
     // Remove characters that finished despawn
     for (const id of toDelete) {
       this.characters.delete(id)
@@ -1167,8 +1330,8 @@ export class OfficeState {
   getCharacterAt(worldX: number, worldY: number): number | null {
     const chars = this.getCharacters().sort((a, b) => b.y - a.y)
     for (const ch of chars) {
-      // Skip characters that are despawning
-      if (ch.matrixEffect === 'despawn') continue
+      // Skip characters that are leaving or despawning
+      if (ch.leavingOffice || ch.matrixEffect === 'despawn') continue
       // Character sprite is 16x24, anchored bottom-center
       // Apply sitting offset to match visual position
       const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0

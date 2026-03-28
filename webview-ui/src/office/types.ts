@@ -213,4 +213,6 @@ export interface Character {
   folderName?: string
   /** UID of lounge seat the idle character is walking toward */
   loungeTargetSeatId?: string | null
+  /** Whether the character is walking toward the entrance to leave the office */
+  leavingOffice: boolean
 }
