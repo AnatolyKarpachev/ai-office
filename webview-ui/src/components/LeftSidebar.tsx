@@ -166,7 +166,7 @@ const sidebarStyle: React.CSSProperties = {
   top: 10,
   left: 10,
   bottom: 60,
-  zIndex: 50,
+  zIndex: 'var(--pixel-sidebar-z)',
   display: 'flex',
   flexDirection: 'column',
   background: 'var(--pixel-bg)',
