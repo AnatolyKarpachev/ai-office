@@ -5,7 +5,7 @@ import type { EditorRenderState, SelectionRenderState, DeleteButtonBounds, Rotat
 import { startGameLoop } from '../engine/gameLoop.js'
 import { renderFrame } from '../engine/renderer.js'
 import { TILE_SIZE, EditTool } from '../types.js'
-import { CAMERA_FOLLOW_LERP, CAMERA_FOLLOW_SNAP_THRESHOLD, ZOOM_MIN, ZOOM_MAX, ZOOM_SCROLL_THRESHOLD, PAN_MARGIN_FRACTION } from '../../constants.js'
+import { CAMERA_FOLLOW_LERP, CAMERA_FOLLOW_SNAP_THRESHOLD, ZOOM_MIN, ZOOM_MAX, ZOOM_SENSITIVITY, PAN_MARGIN_FRACTION } from '../../constants.js'
 import { getCatalogEntry, isRotatable } from '../layout/furnitureCatalog.js'
 import { canPlaceFurniture, getWallPlacementRow, hitTestFurniture } from '../editor/editorActions.js'
 import { vscode } from '../../vscodeApi.js'
@@ -42,7 +42,6 @@ export function OfficeCanvas({ officeState, onClick, onDoubleClick, isEditMode, 
   // Right-click erase dragging
   const isEraseDraggingRef = useRef(false)
   // Zoom scroll accumulator for trackpad pinch sensitivity
-  const zoomAccumulatorRef = useRef(0)
 
   // Clamp pan so the map edge can't go past a margin inside the viewport
   const clampPan = useCallback((px: number, py: number): { x: number; y: number } => {
@@ -665,15 +664,11 @@ export function OfficeCanvas({ officeState, onClick, onDoubleClick, isEditMode, 
     (e: React.WheelEvent) => {
       e.preventDefault()
       if (e.ctrlKey || e.metaKey) {
-        // Accumulate scroll delta, step zoom when threshold crossed
-        zoomAccumulatorRef.current += e.deltaY
-        if (Math.abs(zoomAccumulatorRef.current) >= ZOOM_SCROLL_THRESHOLD) {
-          const delta = zoomAccumulatorRef.current < 0 ? 1 : -1
-          zoomAccumulatorRef.current = 0
-          const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom + delta))
-          if (newZoom !== zoom) {
-            onZoomChange(newZoom)
-          }
+        // Smooth multiplicative zoom from trackpad pinch / ctrl+scroll
+        const factor = Math.pow(2, -e.deltaY * ZOOM_SENSITIVITY)
+        const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom * factor))
+        if (newZoom !== zoom) {
+          onZoomChange(newZoom)
         }
       } else {
         // Pan via trackpad two-finger scroll or mouse wheel

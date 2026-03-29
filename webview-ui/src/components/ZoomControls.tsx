@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import {
   ZOOM_MIN,
   ZOOM_MAX,
+  ZOOM_BUTTON_FACTOR,
   ZOOM_LEVEL_FADE_DELAY_MS,
   ZOOM_LEVEL_HIDE_DELAY_MS,
   ZOOM_LEVEL_FADE_DURATION_SEC,
@@ -91,7 +92,7 @@ export function ZoomControls({ zoom, onZoomChange }: ZoomControlsProps) {
             pointerEvents: 'none',
           }}
         >
-          {zoom}x
+          {zoom < 1.05 ? '1x' : zoom >= 9.95 ? '10x' : `${zoom.toFixed(1)}x`}
         </div>
       )}
 
@@ -108,7 +109,7 @@ export function ZoomControls({ zoom, onZoomChange }: ZoomControlsProps) {
         }}
       >
         <button
-          onClick={() => onZoomChange(zoom + 1)}
+          onClick={() => onZoomChange(Math.min(ZOOM_MAX, zoom * ZOOM_BUTTON_FACTOR))}
           disabled={maxDisabled}
           onMouseEnter={() => setHovered('plus')}
           onMouseLeave={() => setHovered(null)}
@@ -126,7 +127,7 @@ export function ZoomControls({ zoom, onZoomChange }: ZoomControlsProps) {
           </svg>
         </button>
         <button
-          onClick={() => onZoomChange(zoom - 1)}
+          onClick={() => onZoomChange(Math.max(ZOOM_MIN, zoom / ZOOM_BUTTON_FACTOR))}
           disabled={minDisabled}
           onMouseEnter={() => setHovered('minus')}
           onMouseLeave={() => setHovered(null)}

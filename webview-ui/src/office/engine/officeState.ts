@@ -221,37 +221,44 @@ export class OfficeState {
     return result
   }
 
-  /** Temporarily unblock desk tiles near a character's own seat and current position,
-   *  run fn, then restore. Unlike idleBlockedTiles which makes ALL desks walkable,
-   *  this only unblocks desk tiles around the character's own workspace so they can
-   *  leave their desk area without walking through every table in the office. */
+  /** Temporarily unblock the specific desk furniture item that the character's seat faces,
+   *  run fn, then restore. Only the agent's own desk is unblocked — nearby tables and
+   *  other desks remain solid so agents can't path through them. */
   private withOwnWorkspaceUnblocked<T>(ch: Character, fn: () => T): T {
     const unblockedKeys: string[] = []
 
-    // Collect tiles to check: area around seat + area around current position
-    const seen = new Set<string>()
-    const check = (col: number, row: number, radius: number) => {
-      for (let dr = -radius; dr <= radius; dr++) {
-        for (let dc = -radius; dc <= radius; dc++) {
-          const key = `${col + dc},${row + dr}`
-          if (seen.has(key)) continue
-          seen.add(key)
-          // Unblock only desk tiles: present in blockedTiles but absent in idleBlockedTiles
-          if (this.blockedTiles.has(key) && !this.idleBlockedTiles.has(key)) {
-            this.blockedTiles.delete(key)
-            unblockedKeys.push(key)
+    // Find the desk furniture item that the agent's seat faces
+    if (ch.seatId) {
+      const seat = this.seats.get(ch.seatId)
+      if (seat) {
+        // Direction offset from seat toward the desk it faces
+        const dc = seat.facingDir === Direction.RIGHT ? 1 : seat.facingDir === Direction.LEFT ? -1 : 0
+        const dr = seat.facingDir === Direction.DOWN ? 1 : seat.facingDir === Direction.UP ? -1 : 0
+        const deskTileCol = seat.seatCol + dc
+        const deskTileRow = seat.seatRow + dr
+
+        // Find which furniture item owns that desk tile and unblock only its footprint
+        for (const item of this.layout.furniture) {
+          const entry = getCatalogEntry(item.type)
+          if (!entry || !entry.isDesk) continue
+          if (deskTileCol >= item.col && deskTileCol < item.col + entry.footprintW &&
+              deskTileRow >= item.row && deskTileRow < item.row + entry.footprintH) {
+            const bgRows = entry.backgroundTiles || 0
+            for (let r = 0; r < entry.footprintH; r++) {
+              if (r < bgRows) continue
+              for (let c = 0; c < entry.footprintW; c++) {
+                const key = `${item.col + c},${item.row + r}`
+                if (this.blockedTiles.has(key)) {
+                  this.blockedTiles.delete(key)
+                  unblockedKeys.push(key)
+                }
+              }
+            }
+            break
           }
         }
       }
     }
-
-    // Unblock desk tiles near own seat (radius 2)
-    if (ch.seatId) {
-      const seat = this.seats.get(ch.seatId)
-      if (seat) check(seat.seatCol, seat.seatRow, 2)
-    }
-    // Unblock desk tiles near current position (radius 1) in case agent is mid-walk
-    check(ch.tileCol, ch.tileRow, 1)
 
     const result = fn()
 
