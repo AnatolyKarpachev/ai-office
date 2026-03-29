@@ -489,18 +489,17 @@ export function updateCharacter(
         ch.y = toCenter.y
         ch.path.shift()
         ch.moveProgress = 0
-      }
 
-      // If became active while wandering, repath to seat (skip if leaving office)
-      if (ch.isActive && ch.seatId && !ch.leavingOffice) {
-        const seat = seats.get(ch.seatId)
-        if (seat) {
-          const lastStep = ch.path[ch.path.length - 1]
-          if (!lastStep || lastStep.col !== seat.seatCol || lastStep.row !== seat.seatRow) {
-            const newPath = findPath(ch.tileCol, ch.tileRow, seat.seatCol, seat.seatRow, tileMap, blockedTiles)
-            if (newPath.length > 0) {
-              ch.path = newPath
-              ch.moveProgress = 0
+        // If became active while wandering, repath to seat (skip if leaving office)
+        if (ch.isActive && ch.seatId && !ch.leavingOffice) {
+          const seat = seats.get(ch.seatId)
+          if (seat) {
+            const lastStep = ch.path[ch.path.length - 1]
+            if (!lastStep || lastStep.col !== seat.seatCol || lastStep.row !== seat.seatRow) {
+              const newPath = findPath(ch.tileCol, ch.tileRow, seat.seatCol, seat.seatRow, tileMap, blockedTiles)
+              if (newPath.length > 0) {
+                ch.path = newPath
+              }
             }
           }
         }
