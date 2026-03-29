@@ -660,28 +660,51 @@ export function OfficeCanvas({ officeState, onClick, onDoubleClick, isEditMode, 
   }, [isEditMode, officeState, screenToTile])
 
   // Wheel: Ctrl+wheel to zoom, plain wheel/trackpad to pan
-  const handleWheel = useCallback(
-    (e: React.WheelEvent) => {
+  // Must use native listener with { passive: false } to actually prevent browser zoom
+  const zoomRef = useRef(zoom)
+  zoomRef.current = zoom
+  const onZoomChangeRef = useRef(onZoomChange)
+  onZoomChangeRef.current = onZoomChange
+  const clampPanRef = useRef(clampPan)
+  clampPanRef.current = clampPan
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    const handleWheel = (e: WheelEvent) => {
       e.preventDefault()
       if (e.ctrlKey || e.metaKey) {
         // Smooth multiplicative zoom from trackpad pinch / ctrl+scroll
         const factor = Math.pow(2, -e.deltaY * ZOOM_SENSITIVITY)
-        const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, zoom * factor))
-        if (newZoom !== zoom) {
-          onZoomChange(newZoom)
+        const curZoom = zoomRef.current
+        const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, curZoom * factor))
+        if (newZoom !== curZoom) {
+          onZoomChangeRef.current(newZoom)
         }
       } else {
         // Pan via trackpad two-finger scroll or mouse wheel
         const dpr = window.devicePixelRatio || 1
         officeState.cameraFollowId = null
-        panRef.current = clampPan(
+        panRef.current = clampPanRef.current(
           panRef.current.x - e.deltaX * dpr,
           panRef.current.y - e.deltaY * dpr,
         )
       }
-    },
-    [zoom, onZoomChange, officeState, panRef, clampPan],
-  )
+    }
+
+    // Block browser zoom on canvas
+    canvas.addEventListener('wheel', handleWheel, { passive: false })
+    // Also block browser zoom globally (pinch events outside canvas area)
+    const blockBrowserZoom = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) e.preventDefault()
+    }
+    document.addEventListener('wheel', blockBrowserZoom, { passive: false })
+    return () => {
+      canvas.removeEventListener('wheel', handleWheel)
+      document.removeEventListener('wheel', blockBrowserZoom)
+    }
+  }, [officeState, panRef])
 
   // Prevent default middle-click browser behavior (auto-scroll)
   const handleAuxClick = useCallback((e: React.MouseEvent) => {
@@ -708,7 +731,6 @@ export function OfficeCanvas({ officeState, onClick, onDoubleClick, isEditMode, 
         onDoubleClick={handleDoubleClick}
         onAuxClick={handleAuxClick}
         onMouseLeave={handleMouseLeave}
-        onWheel={handleWheel}
         onContextMenu={handleContextMenu}
         style={{ display: 'block' }}
       />
