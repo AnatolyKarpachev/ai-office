@@ -133,6 +133,15 @@ function getPipelineStateLabel(state: string): string {
 
 const PIPELINE_STAGES = ['intake_required', 'todo', 'ready', 'in_progress', 'blocked', 'review_ready', 'merge_ready', 'done']
 
+const PIPELINE_GATES = [
+  { gate: 5, label: 'DOC' },
+  { gate: 8, label: 'PLN' },
+  { gate: 11, label: 'REV' },
+  { gate: 12, label: 'VAL' },
+  { gate: 13, label: 'VIS' },
+  { gate: 15, label: 'MRG' },
+] as const
+
 function getPipelineProgress(state: string): number {
   if (!state) return 0
   if (state === 'done') return 100
@@ -509,6 +518,48 @@ export function LeftSidebar({
                     </div>
                   )}
                   {issue.pipelineState && (() => {
+                    const gates = (issue as any).gates || []
+                    const hasGateData = gates.length > 0
+
+                    if (hasGateData) {
+                      const passCount = gates.filter((g: any) => g.status === 'pass').length
+                      return (
+                        <div style={{ marginTop: 4 }}>
+                          <div style={{ display: 'flex', gap: 2 }}>
+                            {PIPELINE_GATES.map(({ gate, label }) => {
+                              const entry = gates.find((g: any) => g.gate === gate)
+                              const s = entry?.status
+                              const color = s === 'pass' ? '#5ac88c' : s === 'fail' ? '#e55' : 'rgba(255,255,255,0.08)'
+                              return (
+                                <div key={gate} style={{ flex: 1, textAlign: 'center' }}>
+                                  <div style={{
+                                    height: 6,
+                                    background: s === 'fail'
+                                      ? 'repeating-linear-gradient(45deg, #e55, #e55 2px, #a33 2px, #a33 4px)'
+                                      : color,
+                                    border: '1px solid rgba(255,255,255,0.1)',
+                                    imageRendering: 'pixelated' as const,
+                                  }} title={entry?.comment || label} />
+                                  <div style={{
+                                    fontSize: 8, fontFamily: 'monospace', marginTop: 1,
+                                    color: s === 'pass' ? '#5ac88c' : s === 'fail' ? '#e55' : 'rgba(255,255,255,0.15)',
+                                    letterSpacing: -0.5,
+                                  }}>{label}</div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                          <div style={{
+                            fontSize: 12, color: 'rgba(255,255,255,0.4)', fontFamily: 'monospace',
+                            textAlign: 'right', marginTop: 2,
+                          }}>
+                            {passCount}/{PIPELINE_GATES.length}
+                          </div>
+                        </div>
+                      )
+                    }
+
+                    // Fallback: single bar for states without gate data
                     const pct = getPipelineProgress(issue.pipelineState)
                     const isBlocked = pct === -1
                     const barColor = isBlocked ? '#e55' : getPipelineStateColor(issue.pipelineState)

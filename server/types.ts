@@ -85,7 +85,7 @@ export type ServerMessage =
   | { type: "agentDetails"; id: number; model?: string; gitBranch?: string; cwd?: string; sessionId: string; version?: string; permissionMode?: string; toolHistory: Array<{ name: string; timestamp: string; durationMs?: number }>; tokenBreakdown: { input: number; output: number; cacheRead: number; cacheCreation: number }; turnCount: number; totalDurationMs: number; startTime?: string }
   | { type: "agentRenamed"; id: number; folderName: string }
   | { type: "agentRole"; id: number; role: string; autoDetected: boolean; colors: { primary: string; badge: string } }
-  | { type: "pipelineIssues"; issues: Array<{ number: number; title: string; labels: string[]; state: string; pipelineState: string; repo: string }> }
+  | { type: "pipelineIssues"; issues: Array<{ number: number; title: string; labels: string[]; state: string; pipelineState: string; repo: string; gates: Array<{ gate: number; status: string; comment: string; timestamp: string }> }> }
   | { type: "agentConversation"; id: number; messages: Array<{ role: string; text: string; timestamp: string; toolNames?: string[] }> }
   | { type: "agentConversationUpdate"; id: number; message: { role: string; text: string; timestamp: string; toolNames?: string[] } };
 

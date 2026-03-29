@@ -84,6 +84,13 @@ export interface ConversationMessage {
   toolNames?: string[]
 }
 
+export interface GateStatus {
+  gate: number
+  status: 'pass' | 'fail'
+  comment: string
+  timestamp: string
+}
+
 export interface PipelineIssue {
   number: number
   title: string
@@ -91,6 +98,7 @@ export interface PipelineIssue {
   state: string
   pipelineState: string
   repo: string
+  gates: GateStatus[]
 }
 
 export interface ExtensionMessageState {

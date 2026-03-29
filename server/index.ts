@@ -905,7 +905,10 @@ watcher.on("line", (file: WatchedFile, line: string) => {
 
 // ── GitHub Issues Pipeline Tracking ─────────────────────────────────────────
 const PIPELINE_POLL_INTERVAL_MS = 60_000; // Poll every 60s
-let cachedPipelineIssues: Array<{ number: number; title: string; labels: string[]; state: string; pipelineState: string; repo: string }> = [];
+interface GateStatus { gate: number; status: string; comment: string; timestamp: string }
+let cachedPipelineIssues: Array<{ number: number; title: string; labels: string[]; state: string; pipelineState: string; repo: string; gates: GateStatus[] }> = [];
+const gateCache = new Map<string, { ts: number; gates: GateStatus[] }>();
+const GATE_COMMENT_RE = /^\[gate (\d+)\]\[(pass|fail)\]\s*(.*)$/m;
 
 function fetchPipelineIssues(): void {
   // Get unique repo names from active agents' project directories
@@ -957,6 +960,7 @@ function fetchPipelineIssues(): void {
           state: issue.state,
           pipelineState,
           repo: repo.split("/").pop() || repo,
+          gates: [],
         });
       }
     } catch (err) {
@@ -964,9 +968,44 @@ function fetchPipelineIssues(): void {
     }
   }
 
+  // Parse gate comments for in-progress issues
+  for (const issue of allIssues) {
+    if (issue.pipelineState !== "in_progress") continue;
+    const cacheKey = `${issue.repo}/${issue.number}`;
+    const cached = gateCache.get(cacheKey);
+    if (cached && Date.now() - cached.ts < 30_000) {
+      issue.gates = cached.gates;
+      continue;
+    }
+    // Find full repo name (owner/repo) from repoSet
+    const fullRepo = Array.from(repoSet).find(r => r.endsWith(`/${issue.repo}`)) || issue.repo;
+    try {
+      const raw = execSync(
+        `gh api repos/${fullRepo}/issues/${issue.number}/comments --jq '[.[] | select(.body | test("^\\\\[gate ")) | {body: .body, ts: .created_at}]'`,
+        { encoding: "utf-8", timeout: 10_000 }
+      );
+      const parsed = JSON.parse(raw) as Array<{ body: string; ts: string }>;
+      const gates: GateStatus[] = [];
+      for (const c of parsed) {
+        const m = c.body.match(GATE_COMMENT_RE);
+        if (m) {
+          gates.push({ gate: parseInt(m[1], 10), status: m[2], comment: m[3].trim(), timestamp: c.ts });
+        }
+      }
+      issue.gates = gates;
+      gateCache.set(cacheKey, { ts: Date.now(), gates });
+    } catch { /* ignore */ }
+  }
+  // Clean cache for issues no longer in-progress
+  for (const [key] of gateCache) {
+    if (!allIssues.some(i => `${i.repo}/${i.number}` === key && i.pipelineState === "in_progress")) {
+      gateCache.delete(key);
+    }
+  }
+
   cachedPipelineIssues = allIssues;
   if (allIssues.length > 0) {
-    broadcast({ type: "pipelineIssues", issues: allIssues });
+    broadcast({ type: "pipelineIssues", issues: allIssues } as any);
     console.log(`[Server] Fetched ${allIssues.length} pipeline issues from ${repoSet.size} repos`);
   }
 }
