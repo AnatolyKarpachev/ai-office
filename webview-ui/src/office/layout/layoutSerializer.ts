@@ -55,19 +55,16 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[]): Furnit
         if (entry.orientation === 'back') return true
         if (entry.orientation === 'front' || entry.orientation === 'side'
             || entry.orientation === 'left' || entry.orientation === 'right') return false
-        // No explicit orientation — check if any seat tile has an adjacent desk
-        // (character will face the desk, potentially with back to camera)
+        // No explicit orientation — check if any seat tile has a desk directly ABOVE.
+        // Only desk above means the character faces UP (back to camera);
+        // desk below/left/right means the character faces forward or sideways.
         const bgRows = Math.min(entry.backgroundTiles || 0, entry.footprintH - 1)
         for (let dr = bgRows; dr < entry.footprintH; dr++) {
           for (let dc = 0; dc < entry.footprintW; dc++) {
             const sc = item.col + dc
             const sr = item.row + dr
-            // Check all 4 directions for adjacent desk
-            if (deskTilesSet.has(`${sc},${sr - 1}`)   // desk above
-                || deskTilesSet.has(`${sc},${sr + 1}`) // desk below
-                || deskTilesSet.has(`${sc - 1},${sr}`) // desk left
-                || deskTilesSet.has(`${sc + 1},${sr}`) // desk right
-            ) return true
+            // Only desk above → character faces UP → back to camera
+            if (deskTilesSet.has(`${sc},${sr - 1}`)) return true
           }
         }
         return false
