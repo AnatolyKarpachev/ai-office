@@ -946,17 +946,29 @@ function fetchPipelineIssues(): void {
       );
       const issues = JSON.parse(raw) as Array<{ number: number; title: string; labels: Array<{ name: string }>; state: string; body: string }>;
       for (const issue of issues) {
-        // Parse pipeline state from YAML metadata in issue body
+        const labelNames = issue.labels.map((l) => l.name);
+        // Determine pipeline state: labels take priority over YAML body
         let pipelineState = "";
-        const yamlMatch = issue.body?.match(/```yaml\s*\n([\s\S]*?)```/);
-        if (yamlMatch) {
-          const stateMatch = yamlMatch[1].match(/^state:\s*(.+)$/m);
-          if (stateMatch) pipelineState = stateMatch[1].trim();
+        if (labelNames.includes("blocked")) {
+          pipelineState = "blocked";
+        } else if (labelNames.includes("pipeline-done") || labelNames.includes("completed")) {
+          pipelineState = "done";
+        } else if (labelNames.includes("pipeline-ready") || labelNames.includes("in-progress")) {
+          pipelineState = "in_progress";
+        } else if (labelNames.includes("needs-human-review")) {
+          pipelineState = "review_ready";
+        } else {
+          // Fallback: parse from YAML metadata in issue body
+          const yamlMatch = issue.body?.match(/```yaml\s*\n([\s\S]*?)```/);
+          if (yamlMatch) {
+            const stateMatch = yamlMatch[1].match(/^state:\s*(.+)$/m);
+            if (stateMatch) pipelineState = stateMatch[1].trim();
+          }
         }
         allIssues.push({
           number: issue.number,
           title: issue.title,
-          labels: issue.labels.map((l) => l.name),
+          labels: labelNames,
           state: issue.state,
           pipelineState,
           repo: repo.split("/").pop() || repo,
