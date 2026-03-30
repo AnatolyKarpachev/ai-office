@@ -323,10 +323,68 @@ export function getCatalogEntry(type: string): CatalogEntryWithCategory | undefi
 
 export function getCatalogByCategory(category: FurnitureCategory): CatalogEntryWithCategory[] {
   const catalog = dynamicCatalog ?? []
+  if (category === 'hospital' || category === 'modern') {
+    return []
+  }
   const items = catalog.filter((e) => e.category === category)
+  const kitchenTail = catalog.filter((e) => e.category === 'kitchen').slice(-6)
+  const modernFirstItem = catalog.find((e) => e.category === 'modern')
+  const modernMushroomLamp = catalog.find((e) => e.type === 'MI_MUSHROOM_LAMP_1')
+  const modernSmallPainting = catalog.find((e) => e.type === 'MI_PAINTING_SM_1')
+  const modernWindow2 = catalog.find((e) => e.type === 'MI_WINDOW_2')
+  const plantsItems = [...catalog.filter((e) => e.category === 'plants'), ...(modernFirstItem ? [modernFirstItem] : [])]
+  const plantsTail = plantsItems.slice(-3)
 
   if (category === 'desks' && items.length > 4) {
     return [...items.slice(0, 2), ...items.slice(-2)]
+  }
+
+  if (category === 'storage' && items.length > 10) {
+    return [...items.slice(0, 10), ...(modernWindow2 ? [modernWindow2] : [])]
+  }
+
+  if (category === 'wall' && items.length > 5) {
+    return [...items.slice(0, 5), ...items.slice(14)]
+  }
+
+  if (category === 'misc') {
+    const miscBase = items.length > 18
+      ? [...items.slice(0, 16), ...items.slice(-2)]
+      : items
+    return [
+      ...miscBase,
+      ...kitchenTail,
+      ...(modernMushroomLamp ? [modernMushroomLamp] : []),
+      ...(modernSmallPainting ? [modernSmallPainting] : []),
+    ]
+  }
+
+  if (category === 'fireplace' && items.length >= 10) {
+    return [items[1], items[9]].filter((item): item is CatalogEntryWithCategory => Boolean(item))
+  }
+
+  if (category === 'floor_decor' && items.length > 4) {
+    return items.slice(0, 4)
+  }
+
+  if (category === 'kitchen' && items.length > 12) {
+    return items.slice(0, 12)
+  }
+
+  if (category === 'lighting' && items.length > 6) {
+    return items.slice(0, 6)
+  }
+
+  if (category === 'plants') {
+    return plantsItems.slice(0, Math.max(0, plantsItems.length - 3))
+  }
+
+  if (category === 'money_decor') {
+    return plantsTail
+  }
+
+  if (category === 'sofa' && items.length > 10) {
+    return items.slice(10)
   }
 
   return items
@@ -337,14 +395,19 @@ export function getActiveCatalog(): CatalogEntryWithCategory[] {
 }
 
 export function getActiveCategories(): Array<{ id: FurnitureCategory; label: string }> {
-  const categories = dynamicCategories ?? []
+  const categories = (dynamicCategories ?? []).filter((c) => c !== 'hospital' && c !== 'modern')
   // Return known categories first (in preferred order), then any new ones
   const known = FURNITURE_CATEGORIES.filter((c) => categories.includes(c.id))
   const knownIds = new Set(FURNITURE_CATEGORIES.map((c) => c.id))
   const extra = categories
     .filter((c) => !knownIds.has(c))
     .map((id) => ({ id, label: id.charAt(0).toUpperCase() + id.slice(1).replace(/_/g, ' ') }))
-  return [...known, ...extra]
+  const result = [...known, ...extra]
+  const plantsCount = (dynamicCatalog ?? []).filter((e) => e.category === 'plants').length
+  if (plantsCount > 2) {
+    result.push({ id: 'money_decor', label: 'Money Decor' })
+  }
+  return result
 }
 
 export const FURNITURE_CATEGORIES: Array<{ id: FurnitureCategory; label: string }> = [

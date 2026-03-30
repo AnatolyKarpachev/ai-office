@@ -103,7 +103,6 @@ export function useEditorActions(
         editorState.clearSelection()
         editorState.clearGhost()
         editorState.clearDrag()
-        wallColorEditActiveRef.current = false
       }
       return next
     })
@@ -120,7 +119,6 @@ export function useEditorActions(
     editorState.clearGhost()
     editorState.clearDrag()
     colorEditUidRef.current = null
-    wallColorEditActiveRef.current = false
     setEditorTick((n) => n + 1)
   }, [editorState])
 
@@ -134,39 +132,10 @@ export function useEditorActions(
     setEditorTick((n) => n + 1)
   }, [editorState])
 
-  // Track whether we've already pushed undo for the current wall color editing session
-  const wallColorEditActiveRef = useRef(false)
-
   const handleWallColorChange = useCallback((color: FloorColor) => {
     editorState.wallColor = color
-
-    // Update all existing wall tiles to the new color
-    const os = getOfficeState()
-    const layout = os.getLayout()
-    const existingColors = layout.tileColors || new Array(layout.tiles.length).fill(null)
-    const newColors = [...existingColors]
-    let changed = false
-    for (let i = 0; i < layout.tiles.length; i++) {
-      if (layout.tiles[i] === TileType.WALL) {
-        newColors[i] = { ...color }
-        changed = true
-      }
-    }
-    if (changed) {
-      // Push undo only once per editing session (first slider touch)
-      if (!wallColorEditActiveRef.current) {
-        editorState.pushUndo(layout)
-        editorState.clearRedo()
-        wallColorEditActiveRef.current = true
-      }
-      const newLayout = { ...layout, tileColors: newColors }
-      editorState.isDirty = true
-      setIsDirty(true)
-      os.rebuildFromLayout(newLayout)
-      saveLayout(newLayout)
-    }
     setEditorTick((n) => n + 1)
-  }, [editorState, getOfficeState, saveLayout])
+  }, [editorState])
 
   const handleWallSetChange = useCallback((setIndex: number) => {
     editorState.selectedWallSet = setIndex
