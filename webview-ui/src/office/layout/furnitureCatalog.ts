@@ -323,7 +323,13 @@ export function getCatalogEntry(type: string): CatalogEntryWithCategory | undefi
 
 export function getCatalogByCategory(category: FurnitureCategory): CatalogEntryWithCategory[] {
   const catalog = dynamicCatalog ?? []
-  return catalog.filter((e) => e.category === category)
+  const items = catalog.filter((e) => e.category === category)
+
+  if (category === 'desks' && items.length > 4) {
+    return [...items.slice(0, 2), ...items.slice(-2)]
+  }
+
+  return items
 }
 
 export function getActiveCatalog(): CatalogEntryWithCategory[] {
