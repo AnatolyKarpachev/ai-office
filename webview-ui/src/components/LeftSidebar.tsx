@@ -314,6 +314,7 @@ export function LeftSidebar({
               const totalTokens = stats ? stats.totalInputTokens + stats.totalOutputTokens : 0
               const contextTokens = stats?.currentContextTokens ?? totalTokens
               const contextLimit = stats?.currentContextLimit ?? (stats ? getContextLimit(stats.model) : 0)
+              const displayTokens = contextTokens
               const isHovered = hoveredAgent === id
               const subs = subsByParent.get(id) || []
 
@@ -352,7 +353,7 @@ export function LeftSidebar({
                       <>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <TokenBar totalTokens={totalTokens} usageTokens={contextTokens} contextLimit={contextLimit} model={stats.model} turnCount={stats.turnCount} visible={true} />
-                          <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.35)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{formatNumber(totalTokens)} tok</span>
+                          <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.35)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{formatNumber(displayTokens)} tok</span>
                         </div>
                         <div style={{ display: 'flex', gap: 8, marginTop: 2, fontSize: '14px', color: 'rgba(255,255,255,0.3)', fontFamily: 'monospace' }}>
                           <span>{stats.turnCount} turns</span>
@@ -403,12 +404,13 @@ export function LeftSidebar({
                               const subTotalTokens = subStats.totalInputTokens + subStats.totalOutputTokens
                               const subContextTokens = subStats.currentContextTokens ?? subTotalTokens
                               const subContextLimit = subStats.currentContextLimit ?? getContextLimit(subStats.model)
+                              const subDisplayTokens = subContextTokens
                               if (subTotalTokens === 0) return null
                               return (
                                 <>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
                                     <TokenBar totalTokens={subTotalTokens} usageTokens={subContextTokens} contextLimit={subContextLimit} model={subStats.model} turnCount={subStats.turnCount} visible={true} />
-                                    <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.25)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{formatNumber(subTotalTokens)} tok</span>
+                                    <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.25)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{formatNumber(subDisplayTokens)} tok</span>
                                   </div>
                                   <div style={{ display: 'flex', gap: 6, marginTop: 1, fontSize: '12px', color: 'rgba(255,255,255,0.2)', fontFamily: 'monospace' }}>
                                     <span>{subStats.turnCount} turns</span>
