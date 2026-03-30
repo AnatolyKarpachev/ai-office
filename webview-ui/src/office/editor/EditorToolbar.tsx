@@ -10,7 +10,7 @@ import {
 } from '../layout/furnitureCatalog.js'
 import { getCachedSprite } from '../sprites/spriteCache.js'
 import type { FloorColor, TileType as TileTypeVal } from '../types.js'
-import { EditTool, TileType } from '../types.js'
+import { EditTool, TileType, TILE_SIZE } from '../types.js'
 
 const btnStyle: React.CSSProperties = {
   padding: '3px 8px',
