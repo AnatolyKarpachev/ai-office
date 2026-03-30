@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { getColorizedSprite } from '../colorize.js'
 import { getColorizedFloorSprite, getFloorPatternCount, hasFloorSprites } from '../floorTiles.js'
 import type { FurnitureCategory, LoadedAssetData } from '../layout/furnitureCatalog.js'
-import { getWallSetCount, getWallSetPreviewSprite } from '../wallTiles.js'
+import { getColorizedWallSprite, getWallSetCount, wallColorToHex } from '../wallTiles.js'
 import {
   buildDynamicCatalog,
   getActiveCategories,
@@ -11,7 +10,7 @@ import {
 } from '../layout/furnitureCatalog.js'
 import { getCachedSprite } from '../sprites/spriteCache.js'
 import type { FloorColor, TileType as TileTypeVal } from '../types.js'
-import { EditTool } from '../types.js'
+import { EditTool, TileType } from '../types.js'
 
 const btnStyle: React.CSSProperties = {
   padding: '3px 8px',
@@ -152,19 +151,33 @@ function WallSetPreview({
     canvas.width = displayW
     canvas.height = displayH
     ctx.imageSmoothingEnabled = false
+    ctx.clearRect(0, 0, displayW, displayH)
 
-    const sprite = getWallSetPreviewSprite(setIndex)
-    if (!sprite) {
-      ctx.fillStyle = '#444'
-      ctx.fillRect(0, 0, displayW, displayH)
+    const previewTileMap: TileTypeVal[][] = [
+      [TileType.WALL],
+      [TileType.WALL],
+    ]
+    const baseColor = wallColorToHex(color)
+
+    // Match layout rendering: first paint the wall tile base color for both cells,
+    // then draw the autotiled wall sprites over it.
+    ctx.fillStyle = baseColor
+    ctx.fillRect(0, 0, displayW, displayH / 2)
+    ctx.fillRect(0, displayH / 2, displayW, displayH / 2)
+
+    const topWall = getColorizedWallSprite(0, 0, previewTileMap, color, setIndex)
+    const bottomWall = getColorizedWallSprite(0, 1, previewTileMap, color, setIndex)
+
+    if (!topWall && !bottomWall) {
       return
     }
 
-    // Colorize the preview sprite using the same colorize path as rendering
-    const cacheKey = `wall-preview-${setIndex}-${color.h}-${color.s}-${color.b}-${color.c}`
-    const colorized = getColorizedSprite(cacheKey, sprite, { ...color, colorize: true })
-    const cached = getCachedSprite(colorized, previewZoom)
-    ctx.drawImage(cached, 0, 0)
+    for (const wallInfo of [topWall, bottomWall]) {
+      if (!wallInfo) continue
+      const cached = getCachedSprite(wallInfo.sprite, previewZoom)
+      const drawY = (wallInfo === topWall ? 0 : TILE_SIZE) * previewZoom + wallInfo.offsetY * previewZoom
+      ctx.drawImage(cached, 0, drawY)
+    }
   }, [setIndex, color])
 
   return (
