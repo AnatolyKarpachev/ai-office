@@ -9,6 +9,7 @@ export const STATUS_TO_TOOL: Record<string, string> = {
   'Editing': 'Edit',
   'Running': 'Bash',
   'Task': 'Task',
+  '\u2192': 'SendMessage',
 }
 
 export function extractToolName(status: string): string | null {

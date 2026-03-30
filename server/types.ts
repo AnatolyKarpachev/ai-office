@@ -87,7 +87,8 @@ export type ServerMessage =
   | { type: "agentRole"; id: number; role: string; autoDetected: boolean; colors: { primary: string; badge: string } }
   | { type: "pipelineIssues"; issues: Array<{ number: number; title: string; labels: string[]; state: string; pipelineState: string; repo: string; gates: Array<{ gate: number; status: string; comment: string; timestamp: string }> }> }
   | { type: "agentConversation"; id: number; messages: Array<{ role: string; text: string; timestamp: string; toolNames?: string[] }> }
-  | { type: "agentConversationUpdate"; id: number; message: { role: string; text: string; timestamp: string; toolNames?: string[] } };
+  | { type: "agentConversationUpdate"; id: number; message: { role: string; text: string; timestamp: string; toolNames?: string[] } }
+  | { type: "agentSendMessage"; id: number; toolId: string; from: string; to: string; message: string };
 
 // Messages sent from client to server
 export type ClientMessage =

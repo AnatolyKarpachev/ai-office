@@ -11,6 +11,8 @@ const MAX_CONVERSATION_MESSAGES = 100;
 const MAX_CONVERSATION_TEXT_LENGTH = 3000;
 const BASH_COMMAND_DISPLAY_MAX_LENGTH = 30;
 const TASK_DESCRIPTION_DISPLAY_MAX_LENGTH = 40;
+const SEND_MESSAGE_DISPLAY_MAX_LENGTH = 30;
+const SEND_MESSAGE_SIDEBAR_MAX_LENGTH = 200;
 const MAX_AGENT_NAME_LENGTH = 15;
 const IDLE_ACTIVITY_TIMEOUT_MS = 120_000; // 2 min — long-running tools (builds, tests) need time
 
@@ -90,6 +92,12 @@ function formatToolStatus(toolName: string, input: Record<string, unknown>): str
       return desc
         ? `Subtask: ${desc.length > TASK_DESCRIPTION_DISPLAY_MAX_LENGTH ? desc.slice(0, TASK_DESCRIPTION_DISPLAY_MAX_LENGTH) + "\u2026" : desc}`
         : "Running subtask";
+    }
+    case "SendMessage": {
+      const to = (input.to as string) || "?";
+      const msg = (input.message as string) || "";
+      const truncMsg = msg.length > SEND_MESSAGE_DISPLAY_MAX_LENGTH ? msg.slice(0, SEND_MESSAGE_DISPLAY_MAX_LENGTH) + "\u2026" : msg;
+      return `\u2192 ${to}: ${truncMsg}`;
     }
     case "AskUserQuestion":
       return "Waiting for your answer";
@@ -392,6 +400,23 @@ function handleAssistantMessage(
         }
 
         emit({ type: "agentToolStart", id: agent.id, toolId, status });
+
+        // Emit dedicated SendMessage event for inter-agent communication
+        if (toolName === "SendMessage") {
+          const toAgent = (input.to as string) || "?";
+          const msgText = (input.message as string) || "";
+          const truncated = msgText.length > SEND_MESSAGE_SIDEBAR_MAX_LENGTH
+            ? msgText.slice(0, SEND_MESSAGE_SIDEBAR_MAX_LENGTH) + "\u2026"
+            : msgText;
+          emit({
+            type: "agentSendMessage",
+            id: agent.id,
+            toolId,
+            from: agent.projectName,
+            to: toAgent,
+            message: truncated,
+          });
+        }
       }
     }
     if (hasNonExemptTool) {

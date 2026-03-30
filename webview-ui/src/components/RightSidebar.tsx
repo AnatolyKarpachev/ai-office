@@ -9,7 +9,7 @@ interface ActivityEntry {
   agentId: number
   agentName: string
   text: string
-  type: 'tool_start' | 'tool_done' | 'permission' | 'status' | 'agent_joined' | 'agent_left' | 'sub_tool_start' | 'sub_tool_done' | 'sub_permission' | 'sub_joined' | 'sub_left'
+  type: 'tool_start' | 'tool_done' | 'permission' | 'status' | 'agent_joined' | 'agent_left' | 'sub_tool_start' | 'sub_tool_done' | 'sub_permission' | 'sub_joined' | 'sub_left' | 'send_message'
   timestamp: number
   isSubagent?: boolean
 }
@@ -34,6 +34,7 @@ function getEntryColor(type: ActivityEntry['type']): string {
     case 'sub_permission': return 'var(--pixel-status-permission)'
     case 'sub_joined': return 'rgba(90,200,140,0.6)'
     case 'sub_left': return 'rgba(255,130,130,0.5)'
+    case 'send_message': return 'rgba(255,165,0,0.9)'
   }
 }
 
@@ -50,6 +51,7 @@ function getEntryIcon(type: ActivityEntry['type']): string {
     case 'sub_permission': return '  ⚠'
     case 'sub_joined': return '  +'
     case 'sub_left': return '  −'
+    case 'send_message': return '\u2192'
   }
 }
 
@@ -463,6 +465,7 @@ interface RightSidebarProps {
   agentDetails: AgentDetails | null
   inspectedAgentId: number | null
   onCloseInspection: () => void
+  sendMessages: Array<{ id: number; from: string; to: string; message: string; timestamp: number }>
 }
 
 const sidebarStyle: React.CSSProperties = {
@@ -532,6 +535,7 @@ export function RightSidebar({
   agentDetails,
   inspectedAgentId,
   onCloseInspection,
+  sendMessages,
 }: RightSidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [activeTab, setActiveTab] = useState<'activity' | 'tools' | 'chat'>('activity')
@@ -544,6 +548,7 @@ export function RightSidebar({
   const prevStatusesRef = useRef<Record<number, string>>({})
   const prevSubagentsRef = useRef<SubagentCharacter[]>([])
   const prevSubToolsRef = useRef<Record<number, Record<string, ToolActivity[]>>>({})
+  const prevSendMessagesRef = useRef<Array<{ id: number; from: string; to: string; message: string; timestamp: number }>>([])
 
   // Generate activity entries from state changes
   useEffect(() => {
@@ -719,16 +724,31 @@ export function RightSidebar({
       }
     }
 
+    // Detect new SendMessage events
+    const prevSendMsgCount = prevSendMessagesRef.current.length
+    for (let i = prevSendMsgCount; i < sendMessages.length; i++) {
+      const sm = sendMessages[i]
+      newEntries.push({
+        id: nextEntryId++,
+        agentId: sm.id,
+        agentName: sm.from,
+        text: `${sm.from} \u2192 ${sm.to}: ${sm.message}`,
+        type: 'send_message',
+        timestamp: sm.timestamp,
+      })
+    }
+
     prevAgentsRef.current = [...agents]
     prevToolsRef.current = { ...agentTools }
     prevStatusesRef.current = { ...agentStatuses }
     prevSubagentsRef.current = [...subagentCharacters]
     prevSubToolsRef.current = { ...subagentTools }
+    prevSendMessagesRef.current = sendMessages
 
     if (newEntries.length > 0) {
       setEntries((prev) => [...prev, ...newEntries].slice(-100))
     }
-  }, [agents, agentTools, agentStatuses, subagentCharacters, subagentTools, officeState])
+  }, [agents, agentTools, agentStatuses, subagentCharacters, subagentTools, officeState, sendMessages])
 
   // Auto-switch to Chat tab when agent is inspected
   useEffect(() => {

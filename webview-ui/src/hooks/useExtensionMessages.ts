@@ -120,6 +120,7 @@ export interface ExtensionMessageState {
   agentConversation: { id: number; messages: ConversationMessage[] } | null
   requestAgentConversation: (id: number) => void
   pipelineIssues: PipelineIssue[]
+  sendMessages: Array<{ id: number; from: string; to: string; message: string; timestamp: number }>
 }
 
 function saveAgentSeats(os: OfficeState): void {
@@ -152,6 +153,7 @@ export function useExtensionMessages(
   const [agentDetailsState, setAgentDetailsState] = useState<AgentDetails | null>(null)
   const [agentConversationState, setAgentConversationState] = useState<{ id: number; messages: ConversationMessage[] } | null>(null)
   const [pipelineIssues, setPipelineIssues] = useState<PipelineIssue[]>([])
+  const [sendMessages, setSendMessages] = useState<Array<{ id: number; from: string; to: string; message: string; timestamp: number }>>([])
   const [serverMode, setServerMode] = useState<string>('...')
 
   const requestAgentDetails = useCallback((id: number) => {
@@ -548,6 +550,14 @@ export function useExtensionMessages(
       } else if (msg.type === 'pipelineIssues') {
         const issues = msg.issues as PipelineIssue[]
         setPipelineIssues(issues)
+      } else if (msg.type === 'agentSendMessage') {
+        setSendMessages(prev => [...prev, {
+          id: msg.id as number,
+          from: msg.from as string,
+          to: msg.to as string,
+          message: msg.message as string,
+          timestamp: Date.now(),
+        }].slice(-100))
       }
     }
     window.addEventListener('message', handler)
@@ -574,6 +584,7 @@ export function useExtensionMessages(
     agentConversation: agentConversationState,
     requestAgentConversation,
     pipelineIssues,
+    sendMessages,
     serverMode,
   }
 }
