@@ -5,7 +5,7 @@ import { getCharacterSprites, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE } 
 import { getCharacterSprite } from './characters.js'
 import { renderMatrixEffect } from './matrixEffect.js'
 import { getColorizedFloorSprite, hasFloorSprites, WALL_COLOR } from '../floorTiles.js'
-import { getWallInstances, shouldRenderWallSprites, wallColorToHex } from '../wallTiles.js'
+import { hasWallSprites, getWallInstances, wallColorToHex } from '../wallTiles.js'
 import {
   CHARACTER_SITTING_OFFSET_PX,
   CHARACTER_Z_SORT_OFFSET,
@@ -754,7 +754,7 @@ export function renderFrame(
   }
 
   // Build wall instances for z-sorting with furniture and characters
-  const wallInstances = shouldRenderWallSprites()
+  const wallInstances = hasWallSprites()
     ? getWallInstances(tileMap, tileColors, layoutCols)
     : []
   const allFurniture = wallInstances.length > 0

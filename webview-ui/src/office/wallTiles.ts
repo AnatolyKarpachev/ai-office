@@ -10,6 +10,7 @@
  * Bitmask convention: N=1, E=2, S=4, W=8. Out-of-bounds = NOT wall.
  */
 
+import { getColorizedSprite } from './colorize.js'
 import type {
   FloorColor,
   FurnitureInstance,
@@ -18,14 +19,8 @@ import type {
 } from './types.js'
 import { TILE_SIZE, TileType } from './types.js'
 
-export const WALL_RENDER_MODE = 'procedural' as const
-
 /** Wall tile sets: each set has 16 sprites indexed by bitmask (0-15) */
 let wallSets: SpriteData[][] = []
-
-export function shouldRenderWallSprites(): boolean {
-  return WALL_RENDER_MODE !== 'flat' && wallSets.length > 0
-}
 
 /** Set wall tile sets (called once when extension sends wallTilesLoaded) */
 export function setWallSprites(sets: SpriteData[][]): void {
@@ -104,8 +99,8 @@ export function getColorizedWallSprite(
   const sprite = sprites[mask]
   if (!sprite) return null
 
-  const cacheKey = `wall-procedural-${setIndex}-${mask}-${color.h}-${color.s}-${color.b}-${color.c}`
-  const colorized = colorizeWallSprite(sprite, color)
+  const cacheKey = `wall-${setIndex}-${mask}-${color.h}-${color.s}-${color.b}-${color.c}`
+  const colorized = getColorizedSprite(cacheKey, sprite, { ...color, colorize: true })
 
   return { sprite: colorized, offsetY: TILE_SIZE - sprite.length }
 }
@@ -149,16 +144,9 @@ export function getWallInstances(
  * Uses same Colorize algorithm as floor tiles: 50% gray -> HSL.
  */
 export function wallColorToHex(color: FloorColor): string {
-  return wallToneToHex(color, WALL_LIGHT_LUMINANCE)
-}
-
-const WALL_DARK_LUMINANCE = (0.299 * 48 + 0.587 * 42 + 0.114 * 40) / 255
-const WALL_LIGHT_LUMINANCE = (0.299 * 202 + 0.587 * 198 + 0.114 * 185) / 255
-const WALL_TONE_THRESHOLD = (WALL_DARK_LUMINANCE + WALL_LIGHT_LUMINANCE) / 2
-
-function wallToneToHex(color: FloorColor, sourceLuminance: number): string {
   const { h, s, b, c } = color
-  let lightness = sourceLuminance
+  // Start with 50% gray (wall base)
+  let lightness = 0.5
 
   // Apply contrast
   if (c !== 0) {
@@ -191,29 +179,4 @@ function wallToneToHex(color: FloorColor, sourceLuminance: number): string {
   const clamp = (v: number) => Math.max(0, Math.min(255, Math.round((v + m) * 255)))
 
   return `#${clamp(r1).toString(16).padStart(2, '0')}${clamp(g1).toString(16).padStart(2, '0')}${clamp(b1).toString(16).padStart(2, '0')}`
-}
-
-function colorizeWallSprite(sprite: SpriteData, color: FloorColor): SpriteData {
-  const darkHex = wallToneToHex(color, WALL_DARK_LUMINANCE).toUpperCase()
-  const lightHex = wallToneToHex(color, WALL_LIGHT_LUMINANCE).toUpperCase()
-  const result: SpriteData = []
-
-  for (const row of sprite) {
-    const newRow: string[] = []
-    for (const pixel of row) {
-      if (pixel === '') {
-        newRow.push('')
-        continue
-      }
-
-      const r = parseInt(pixel.slice(1, 3), 16)
-      const g = parseInt(pixel.slice(3, 5), 16)
-      const b = parseInt(pixel.slice(5, 7), 16)
-      const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
-      newRow.push(luminance < WALL_TONE_THRESHOLD ? darkHex : lightHex)
-    }
-    result.push(newRow)
-  }
-
-  return result
 }
