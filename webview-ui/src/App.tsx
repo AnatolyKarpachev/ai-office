@@ -1,7 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
 import { BottomToolbar } from './components/BottomToolbar.js'
-import { DebugView } from './components/DebugView.js'
-import { InspectionPanel } from './components/InspectionPanel.js'
 import { LeftSidebar } from './components/LeftSidebar.js'
 import { RightSidebar } from './components/RightSidebar.js'
 import { ZoomControls } from './components/ZoomControls.js'
@@ -45,6 +43,20 @@ const actionBarBtnDisabled: React.CSSProperties = {
   cursor: 'default',
 }
 
+const actionBarSaveBtnStyle: React.CSSProperties = {
+  ...actionBarBtnStyle,
+  background: 'rgba(46, 160, 67, 0.22)',
+  color: '#d7ffe0',
+  border: '2px solid rgba(46, 160, 67, 0.85)',
+}
+
+const actionBarResetBtnStyle: React.CSSProperties = {
+  ...actionBarBtnStyle,
+  background: 'rgba(198, 59, 59, 0.22)',
+  color: '#ffd7d7',
+  border: '2px solid rgba(198, 59, 59, 0.85)',
+}
+
 function EditActionBar({ editor, editorState: es }: { editor: ReturnType<typeof useEditorActions>; editorState: EditorState }) {
   const [showResetConfirm, setShowResetConfirm] = useState(false)
 
@@ -84,7 +96,7 @@ function EditActionBar({ editor, editorState: es }: { editor: ReturnType<typeof 
         Redo
       </button>
       <button
-        style={actionBarBtnStyle}
+        style={actionBarSaveBtnStyle}
         onClick={editor.handleSave}
         title="Save layout"
       >
@@ -92,7 +104,7 @@ function EditActionBar({ editor, editorState: es }: { editor: ReturnType<typeof 
       </button>
       {!showResetConfirm ? (
         <button
-          style={actionBarBtnStyle}
+          style={actionBarResetBtnStyle}
           onClick={() => setShowResetConfirm(true)}
           title="Reset to last saved layout"
         >
@@ -124,7 +136,7 @@ function App() {
 
   const isEditDirty = useCallback(() => editor.isEditMode && editor.isDirty, [editor.isEditMode, editor.isDirty])
 
-  const { agents, selectedAgent, agentTools, agentStatuses, subagentTools, subagentCharacters, layoutReady, layoutWasReset, loadedAssets, workspaceFolders, externalAssetDirectories, agentStats, agentRoles, agentDetails, requestAgentDetails, agentConversation, requestAgentConversation, pipelineIssues, sendMessages, serverMode } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty)
+  const { agents, selectedAgent, agentTools, agentStatuses, subagentTools, subagentCharacters, layoutReady, layoutWasReset, loadedAssets, agentStats, agentRoles, agentDetails, requestAgentDetails, agentConversation, requestAgentConversation, pipelineIssues, sendMessages, serverMode } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty)
 
   // Deep inspection panel state
   const [inspectedAgentId, setInspectedAgentId] = useState<number | null>(null)
@@ -142,18 +154,12 @@ function App() {
   // Migration notice disabled — we control layout revisions ourselves
   const showMigrationNotice = false
 
-  const [isDebugMode, setIsDebugMode] = useState(false)
   const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(false)
 
-  const handleToggleDebugMode = useCallback(() => setIsDebugMode((prev) => !prev), [])
   const handleToggleAlwaysShowOverlay = useCallback(
     () => setAlwaysShowOverlay((prev) => !prev),
     [],
   )
-
-  const handleSelectAgent = useCallback((id: number) => {
-    vscode.postMessage({ type: 'focusAgent', id })
-  }, [])
 
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -237,10 +243,10 @@ function App() {
         panRef={editor.panRef}
       />
 
-      {!isDebugMode && <ZoomControls zoom={editor.zoom} onZoomChange={editor.handleZoomChange} />}
+      <ZoomControls zoom={editor.zoom} onZoomChange={editor.handleZoomChange} />
 
       {/* Left Sidebar — Agent list */}
-      {!isDebugMode && !editor.isEditMode && (
+      {!editor.isEditMode && (
         <LeftSidebar
           agents={agents}
           agentTools={agentTools}
@@ -257,7 +263,7 @@ function App() {
       )}
 
       {/* Right Sidebar — Activity feed & tools */}
-      {!isDebugMode && !editor.isEditMode && (
+      {!editor.isEditMode && (
         <RightSidebar
           agents={agents}
           agentTools={agentTools}
@@ -290,14 +296,9 @@ function App() {
 
       <BottomToolbar
         isEditMode={editor.isEditMode}
-        onOpenClaude={editor.handleOpenClaude}
         onToggleEditMode={editor.handleToggleEditMode}
-        isDebugMode={isDebugMode}
-        onToggleDebugMode={handleToggleDebugMode}
         alwaysShowOverlay={alwaysShowOverlay}
         onToggleAlwaysShowOverlay={handleToggleAlwaysShowOverlay}
-        workspaceFolders={workspaceFolders}
-        externalAssetDirectories={externalAssetDirectories}
       />
 
       {editor.isEditMode && editor.isDirty && (
@@ -363,7 +364,7 @@ function App() {
         )
       })()}
 
-      {!isDebugMode && (
+      {
         <ToolOverlay
           officeState={officeState}
           agents={agents}
@@ -377,18 +378,7 @@ function App() {
           onCloseAgent={handleCloseAgent}
           alwaysShowOverlay={alwaysShowOverlay}
         />
-      )}
-
-      {isDebugMode && (
-        <DebugView
-          agents={agents}
-          selectedAgent={selectedAgent}
-          agentTools={agentTools}
-          agentStatuses={agentStatuses}
-          subagentTools={subagentTools}
-          onSelectAgent={handleSelectAgent}
-        />
-      )}
+      }
 
       {/* InspectionPanel is now embedded in RightSidebar */}
 
