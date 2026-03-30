@@ -19,6 +19,34 @@ const DEFAULT_FLOOR_SPRITE: SpriteData = Array.from(
 /** Module-level storage for floor tile sprites (set once on load) */
 let floorSprites: SpriteData[] = []
 
+const HIDDEN_FLOOR_RANGES: Array<[number, number]> = [
+  [10, 83],
+  [86, 95],
+  [98, 103],
+  [107, 147],
+  [161, 170],
+  [176, 191],
+  [192, 238],
+  [280, 361],
+  [378, 387],
+  [518, 577],
+  [734, 785],
+]
+
+const FENCE_FLOOR_RANGE: [number, number] = [192, 208]
+
+function isPatternInRange(patternIndex: number, [start, end]: [number, number]): boolean {
+  return patternIndex >= start && patternIndex <= end
+}
+
+function isHiddenFloorPattern(patternIndex: number): boolean {
+  return HIDDEN_FLOOR_RANGES.some((range) => isPatternInRange(patternIndex, range))
+}
+
+export function isFenceFloorPattern(patternIndex: number): boolean {
+  return isPatternInRange(patternIndex, FENCE_FLOOR_RANGE)
+}
+
 /** Wall color constant */
 export const WALL_COLOR = '#3A3A5C'
 
@@ -47,6 +75,17 @@ export function hasFloorSprites(): boolean {
 /** Get count of available floor patterns (at least 1 for the default solid tile) */
 export function getFloorPatternCount(): number {
   return floorSprites.length > 0 ? floorSprites.length : 1
+}
+
+/** Get visible floor pattern indices for the editor palette. */
+export function getVisibleFloorPatternIndices(): number[] {
+  const count = getFloorPatternCount()
+  const visible: number[] = []
+  for (let patternIndex = 1; patternIndex <= count; patternIndex++) {
+    if (isHiddenFloorPattern(patternIndex)) continue
+    visible.push(patternIndex)
+  }
+  return visible
 }
 
 /** Get all floor sprites (for preview rendering, falls back to default solid tile) */

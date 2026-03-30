@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { getColorizedSprite } from '../colorize.js'
-import { getColorizedFloorSprite, getFloorPatternCount, hasFloorSprites } from '../floorTiles.js'
+import { getColorizedFloorSprite, getVisibleFloorPatternIndices, hasFloorSprites } from '../floorTiles.js'
 import type { FurnitureCategory, LoadedAssetData } from '../layout/furnitureCatalog.js'
 import { getWallSetCount, getWallSetPreviewSprite } from '../wallTiles.js'
 import {
@@ -280,9 +280,7 @@ export function EditorToolbar({
 
   const categoryItems = getCatalogByCategory(activeCategory)
 
-  const patternCount = getFloorPatternCount()
-  // Wall is TileType 0, floor patterns are 1..patternCount
-  const floorPatterns = Array.from({ length: patternCount }, (_, i) => i + 1)
+  const floorPatterns = getVisibleFloorPatternIndices()
 
   const thumbSize = 36 // 2x for items
 

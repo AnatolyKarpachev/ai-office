@@ -1,4 +1,5 @@
 import type { FurnitureCatalogEntry, SpriteData } from '../types.js'
+import { getFloorSprite, isFenceFloorPattern } from '../floorTiles.js'
 
 export interface LoadedAssetData {
   catalog: Array<{
@@ -30,6 +31,7 @@ export type FurnitureCategory =
   | 'storage'
   | 'decor'
   | 'electronics'
+  | 'fence'
   | 'wall'
   | 'misc'
   | (string & {})
@@ -68,6 +70,27 @@ let internalCatalog: CatalogEntryWithCategory[] | null = null
 // Only includes "front" variants for grouped items (shown in editor palette)
 let dynamicCatalog: CatalogEntryWithCategory[] | null = null
 let dynamicCategories: FurnitureCategory[] | null = null
+
+const FENCE_FLOOR_TYPES = Array.from({ length: 17 }, (_, index) => 192 + index)
+
+function getVirtualFenceEntries(): CatalogEntryWithCategory[] {
+  const entries: CatalogEntryWithCategory[] = []
+  for (const patternIndex of FENCE_FLOOR_TYPES) {
+    if (!isFenceFloorPattern(patternIndex)) continue
+    const sprite = getFloorSprite(patternIndex)
+    if (!sprite) continue
+    entries.push({
+      type: `FLOOR_FENCE_${patternIndex}`,
+      label: `Floor ${patternIndex}`,
+      footprintW: 1,
+      footprintH: 1,
+      sprite,
+      isDesk: false,
+      category: 'fence',
+    })
+  }
+  return entries.filter((_, index) => index !== 7 && index !== 8)
+}
 
 /**
  * Build catalog from loaded assets. Returns true if successful.
@@ -314,6 +337,9 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
 }
 
 export function getCatalogEntry(type: string): CatalogEntryWithCategory | undefined {
+  if (type.startsWith('FLOOR_FENCE_')) {
+    return getVirtualFenceEntries().find((e) => e.type === type)
+  }
   // Check internal catalog (includes all variants, e.g., non-front rotations)
   if (internalCatalog) {
     return internalCatalog.find((e) => e.type === type)
@@ -322,6 +348,9 @@ export function getCatalogEntry(type: string): CatalogEntryWithCategory | undefi
 }
 
 export function getCatalogByCategory(category: FurnitureCategory): CatalogEntryWithCategory[] {
+  if (category === 'fence') {
+    return getVirtualFenceEntries()
+  }
   const catalog = dynamicCatalog ?? []
   if (category === 'hospital' || category === 'modern') {
     return []
@@ -403,6 +432,9 @@ export function getActiveCategories(): Array<{ id: FurnitureCategory; label: str
     .filter((c) => !knownIds.has(c))
     .map((id) => ({ id, label: id.charAt(0).toUpperCase() + id.slice(1).replace(/_/g, ' ') }))
   const result = [...known, ...extra]
+  if (getVirtualFenceEntries().length > 0 && !result.some((entry) => entry.id === 'fence')) {
+    result.splice(4, 0, { id: 'fence', label: 'Fence' })
+  }
   const plantsCount = (dynamicCatalog ?? []).filter((e) => e.category === 'plants').length
   if (plantsCount > 2) {
     result.push({ id: 'money_decor', label: 'Money Decor' })
@@ -415,6 +447,7 @@ export const FURNITURE_CATEGORIES: Array<{ id: FurnitureCategory; label: string 
   { id: 'chairs', label: 'Chairs' },
   { id: 'storage', label: 'Storage' },
   { id: 'electronics', label: 'Tech' },
+  { id: 'fence', label: 'Fence' },
   { id: 'decor', label: 'Decor' },
   { id: 'wall', label: 'Wall' },
   { id: 'misc', label: 'Misc' },
