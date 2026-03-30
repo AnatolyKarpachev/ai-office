@@ -10,7 +10,7 @@ import {
   getCatalogByCategory,
 } from '../layout/furnitureCatalog.js'
 import { getCachedSprite } from '../sprites/spriteCache.js'
-import type { FloorColor, TileType as TileTypeVal } from '../types.js'
+import type { AgentSpawnPoint, FloorColor, TileType as TileTypeVal } from '../types.js'
 import { EditTool } from '../types.js'
 
 const btnStyle: React.CSSProperties = {
@@ -53,10 +53,14 @@ interface EditorToolbarProps {
   selectedFurnitureType: string
   selectedFurnitureUid: string | null
   selectedFurnitureColor: FloorColor | null
+  agentSpawn: AgentSpawnPoint | null | undefined
+  isSelectingSpawn: boolean
   floorColor: FloorColor
   wallColor: FloorColor
   selectedWallSet: number
   onToolChange: (tool: EditTool) => void
+  onToggleSpawnEdit: () => void
+  onClearAgentSpawn: () => void
   onTileTypeChange: (type: TileTypeVal) => void
   onFloorColorChange: (color: FloorColor) => void
   onWallColorChange: (color: FloorColor) => void
@@ -220,10 +224,14 @@ export function EditorToolbar({
   selectedFurnitureType,
   selectedFurnitureUid,
   selectedFurnitureColor,
+  agentSpawn,
+  isSelectingSpawn,
   floorColor,
   wallColor,
   selectedWallSet,
   onToolChange,
+  onToggleSpawnEdit,
+  onClearAgentSpawn,
   onTileTypeChange,
   onFloorColorChange,
   onWallColorChange,
@@ -351,7 +359,47 @@ export function EditorToolbar({
         >
           Types
         </button>
+        <button
+          style={isSelectingSpawn ? { ...activeBtnStyle, background: 'rgba(200, 60, 60, 0.28)', border: '2px solid #ff5a5a' } : btnStyle}
+          onClick={onToggleSpawnEdit}
+          title="Pick and manage spawn position"
+        >
+          Spawn
+        </button>
       </div>
+
+      {isSelectingSpawn && (
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+            padding: '6px 8px',
+            background: '#181828',
+            border: '2px solid #4a4a6a',
+            borderRadius: 0,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: '20px', color: 'rgba(255,255,255,0.85)' }}>Spawn Position</span>
+            <span style={{ fontSize: '18px', color: '#ff7a7a' }}>
+              {agentSpawn ? `${agentSpawn.col},${agentSpawn.row}` : 'Auto'}
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+            <button
+              style={!agentSpawn ? activeBtnStyle : btnStyle}
+              onClick={onClearAgentSpawn}
+              title="Use automatic spawn tile selection"
+            >
+              Auto
+            </button>
+          </div>
+          <div style={{ fontSize: '18px', color: 'rgba(255,255,255,0.5)', lineHeight: 1.2 }}>
+            Click any available floor tile to set the spawn point.
+          </div>
+        </div>
+      )}
 
       {/* Sub-panel: Floor tiles — stacked bottom-to-top via column-reverse */}
       {isFloorActive && (

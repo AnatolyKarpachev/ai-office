@@ -457,6 +457,48 @@ export function renderSelectionHighlight(
   ctx.restore()
 }
 
+export function renderSpawnHighlight(
+  ctx: CanvasRenderingContext2D,
+  col: number,
+  row: number,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  const s = TILE_SIZE * zoom
+  const x = offsetX + col * s
+  const y = offsetY + row * s
+  const blinkAlpha = 0.3 + ((Math.sin(performance.now() / 180) + 1) / 2) * 0.45
+  ctx.save()
+  ctx.fillStyle = `rgba(255, 70, 70, ${blinkAlpha.toFixed(3)})`
+  ctx.fillRect(x + 1, y + 1, s - 2, s - 2)
+  ctx.strokeStyle = 'rgba(255, 95, 95, 0.95)'
+  ctx.lineWidth = Math.max(2, zoom)
+  ctx.setLineDash(SELECTION_DASH_PATTERN)
+  ctx.strokeRect(x + 1, y + 1, s - 2, s - 2)
+  ctx.restore()
+}
+
+export function renderSpawnHover(
+  ctx: CanvasRenderingContext2D,
+  col: number,
+  row: number,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+  valid: boolean,
+): void {
+  const s = TILE_SIZE * zoom
+  const x = offsetX + col * s
+  const y = offsetY + row * s
+  ctx.save()
+  ctx.strokeStyle = valid ? 'rgba(90, 255, 140, 0.95)' : 'rgba(255, 110, 110, 0.95)'
+  ctx.lineWidth = Math.max(1.5, zoom * 0.75)
+  ctx.setLineDash(valid ? [2, 2] : [5, 3])
+  ctx.strokeRect(x + 1, y + 1, s - 2, s - 2)
+  ctx.restore()
+}
+
 export function renderDeleteButton(
   ctx: CanvasRenderingContext2D,
   col: number,
@@ -706,6 +748,12 @@ export interface EditorRenderState {
   ghostBorderHoverCol: number
   /** Hovered ghost border tile row (-1 to rows) */
   ghostBorderHoverRow: number
+  showSpawnMarker: boolean
+  spawnCol: number
+  spawnRow: number
+  spawnHoverCol: number
+  spawnHoverRow: number
+  spawnHoverValid: boolean
 }
 
 export interface SelectionRenderState {
@@ -782,6 +830,14 @@ export function renderFrame(
     }
     if (editor.showGhostBorder) {
       renderGhostBorder(ctx, offsetX, offsetY, zoom, cols, rows, editor.ghostBorderHoverCol, editor.ghostBorderHoverRow)
+    }
+    if (editor.showSpawnMarker) {
+      if (editor.spawnCol >= 0 && editor.spawnRow >= 0) {
+        renderSpawnHighlight(ctx, editor.spawnCol, editor.spawnRow, offsetX, offsetY, zoom)
+      }
+      if (editor.spawnHoverCol >= 0 && editor.spawnHoverRow >= 0) {
+        renderSpawnHover(ctx, editor.spawnHoverCol, editor.spawnHoverRow, offsetX, offsetY, zoom, editor.spawnHoverValid)
+      }
     }
     if (editor.ghostSprite && editor.ghostCol >= 0) {
       renderGhostPreview(ctx, editor.ghostSprite, editor.ghostCol, editor.ghostRow, editor.ghostValid, offsetX, offsetY, zoom, editor.ghostMirrored)

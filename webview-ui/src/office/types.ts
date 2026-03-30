@@ -144,12 +144,19 @@ export interface PlacedFurniture {
   color?: FloorColor
 }
 
+export interface AgentSpawnPoint {
+  col: number
+  row: number
+}
+
 export interface OfficeLayout {
   version: 1
   cols: number
   rows: number
   tiles: TileType[]
   furniture: PlacedFurniture[]
+  /** Optional tile where agents enter/leave the office. null/invalid = auto-pick a valid floor tile. */
+  agentSpawn?: AgentSpawnPoint | null
   /** Per-tile color settings, parallel to tiles array. null = wall/no color */
   tileColors?: Array<FloorColor | null>
   /** Bumped when the bundled default layout changes; forces a reset on existing installs */

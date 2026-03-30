@@ -6,6 +6,7 @@ import { TileType } from '../office/types.js'
 import type { OfficeLayout, EditTool as EditToolType, TileType as TileTypeVal, FloorColor, PlacedFurniture } from '../office/types.js'
 import { paintTile, placeFurniture, removeFurniture, moveFurniture, rotateFurniture, toggleFurnitureState, canPlaceFurniture, getWallPlacementRow, expandLayout, hitTestFurniture } from '../office/editor/editorActions.js'
 import type { ExpandDirection } from '../office/editor/editorActions.js'
+import { isWalkable } from '../office/layout/tileMap.js'
 import { getCatalogEntry, getRotatedType, getToggledType } from '../office/layout/furnitureCatalog.js'
 import { defaultZoom } from '../office/toolUtils.js'
 import { vscode } from '../vscodeApi.js'
@@ -36,6 +37,9 @@ export interface EditorActions {
   handleReset: () => void
   handleSave: () => void
   handleZoomChange: (zoom: number) => void
+  handleToggleSpawnEdit: () => void
+  handleClearAgentSpawn: () => void
+  handleSetAgentSpawn: (col: number, row: number) => void
   handleEditorTileAction: (col: number, row: number) => void
   handleEditorEraseAction: (col: number, row: number) => void
   handleEditorSelectionChange: () => void
@@ -103,6 +107,8 @@ export function useEditorActions(
         editorState.clearSelection()
         editorState.clearGhost()
         editorState.clearDrag()
+        editorState.isSelectingSpawn = false
+        editorState.clearSpawnHover()
         wallColorEditActiveRef.current = false
       }
       return next
@@ -119,8 +125,19 @@ export function useEditorActions(
     editorState.clearSelection()
     editorState.clearGhost()
     editorState.clearDrag()
+    editorState.isSelectingSpawn = false
+    editorState.clearSpawnHover()
     colorEditUidRef.current = null
     wallColorEditActiveRef.current = false
+    setEditorTick((n) => n + 1)
+  }, [editorState])
+
+  const handleToggleSpawnEdit = useCallback(() => {
+    editorState.isSelectingSpawn = !editorState.isSelectingSpawn
+    editorState.clearSelection()
+    editorState.clearGhost()
+    editorState.clearDrag()
+    editorState.clearSpawnHover()
     setEditorTick((n) => n + 1)
   }, [editorState])
 
@@ -324,6 +341,36 @@ export function useEditorActions(
     setZoom(Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, newZoom)))
   }, [])
 
+  const handleClearAgentSpawn = useCallback(() => {
+    const os = getOfficeState()
+    const layout = os.getLayout()
+    if (layout.agentSpawn == null) {
+      editorState.isSelectingSpawn = false
+      editorState.clearSpawnHover()
+      setEditorTick((n) => n + 1)
+      return
+    }
+    editorState.isSelectingSpawn = false
+    editorState.clearSpawnHover()
+    applyEdit({ ...layout, agentSpawn: null })
+  }, [getOfficeState, editorState, applyEdit])
+
+  const handleSetAgentSpawn = useCallback((col: number, row: number) => {
+    const os = getOfficeState()
+    const layout = os.getLayout()
+    if (col < 0 || col >= layout.cols || row < 0 || row >= layout.rows) return
+    if (!isWalkable(col, row, os.tileMap, os.blockedTiles)) return
+
+    const current = layout.agentSpawn
+    editorState.isSelectingSpawn = false
+    editorState.clearSpawnHover()
+    if (current?.col === col && current?.row === row) {
+      setEditorTick((n) => n + 1)
+      return
+    }
+    applyEdit({ ...layout, agentSpawn: { col, row } })
+  }, [getOfficeState, editorState, applyEdit])
+
   const handleDragMove = useCallback((uid: string, newCol: number, newRow: number) => {
     const os = getOfficeState()
     const layout = os.getLayout()
@@ -526,6 +573,9 @@ export function useEditorActions(
     handleReset,
     handleSave,
     handleZoomChange,
+    handleToggleSpawnEdit,
+    handleClearAgentSpawn,
+    handleSetAgentSpawn,
     handleEditorTileAction,
     handleEditorEraseAction,
     handleEditorSelectionChange,

@@ -224,6 +224,7 @@ function App() {
         onDoubleClick={handleInspectAgent}
         isEditMode={editor.isEditMode}
         editorState={editorState}
+        onEditorSpawnAction={editor.handleSetAgentSpawn}
         onEditorTileAction={editor.handleEditorTileAction}
         onEditorEraseAction={editor.handleEditorEraseAction}
         onEditorSelectionChange={editor.handleEditorSelectionChange}
@@ -339,10 +340,14 @@ function App() {
             selectedFurnitureType={editorState.selectedFurnitureType}
             selectedFurnitureUid={selUid}
             selectedFurnitureColor={selColor}
+            agentSpawn={officeState.getLayout().agentSpawn}
+            isSelectingSpawn={editorState.isSelectingSpawn}
             floorColor={editorState.floorColor}
             wallColor={editorState.wallColor}
             selectedWallSet={editorState.selectedWallSet}
             onToolChange={editor.handleToolChange}
+            onToggleSpawnEdit={editor.handleToggleSpawnEdit}
+            onClearAgentSpawn={editor.handleClearAgentSpawn}
             onTileTypeChange={editor.handleTileTypeChange}
             onFloorColorChange={editor.handleFloorColorChange}
             onWallColorChange={editor.handleWallColorChange}

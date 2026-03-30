@@ -463,7 +463,7 @@ export function createDefaultLayout(): OfficeLayout {
     { uid: 'break-lamp', type: FurnitureType.LAMP, col: 14, row: 22 },
   ]
 
-  return { version: 1, cols: DEFAULT_COLS, rows: DEFAULT_ROWS, tiles, tileColors, furniture }
+  return { version: 1, cols: DEFAULT_COLS, rows: DEFAULT_ROWS, tiles, tileColors, furniture, agentSpawn: null }
 }
 
 /** Serialize layout to JSON string */
@@ -495,8 +495,18 @@ export function migrateLayoutColors(layout: OfficeLayout): OfficeLayout {
  * to the new pattern-based system. If tileColors is already present, no migration needed.
  */
 function migrateLayout(layout: OfficeLayout): OfficeLayout {
+  const rawSpawn = (layout as OfficeLayout & { agentSpawn?: unknown }).agentSpawn
+  const agentSpawn = (
+    rawSpawn
+    && typeof rawSpawn === 'object'
+    && Number.isInteger((rawSpawn as { col?: unknown }).col)
+    && Number.isInteger((rawSpawn as { row?: unknown }).row)
+  )
+    ? { col: (rawSpawn as { col: number }).col, row: (rawSpawn as { row: number }).row }
+    : null
+
   if (layout.tileColors && layout.tileColors.length === layout.tiles.length) {
-    return layout // Already migrated
+    return layout.agentSpawn === agentSpawn ? layout : { ...layout, agentSpawn }
   }
 
   // Check if any tiles use old values (1-4) — these map directly to FLOOR_1-4
@@ -531,5 +541,5 @@ function migrateLayout(layout: OfficeLayout): OfficeLayout {
     }
   }
 
-  return { ...layout, tileColors }
+  return { ...layout, tileColors, agentSpawn }
 }

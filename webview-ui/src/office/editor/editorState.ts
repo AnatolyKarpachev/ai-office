@@ -30,6 +30,9 @@ export class EditorState {
 
   // Selection
   selectedFurnitureUid: string | null = null
+  isSelectingSpawn = false
+  spawnHoverCol = -1
+  spawnHoverRow = -1
 
   // Mouse drag state (tile paint)
   isDragging = false
@@ -86,6 +89,11 @@ export class EditorState {
     this.selectedFurnitureUid = null
   }
 
+  clearSpawnHover(): void {
+    this.spawnHoverCol = -1
+    this.spawnHoverRow = -1
+  }
+
   clearGhost(): void {
     this.ghostCol = -1
     this.ghostRow = -1
@@ -109,6 +117,8 @@ export class EditorState {
   reset(): void {
     this.activeTool = EditTool.SELECT
     this.selectedFurnitureUid = null
+    this.isSelectingSpawn = false
+    this.clearSpawnHover()
     this.ghostCol = -1
     this.ghostRow = -1
     this.ghostValid = false

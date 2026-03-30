@@ -8,6 +8,7 @@ import { TILE_SIZE, EditTool } from '../types.js'
 import { CAMERA_FOLLOW_LERP, CAMERA_FOLLOW_SNAP_THRESHOLD, ZOOM_MIN, ZOOM_MAX, ZOOM_SENSITIVITY, PAN_MARGIN_FRACTION } from '../../constants.js'
 import { getCatalogEntry, isRotatable } from '../layout/furnitureCatalog.js'
 import { canPlaceFurniture, getWallPlacementRow, hitTestFurniture } from '../editor/editorActions.js'
+import { isWalkable } from '../layout/tileMap.js'
 import { vscode } from '../../vscodeApi.js'
 import { unlockAudio } from '../../notificationSound.js'
 
@@ -17,6 +18,7 @@ interface OfficeCanvasProps {
   onDoubleClick?: (agentId: number) => void
   isEditMode: boolean
   editorState: EditorState
+  onEditorSpawnAction: (col: number, row: number) => void
   onEditorTileAction: (col: number, row: number) => void
   onEditorEraseAction: (col: number, row: number) => void
   onEditorSelectionChange: () => void
@@ -29,7 +31,7 @@ interface OfficeCanvasProps {
   panRef: React.MutableRefObject<{ x: number; y: number }>
 }
 
-export function OfficeCanvas({ officeState, onClick, onDoubleClick, isEditMode, editorState, onEditorTileAction, onEditorEraseAction, onEditorSelectionChange, onDeleteSelected, onRotateSelected, onDragMove, editorTick: _editorTick, zoom, onZoomChange, panRef }: OfficeCanvasProps) {
+export function OfficeCanvas({ officeState, onClick, onDoubleClick, isEditMode, editorState, onEditorSpawnAction, onEditorTileAction, onEditorEraseAction, onEditorSelectionChange, onDeleteSelected, onRotateSelected, onDragMove, editorTick: _editorTick, zoom, onZoomChange, panRef }: OfficeCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const offsetRef = useRef({ x: 0, y: 0 })
@@ -123,6 +125,14 @@ export function OfficeCanvas({ officeState, onClick, onDoubleClick, isEditMode, 
             showGhostBorder,
             ghostBorderHoverCol: showGhostBorder ? editorState.ghostCol : -999,
             ghostBorderHoverRow: showGhostBorder ? editorState.ghostRow : -999,
+            showSpawnMarker: editorState.isSelectingSpawn,
+            spawnCol: officeState.getLayout().agentSpawn?.col ?? -1,
+            spawnRow: officeState.getLayout().agentSpawn?.row ?? -1,
+            spawnHoverCol: editorState.spawnHoverCol,
+            spawnHoverRow: editorState.spawnHoverRow,
+            spawnHoverValid: editorState.spawnHoverCol >= 0 && editorState.spawnHoverRow >= 0
+              ? isWalkable(editorState.spawnHoverCol, editorState.spawnHoverRow, officeState.tileMap, officeState.blockedTiles)
+              : false,
           }
 
           // Ghost preview for furniture placement
@@ -319,9 +329,17 @@ export function OfficeCanvas({ officeState, onClick, onDoubleClick, isEditMode, 
 
       if (isEditMode) {
         const tile = screenToTile(e.clientX, e.clientY)
+        editorState.clearSpawnHover()
         if (tile) {
-          editorState.ghostCol = tile.col
-          editorState.ghostRow = tile.row
+          if (editorState.isSelectingSpawn) {
+            editorState.spawnHoverCol = tile.col
+            editorState.spawnHoverRow = tile.row
+            editorState.ghostCol = -1
+            editorState.ghostRow = -1
+          } else {
+            editorState.ghostCol = tile.col
+            editorState.ghostRow = tile.row
+          }
 
           // Drag-to-move: check if cursor moved to different tile
           if (editorState.dragUid && !editorState.isDragMoving) {
@@ -351,6 +369,9 @@ export function OfficeCanvas({ officeState, onClick, onDoubleClick, isEditMode, 
         if (canvas) {
           if (editorState.isDragMoving) {
             canvas.style.cursor = 'grabbing'
+          } else if (editorState.isSelectingSpawn) {
+            const valid = tile ? isWalkable(tile.col, tile.row, officeState.tileMap, officeState.blockedTiles) : false
+            canvas.style.cursor = valid ? 'pointer' : 'not-allowed'
           } else {
             const pos = screenToWorld(e.clientX, e.clientY)
             if (pos && (hitTestDeleteButton(pos.deviceX, pos.deviceY) || hitTestRotateButton(pos.deviceX, pos.deviceY))) {
@@ -446,6 +467,14 @@ export function OfficeCanvas({ officeState, onClick, onDoubleClick, isEditMode, 
 
       if (!isEditMode) return
 
+      if (editorState.isSelectingSpawn) {
+        const tile = screenToTile(e.clientX, e.clientY)
+        if (tile && isWalkable(tile.col, tile.row, officeState.tileMap, officeState.blockedTiles)) {
+          onEditorSpawnAction(tile.col, tile.row)
+        }
+        return
+      }
+
       // Check rotate/delete button hit first
       const pos = screenToWorld(e.clientX, e.clientY)
       if (pos && hitTestRotateButton(pos.deviceX, pos.deviceY)) {
@@ -497,7 +526,7 @@ export function OfficeCanvas({ officeState, onClick, onDoubleClick, isEditMode, 
         onEditorTileAction(tile.col, tile.row)
       }
     },
-    [officeState, isEditMode, editorState, screenToTile, screenToWorld, onEditorTileAction, onEditorEraseAction, onEditorSelectionChange, onDeleteSelected, onRotateSelected, hitTestDeleteButton, hitTestRotateButton, panRef],
+    [officeState, isEditMode, editorState, screenToTile, screenToWorld, onEditorSpawnAction, onEditorTileAction, onEditorEraseAction, onEditorSelectionChange, onDeleteSelected, onRotateSelected, hitTestDeleteButton, hitTestRotateButton, panRef],
   )
 
   const handleMouseUp = useCallback(

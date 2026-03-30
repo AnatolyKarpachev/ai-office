@@ -181,7 +181,7 @@ export function expandLayout(
   layout: OfficeLayout,
   direction: ExpandDirection,
 ): { layout: OfficeLayout; shift: { col: number; row: number } } | null {
-  const { cols, rows, tiles, furniture, tileColors } = layout
+  const { cols, rows, tiles, furniture, tileColors, agentSpawn } = layout
   const existingColors = tileColors || new Array(tiles.length).fill(null)
 
   let newCols = cols
@@ -223,8 +223,23 @@ export function expandLayout(
     row: f.row + shiftRow,
   }))
 
+  const newAgentSpawn = agentSpawn
+    ? {
+        col: agentSpawn.col + shiftCol,
+        row: agentSpawn.row + shiftRow,
+      }
+    : agentSpawn ?? null
+
   return {
-    layout: { ...layout, cols: newCols, rows: newRows, tiles: newTiles, tileColors: newColors, furniture: newFurniture },
+    layout: {
+      ...layout,
+      cols: newCols,
+      rows: newRows,
+      tiles: newTiles,
+      tileColors: newColors,
+      furniture: newFurniture,
+      agentSpawn: newAgentSpawn,
+    },
     shift: { col: shiftCol, row: shiftRow },
   }
 }

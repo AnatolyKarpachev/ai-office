@@ -36,9 +36,9 @@ import {
 } from '../layout/layoutSerializer.js'
 import { getAnimationFrames, getCatalogEntry, getOnStateType } from '../layout/furnitureCatalog.js'
 
-/** Entrance tile where characters appear/disappear (office door) */
-const ENTRANCE_COL = 39
-const ENTRANCE_ROW = 39
+/** Legacy fallback used when layout.agentSpawn is not set */
+const LEGACY_ENTRANCE_COL = 39
+const LEGACY_ENTRANCE_ROW = 39
 
 /** Door bridge tiles — blocked by furniture but characters walk through to enter/exit */
 const DOOR_BRIDGE_TILES = new Set(['26,37', '26,38', '27,38', '26,39', '27,39'])
@@ -662,64 +662,52 @@ export class OfficeState {
     return bt
   }
 
-  /** Build a path from the entrance tile to a target tile, unblocking door tiles */
-  private buildPathFromEntrance(toCol: number, toRow: number): Array<{ col: number; row: number }> {
+  /** Resolve a stable entrance tile from layout.agentSpawn or the nearest valid walkable tile. */
+  private getEntranceTile(): { col: number; row: number } | null {
+    const preferred = this.getPreferredEntranceTile()
     const bt = this.getEntranceBlockedTiles()
-    // Try direct pathfinding with door unblocked
-    const direct = findPath(ENTRANCE_COL, ENTRANCE_ROW, toCol, toRow, this.tileMap, bt)
-    if (direct.length > 0) return direct
 
-    // Fallback: find nearest walkable tile to entrance and build manual bridge
+    if (preferred && isWalkable(preferred.col, preferred.row, this.tileMap, bt)) {
+      return preferred
+    }
+
+    const fallbackCol = preferred?.col ?? LEGACY_ENTRANCE_COL
+    const fallbackRow = preferred?.row ?? LEGACY_ENTRANCE_ROW
+
     let nearest: { col: number; row: number } | null = null
     let bestDist = Infinity
     for (const t of this.walkableTiles) {
-      const d = Math.abs(t.col - ENTRANCE_COL) + Math.abs(t.row - ENTRANCE_ROW)
-      if (d < bestDist) { bestDist = d; nearest = t }
-    }
-    if (!nearest) return []
-
-    const manual: Array<{ col: number; row: number }> = []
-    let cx = ENTRANCE_COL, cy = ENTRANCE_ROW
-    while (cx !== nearest.col || cy !== nearest.row) {
-      if (cx !== nearest.col) cx += Math.sign(nearest.col - cx)
-      else cy += Math.sign(nearest.row - cy)
-      manual.push({ col: cx, row: cy })
+      if (!isWalkable(t.col, t.row, this.tileMap, bt)) continue
+      const d = Math.abs(t.col - fallbackCol) + Math.abs(t.row - fallbackRow)
+      if (d < bestDist) {
+        nearest = t
+        bestDist = d
+      }
     }
 
-    const bfs = findPath(nearest.col, nearest.row, toCol, toRow, this.tileMap, bt)
-    if (bfs.length === 0 && (nearest.col !== toCol || nearest.row !== toRow)) return []
+    return nearest
+  }
 
-    return [...manual, ...bfs]
+  private getPreferredEntranceTile(): { col: number; row: number } | null {
+    const raw = this.layout.agentSpawn
+    if (!raw || !Number.isFinite(raw.col) || !Number.isFinite(raw.row)) return null
+    return { col: Math.trunc(raw.col), row: Math.trunc(raw.row) }
+  }
+
+  /** Build a path from the entrance tile to a target tile, unblocking door tiles */
+  private buildPathFromEntrance(toCol: number, toRow: number): Array<{ col: number; row: number }> {
+    const entrance = this.getEntranceTile()
+    if (!entrance) return []
+    const bt = this.getEntranceBlockedTiles()
+    return findPath(entrance.col, entrance.row, toCol, toRow, this.tileMap, bt)
   }
 
   /** Build a path from a source tile to the entrance tile, unblocking door tiles */
   private buildPathToEntrance(fromCol: number, fromRow: number): Array<{ col: number; row: number }> {
+    const entrance = this.getEntranceTile()
+    if (!entrance) return []
     const bt = this.getEntranceBlockedTiles()
-    // Try direct pathfinding with door unblocked
-    const direct = findPath(fromCol, fromRow, ENTRANCE_COL, ENTRANCE_ROW, this.tileMap, bt)
-    if (direct.length > 0) return direct
-
-    // Fallback: find nearest walkable tile to entrance and build manual bridge
-    let nearest: { col: number; row: number } | null = null
-    let bestDist = Infinity
-    for (const t of this.walkableTiles) {
-      const d = Math.abs(t.col - ENTRANCE_COL) + Math.abs(t.row - ENTRANCE_ROW)
-      if (d < bestDist) { bestDist = d; nearest = t }
-    }
-    if (!nearest) return []
-
-    const bfs = findPath(fromCol, fromRow, nearest.col, nearest.row, this.tileMap, bt)
-    if (bfs.length === 0 && (fromCol !== nearest.col || fromRow !== nearest.row)) return []
-
-    const manual: Array<{ col: number; row: number }> = []
-    let cx = nearest.col, cy = nearest.row
-    while (cx !== ENTRANCE_COL || cy !== ENTRANCE_ROW) {
-      if (cx !== ENTRANCE_COL) cx += Math.sign(ENTRANCE_COL - cx)
-      else cy += Math.sign(ENTRANCE_ROW - cy)
-      manual.push({ col: cx, row: cy })
-    }
-
-    return [...bfs, ...manual]
+    return findPath(fromCol, fromRow, entrance.col, entrance.row, this.tileMap, bt)
   }
 
   /** Start the leave-office sequence: walk to entrance and despawn */
@@ -844,14 +832,17 @@ export class OfficeState {
       ch.parentAgentId = parentAgentId
     }
     if (!skipSpawnEffect) {
+      const entrance = this.getEntranceTile()
       // Enter through the office door: spawn at entrance and walk to seat
       const targetCol = ch.tileCol
       const targetRow = ch.tileRow
-      ch.x = ENTRANCE_COL * TILE_SIZE + TILE_SIZE / 2
-      ch.y = ENTRANCE_ROW * TILE_SIZE + TILE_SIZE / 2
-      ch.tileCol = ENTRANCE_COL
-      ch.tileRow = ENTRANCE_ROW
-      const path = this.buildPathFromEntrance(targetCol, targetRow)
+      if (entrance) {
+        ch.x = entrance.col * TILE_SIZE + TILE_SIZE / 2
+        ch.y = entrance.row * TILE_SIZE + TILE_SIZE / 2
+        ch.tileCol = entrance.col
+        ch.tileRow = entrance.row
+      }
+      const path = entrance ? this.buildPathFromEntrance(targetCol, targetRow) : []
       if (path.length > 0) {
         ch.path = path
         ch.moveProgress = 0
@@ -1073,11 +1064,14 @@ export class OfficeState {
     // Enter through the office door: spawn at entrance and walk to seat
     const targetCol = ch.tileCol
     const targetRow = ch.tileRow
-    ch.x = ENTRANCE_COL * TILE_SIZE + TILE_SIZE / 2
-    ch.y = ENTRANCE_ROW * TILE_SIZE + TILE_SIZE / 2
-    ch.tileCol = ENTRANCE_COL
-    ch.tileRow = ENTRANCE_ROW
-    const entrancePath = this.buildPathFromEntrance(targetCol, targetRow)
+    const entrance = this.getEntranceTile()
+    if (entrance) {
+      ch.x = entrance.col * TILE_SIZE + TILE_SIZE / 2
+      ch.y = entrance.row * TILE_SIZE + TILE_SIZE / 2
+      ch.tileCol = entrance.col
+      ch.tileRow = entrance.row
+    }
+    const entrancePath = entrance ? this.buildPathFromEntrance(targetCol, targetRow) : []
     if (entrancePath.length > 0) {
       ch.path = entrancePath
       ch.moveProgress = 0
