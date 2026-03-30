@@ -19,8 +19,14 @@ import type {
 } from './types.js'
 import { TILE_SIZE, TileType } from './types.js'
 
+export const WALL_RENDER_MODE = 'flat' as const
+
 /** Wall tile sets: each set has 16 sprites indexed by bitmask (0-15) */
 let wallSets: SpriteData[][] = []
+
+export function shouldRenderWallSprites(): boolean {
+  return WALL_RENDER_MODE === 'sprites' && wallSets.length > 0
+}
 
 /** Set wall tile sets (called once when extension sends wallTilesLoaded) */
 export function setWallSprites(sets: SpriteData[][]): void {

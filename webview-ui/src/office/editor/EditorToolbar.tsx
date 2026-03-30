@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { getColorizedFloorSprite, getFloorPatternCount, hasFloorSprites } from '../floorTiles.js'
 import type { FurnitureCategory, LoadedAssetData } from '../layout/furnitureCatalog.js'
-import { getColorizedWallSprite, getWallSetCount, wallColorToHex } from '../wallTiles.js'
+import { wallColorToHex } from '../wallTiles.js'
 import {
   buildDynamicCatalog,
   getActiveCategories,
@@ -10,7 +10,7 @@ import {
 } from '../layout/furnitureCatalog.js'
 import { getCachedSprite } from '../sprites/spriteCache.js'
 import type { FloorColor, TileType as TileTypeVal } from '../types.js'
-import { EditTool, TileType, TILE_SIZE } from '../types.js'
+import { EditTool } from '../types.js'
 
 const btnStyle: React.CSSProperties = {
   padding: '3px 8px',
@@ -125,22 +125,15 @@ function FloorPatternPreview({ patternIndex, color, selected, onClick }: {
   )
 }
 
-/** Render a wall set preview showing the first piece (bitmask 0, 16x32) at 1x scale */
-function WallSetPreview({
-  setIndex,
+/** Render a flat wall preview that matches prod layout rendering. */
+function WallPreview({
   color,
-  selected,
-  onClick,
 }: {
-  setIndex: number
   color: FloorColor
-  selected: boolean
-  onClick: () => void
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const displayW = 32
   const displayH = 64
-  const previewZoom = 2
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -153,52 +146,19 @@ function WallSetPreview({
     ctx.imageSmoothingEnabled = false
     ctx.clearRect(0, 0, displayW, displayH)
 
-    const previewTileMap: TileTypeVal[][] = [
-      [TileType.WALL],
-      [TileType.WALL],
-    ]
     const baseColor = wallColorToHex(color)
-
-    // Match layout rendering: first paint the wall tile base color for both cells,
-    // then draw the autotiled wall sprites over it.
     ctx.fillStyle = baseColor
     ctx.fillRect(0, 0, displayW, displayH / 2)
     ctx.fillRect(0, displayH / 2, displayW, displayH / 2)
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.18)'
+    ctx.lineWidth = 1
+    ctx.beginPath()
+    ctx.moveTo(0, displayH / 2)
+    ctx.lineTo(displayW, displayH / 2)
+    ctx.stroke()
+  }, [color])
 
-    const topWall = getColorizedWallSprite(0, 0, previewTileMap, color, setIndex)
-    const bottomWall = getColorizedWallSprite(0, 1, previewTileMap, color, setIndex)
-
-    if (!topWall && !bottomWall) {
-      return
-    }
-
-    for (const wallInfo of [topWall, bottomWall]) {
-      if (!wallInfo) continue
-      const cached = getCachedSprite(wallInfo.sprite, previewZoom)
-      const drawY = (wallInfo === topWall ? 0 : TILE_SIZE) * previewZoom + wallInfo.offsetY * previewZoom
-      ctx.drawImage(cached, 0, drawY)
-    }
-  }, [setIndex, color])
-
-  return (
-    <button
-      onClick={onClick}
-      title={`Wall ${setIndex + 1}`}
-      style={{
-        width: displayW,
-        height: displayH,
-        padding: 0,
-        border: selected ? '2px solid #5a8cff' : '2px solid #4a4a6a',
-        borderRadius: 0,
-        cursor: 'pointer',
-        overflow: 'hidden',
-        flexShrink: 0,
-        background: '#2A2A3A',
-      }}
-    >
-      <canvas ref={canvasRef} style={{ width: displayW, height: displayH, display: 'block' }} />
-    </button>
-  )
+  return <canvas ref={canvasRef} style={{ width: displayW, height: displayH, display: 'block' }} />
 }
 
 /** Slider control for a single color parameter */
@@ -235,12 +195,12 @@ export function EditorToolbar({
   selectedFurnitureColor,
   floorColor,
   wallColor,
-  selectedWallSet,
+  selectedWallSet: _selectedWallSet,
   onToolChange,
   onTileTypeChange,
   onFloorColorChange,
   onWallColorChange,
-  onWallSetChange,
+  onWallSetChange: _onWallSetChange,
   onSelectedFurnitureColorChange,
   onFurnitureTypeChange,
   showCoords,
@@ -454,28 +414,29 @@ export function EditorToolbar({
             </div>
           )}
 
-          {/* Wall set picker — horizontal carousel at the top */}
-          {getWallSetCount() > 0 && (
+          <div
+            style={{
+              display: 'flex',
+              gap: 4,
+              alignItems: 'center',
+              paddingBottom: 2,
+            }}
+          >
             <div
               style={{
-                display: 'flex',
-                gap: 4,
-                overflowX: 'auto',
-                flexWrap: 'nowrap',
-                paddingBottom: 2,
+                width: 32,
+                height: 64,
+                border: '2px solid #4a4a6a',
+                background: '#2A2A3A',
+                overflow: 'hidden',
+                flexShrink: 0,
               }}
+              title="Wall preview"
             >
-              {Array.from({ length: getWallSetCount() }, (_, i) => (
-                <WallSetPreview
-                  key={i}
-                  setIndex={i}
-                  color={wallColor}
-                  selected={selectedWallSet === i}
-                  onClick={() => onWallSetChange(i)}
-                />
-              ))}
+              <WallPreview color={wallColor} />
             </div>
-          )}
+            <span style={{ fontSize: '18px', color: '#999' }}>Flat preview</span>
+          </div>
         </div>
       )}
 
