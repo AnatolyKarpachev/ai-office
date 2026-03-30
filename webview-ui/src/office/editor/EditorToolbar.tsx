@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { getColorizedFloorSprite, getFloorPatternCount, hasFloorSprites } from '../floorTiles.js'
 import type { FurnitureCategory, LoadedAssetData } from '../layout/furnitureCatalog.js'
-import { wallColorToHex } from '../wallTiles.js'
+import { getColorizedWallSprite, wallColorToHex } from '../wallTiles.js'
 import {
   buildDynamicCatalog,
   getActiveCategories,
@@ -10,7 +10,7 @@ import {
 } from '../layout/furnitureCatalog.js'
 import { getCachedSprite } from '../sprites/spriteCache.js'
 import type { FloorColor, TileType as TileTypeVal } from '../types.js'
-import { EditTool } from '../types.js'
+import { EditTool, TileType, TILE_SIZE } from '../types.js'
 
 const btnStyle: React.CSSProperties = {
   padding: '3px 8px',
@@ -125,7 +125,7 @@ function FloorPatternPreview({ patternIndex, color, selected, onClick }: {
   )
 }
 
-/** Render a flat wall preview that matches prod layout rendering. */
+/** Render a two-tile wall preview using the same procedural wall path as the layout. */
 function WallPreview({
   color,
 }: {
@@ -134,6 +134,7 @@ function WallPreview({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const displayW = 32
   const displayH = 64
+  const previewZoom = 2
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -146,16 +147,23 @@ function WallPreview({
     ctx.imageSmoothingEnabled = false
     ctx.clearRect(0, 0, displayW, displayH)
 
+    const previewTileMap: TileTypeVal[][] = [
+      [TileType.WALL],
+      [TileType.WALL],
+    ]
     const baseColor = wallColorToHex(color)
     ctx.fillStyle = baseColor
     ctx.fillRect(0, 0, displayW, displayH / 2)
     ctx.fillRect(0, displayH / 2, displayW, displayH / 2)
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.18)'
-    ctx.lineWidth = 1
-    ctx.beginPath()
-    ctx.moveTo(0, displayH / 2)
-    ctx.lineTo(displayW, displayH / 2)
-    ctx.stroke()
+
+    const topWall = getColorizedWallSprite(0, 0, previewTileMap, color)
+    const bottomWall = getColorizedWallSprite(0, 1, previewTileMap, color)
+    for (const wallInfo of [topWall, bottomWall]) {
+      if (!wallInfo) continue
+      const cached = getCachedSprite(wallInfo.sprite, previewZoom)
+      const drawY = (wallInfo === topWall ? 0 : TILE_SIZE) * previewZoom + wallInfo.offsetY * previewZoom
+      ctx.drawImage(cached, 0, drawY)
+    }
   }, [color])
 
   return <canvas ref={canvasRef} style={{ width: displayW, height: displayH, display: 'block' }} />
@@ -435,7 +443,7 @@ export function EditorToolbar({
             >
               <WallPreview color={wallColor} />
             </div>
-            <span style={{ fontSize: '18px', color: '#999' }}>Flat preview</span>
+            <span style={{ fontSize: '18px', color: '#999' }}>Wall preview</span>
           </div>
         </div>
       )}
