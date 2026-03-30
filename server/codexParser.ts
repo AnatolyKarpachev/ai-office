@@ -115,6 +115,28 @@ function updateDuration(agent: TrackedAgent, timestamp: string | undefined): voi
   }
 }
 
+function setCodexTokenUsageFromTotals(
+  totals: Record<string, unknown>,
+  agent: TrackedAgent,
+): boolean {
+  let changed = false;
+
+  if (typeof totals.input_tokens === "number" && agent.totalInputTokens !== totals.input_tokens) {
+    agent.totalInputTokens = totals.input_tokens;
+    changed = true;
+  }
+  if (typeof totals.output_tokens === "number" && agent.totalOutputTokens !== totals.output_tokens) {
+    agent.totalOutputTokens = totals.output_tokens;
+    changed = true;
+  }
+  if (typeof totals.cached_input_tokens === "number" && agent.totalCacheRead !== totals.cached_input_tokens) {
+    agent.totalCacheRead = totals.cached_input_tokens;
+    changed = true;
+  }
+
+  return changed;
+}
+
 function finishCodexTool(
   agent: TrackedAgent,
   callId: string,
@@ -305,6 +327,16 @@ export function processCodexTranscriptLine(
     }
 
     finishCodexTool(agent, payload.call_id as string, timestamp, emit);
+    return;
+  }
+
+  if (eventType === "token_count") {
+    const info = (payload.info ?? {}) as Record<string, unknown>;
+    const totalUsage = (info.total_token_usage ?? {}) as Record<string, unknown>;
+    const didChange = setCodexTokenUsageFromTotals(totalUsage, agent);
+    if (didChange) {
+      onStatsUpdate?.(agent);
+    }
     return;
   }
 
