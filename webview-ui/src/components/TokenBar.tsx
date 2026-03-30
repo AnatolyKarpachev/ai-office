@@ -1,17 +1,11 @@
+import { getModelShortName } from '../modelInfo.js'
+
 interface TokenBarProps {
   totalTokens: number
   contextLimit: number
   model?: string
   turnCount: number
   visible: boolean
-}
-
-function getModelShortName(model?: string): string | null {
-  if (!model) return null
-  if (model.includes('opus')) return 'opus'
-  if (model.includes('sonnet')) return 'sonnet'
-  if (model.includes('haiku')) return 'haiku'
-  return null
 }
 
 function formatNumber(n: number): string {

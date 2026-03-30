@@ -4,21 +4,7 @@ import type { AgentStats, AgentRoleInfo, SubagentCharacter, PipelineIssue } from
 import type { ToolActivity } from '../office/types.js'
 import { RoleBadge } from './RoleBadge.js'
 import { TokenBar } from './TokenBar.js'
-
-const MODEL_CONTEXT_LIMITS: Record<string, number> = {
-  "claude-opus-4-6": 200000,
-  "claude-sonnet-4-6": 200000,
-  "claude-haiku-4-5": 200000,
-  "default": 200000,
-}
-
-function getContextLimit(model?: string): number {
-  if (!model) return MODEL_CONTEXT_LIMITS["default"]
-  for (const [key, limit] of Object.entries(MODEL_CONTEXT_LIMITS)) {
-    if (key !== "default" && model.includes(key)) return limit
-  }
-  return MODEL_CONTEXT_LIMITS["default"]
-}
+import { getContextLimit } from '../modelInfo.js'
 
 function formatNumber(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
@@ -267,7 +253,8 @@ export function LeftSidebar({
     subsByParent.set(parentId, list)
   }
 
-  const totalCount = mainAgents.length + subagentCharacters.length
+  const totalSubagents = [...subsByParent.values()].reduce((sum, subs) => sum + subs.length, 0)
+  const totalCount = mainAgents.length + totalSubagents
 
   if (collapsed) {
     return (
@@ -379,6 +366,8 @@ export function LeftSidebar({
                     <div style={{ marginLeft: 12, borderLeft: '2px solid rgba(255,255,255,0.08)', paddingLeft: 6 }}>
                       {subs.map((sub) => {
                         const subCh = officeState.characters.get(sub.id)
+                        const subRole = agentRoles.get(sub.id)
+                        const subName = subCh?.folderName || sub.label || `subagent-${sub.id}`
                         const subIsHovered = hoveredAgent === sub.id
                         const subHasPermission = subCh?.bubbleType === 'permission'
                         const subIsActive = subCh?.isActive ?? false
@@ -393,18 +382,18 @@ export function LeftSidebar({
                             style={{ padding: '4px 6px', marginTop: 2, background: subIsHovered ? 'rgba(255,255,255,0.05)' : 'transparent', border: '1px solid', borderColor: subHasPermission ? 'var(--pixel-status-permission)' : 'transparent', borderRadius: 0, transition: 'background 0.15s ease' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
                               {subDotColor && <span className={subIsActive && !subHasPermission ? 'pixel-agents-pulse' : undefined} style={{ width: 5, height: 5, borderRadius: '50%', background: subDotColor, flexShrink: 0 }} />}
-                              {(() => {
-                                const subRole = agentRoles.get(sub.id)
-                                return subRole?.role
-                                  ? <RoleBadge role={subRole.role} colors={subRole.colors} />
-                                  : <span style={{
-                                      fontSize: '11px', padding: '0 4px', fontWeight: 'bold',
-                                      textTransform: 'none', letterSpacing: '0.5px',
-                                      background: 'rgba(120,160,255,0.15)', color: 'rgba(120,160,255,0.9)',
-                                      border: '1px solid rgba(120,160,255,0.3)',
-                                      borderRadius: 0, whiteSpace: 'nowrap', lineHeight: '16px',
-                                    }}>{sub.label || 'subtask'}</span>
-                              })()}
+                              <span style={{ fontSize: '14px', color: 'var(--pixel-text)', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+                                {subName}
+                              </span>
+                              {subRole?.role
+                                ? <RoleBadge role={subRole.role} colors={subRole.colors} />
+                                : <span style={{
+                                    fontSize: '11px', padding: '0 4px', fontWeight: 'bold',
+                                    textTransform: 'none', letterSpacing: '0.5px',
+                                    background: 'rgba(120,160,255,0.15)', color: 'rgba(120,160,255,0.9)',
+                                    border: '1px solid rgba(120,160,255,0.3)',
+                                    borderRadius: 0, whiteSpace: 'nowrap', lineHeight: '16px',
+                                  }}>{sub.label || 'subtask'}</span>}
                             </div>
                             <div style={{ fontSize: '14px', color: subHasPermission ? 'var(--pixel-status-permission)' : subIsActive ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subActivity}</div>
                             {(() => {

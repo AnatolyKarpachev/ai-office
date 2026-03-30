@@ -1,3 +1,5 @@
+import type { AgentProvider } from "./sourceTypes.js";
+
 // Agent activity states
 export type AgentActivity = "idle" | "typing" | "reading" | "waiting" | "permission";
 
@@ -10,6 +12,8 @@ export interface ActiveTool {
 
 // Agent as tracked by the server
 export interface TrackedAgent {
+  key: string;
+  provider: AgentProvider;
   id: number;
   sessionId: string;
   projectDir: string;

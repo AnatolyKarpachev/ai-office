@@ -66,6 +66,30 @@ function compactName(name: string, maxLen: number): string {
   return result.slice(0, maxLen);
 }
 
+/** Extract readable text from SendMessage input.message (string or structured object) */
+function extractSendMessageText(raw: unknown): string {
+  if (typeof raw === "string") return raw;
+  if (raw && typeof raw === "object") {
+    const obj = raw as Record<string, unknown>;
+    // Try common text fields first
+    const text = (obj.summary ?? obj.reason ?? obj.text ?? obj.message ?? obj.description) as string | undefined;
+    if (typeof text === "string") {
+      const prefix = typeof obj.type === "string" ? `${obj.type}: ` : "";
+      return prefix + text;
+    }
+    // For structured responses with type but no text field (e.g. shutdown_response with approve:true)
+    if (typeof obj.type === "string") {
+      const rest = Object.entries(obj)
+        .filter(([k]) => k !== "type" && k !== "request_id")
+        .map(([k, v]) => `${k}=${v}`)
+        .join(", ");
+      return rest ? `${obj.type}: ${rest}` : (obj.type as string);
+    }
+    return JSON.stringify(raw);
+  }
+  return "";
+}
+
 function formatToolStatus(toolName: string, input: Record<string, unknown>): string {
   const base = (p: unknown) => (typeof p === "string" ? path.basename(p) : "");
   switch (toolName) {
@@ -95,7 +119,7 @@ function formatToolStatus(toolName: string, input: Record<string, unknown>): str
     }
     case "SendMessage": {
       const to = (input.to as string) || "?";
-      const msg = (input.message as string) || "";
+      const msg = extractSendMessageText(input.message);
       const truncMsg = msg.length > SEND_MESSAGE_DISPLAY_MAX_LENGTH ? msg.slice(0, SEND_MESSAGE_DISPLAY_MAX_LENGTH) + "\u2026" : msg;
       return `\u2192 ${to}: ${truncMsg}`;
     }
@@ -404,15 +428,16 @@ function handleAssistantMessage(
         // Emit dedicated SendMessage event for inter-agent communication
         if (toolName === "SendMessage") {
           const toAgent = (input.to as string) || "?";
-          const msgText = (input.message as string) || "";
+          const msgText = extractSendMessageText(input.message);
           const truncated = msgText.length > SEND_MESSAGE_SIDEBAR_MAX_LENGTH
             ? msgText.slice(0, SEND_MESSAGE_SIDEBAR_MAX_LENGTH) + "\u2026"
             : msgText;
+          const senderName = agent.role || agent.agentSetting || agent.projectName;
           emit({
             type: "agentSendMessage",
             id: agent.id,
             toolId,
-            from: agent.projectName,
+            from: senderName,
             to: toAgent,
             message: truncated,
           });

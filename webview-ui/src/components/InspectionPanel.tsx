@@ -1,4 +1,5 @@
 import { useEffect, useCallback, useRef } from 'react'
+import { getModelShortName } from '../modelInfo.js'
 
 export interface AgentDetails {
   id: number
@@ -145,7 +146,7 @@ export function InspectionPanel({ agentId, agentDetails, folderName, onClose }: 
   if (agentId === null || !agentDetails) return null
 
   const d = agentDetails
-  const modelShort = d.model ? d.model.replace('claude-', '').replace(/-\d+$/, '') : 'unknown'
+  const modelShort = getModelShortName(d.model) ?? 'unknown'
   const totalTokens = d.tokenBreakdown.input + d.tokenBreakdown.output
   const contextLimit = 200_000
   const cacheHitRate =

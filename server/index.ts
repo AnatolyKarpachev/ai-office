@@ -8,8 +8,10 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, watch, statSync, re
 import type { FSWatcher } from "fs";
 import { spawn, execSync, type ChildProcess } from "child_process";
 import crypto from "crypto";
-import { JsonlWatcher, type WatchedFile } from "./watcher.js";
+import { JsonlWatcher } from "./watcher.js";
+import { CodexJsonlWatcher } from "./codexWatcher.js";
 import { processTranscriptLine, cleanupAgentParserState } from "./parser.js";
+import { processCodexTranscriptLine, cleanupCodexParserState } from "./codexParser.js";
 import {
   loadCharacterSprites,
   loadWallTiles,
@@ -21,10 +23,15 @@ import type { LoadedFurnitureAssets } from "./assetLoader.js";
 import { loadConfig, saveConfig, getConfig } from "./configPersistence.js";
 import type { TrackedAgent, ServerMessage } from "./types.js";
 import { getRoleColors, resolveDisplayRole } from "./roleDetector.js";
+import type { AgentProvider, WatchedFile } from "./sourceTypes.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || "9876", 10);
 const IDLE_SHUTDOWN_MS = 600_000; // 10 minutes
+
+// Accumulate SendMessage events so new clients see historical inter-agent communication
+const MAX_SEND_MESSAGES = 200;
+const recentSendMessages: Array<{ id: number; toolId: string; from: string; to: string; message: string }> = [];
 
 // Context window limits by model for health bar calculation
 const MODEL_CONTEXT_LIMITS: Record<string, number> = {
@@ -96,13 +103,26 @@ function onAgentStatsUpdate(agent: TrackedAgent): void {
 }
 
 // State
-const agents = new Map<string, TrackedAgent>(); // sessionId -> agent
+const agents = new Map<string, TrackedAgent>(); // provider:sessionId -> agent
 let nextAgentId = 1;
 const clients = new Set<WebSocket>();
 const testAgentIds = new Set<number>();
 const testAgentData = new Map<number, { folderName: string; role: string; parentAgentId?: number; model: string }>();
 let lastActivityTime = Date.now();
 const spawnedClaudes = new Set<ChildProcess>();
+const codexSubagentHints = new Map<string, { nickname?: string; role?: string; parentSessionId: string }>();
+
+function getAgentKey(provider: AgentProvider, sessionId: string): string {
+  return `${provider}:${sessionId}`;
+}
+
+function resolveSessionLabel(provider: AgentProvider, sessionId: string): string | undefined {
+  const key = getAgentKey(provider, sessionId);
+  const agent = agents.get(key);
+  if (agent) return agent.projectName;
+  const hint = provider === "codex" ? codexSubagentHints.get(sessionId) : undefined;
+  return hint?.nickname;
+}
 
 // ── Persistent role overrides ─────────────────────────────────────────────
 const roleOverridesPath = join(homedir(), ".pixel-agents", "role-overrides.json");
@@ -413,6 +433,11 @@ function sendInitialData(ws: WebSocket): void {
     ws.send(JSON.stringify({ type: "layoutLoaded", layout: null, version: 0, wasReset: false }));
   }
 
+  // Send accumulated SendMessage events so new clients see inter-agent communication history
+  for (const sm of recentSendMessages) {
+    ws.send(JSON.stringify({ type: "agentSendMessage", ...sm }));
+  }
+
   // Re-send test agents so they survive page refresh
   for (const [id, data] of testAgentData) {
     ws.send(JSON.stringify({ type: "agentCreated", id, folderName: data.folderName, parentAgentId: data.parentAgentId }));
@@ -712,6 +737,7 @@ const agentStatePath = join(persistDir, "agents-state.json");
 const AGENT_STATE_SAVE_INTERVAL_MS = 30_000;
 
 interface PersistedAgentState {
+  provider: AgentProvider;
   sessionId: string;
   id: number;
   agentSetting?: string;
@@ -730,6 +756,7 @@ function saveAgentState(): void {
     for (const agent of agents.values()) {
       const seat = persistedSeats?.[agent.id];
       states.push({
+        provider: agent.provider,
         sessionId: agent.sessionId,
         id: agent.id,
         projectName: agent.projectName,
@@ -759,6 +786,13 @@ function loadAgentState(): { agents: PersistedAgentState[]; nextAgentId: number 
   }
 }
 
+function findPreviousAgent(provider: AgentProvider, sessionId: string): PersistedAgentState | undefined {
+  return previousAgentState?.agents.find((agent) => {
+    const previousProvider = agent.provider ?? "claude";
+    return previousProvider === provider && agent.sessionId === sessionId;
+  });
+}
+
 // Restore agent seat assignments from persisted state
 const previousAgentState = loadAgentState();
 if (previousAgentState) {
@@ -774,27 +808,88 @@ const agentStateSaveTimer = setInterval(() => {
   saveAgentState();
 }, AGENT_STATE_SAVE_INTERVAL_MS);
 
-// Watcher
-const watcher = new JsonlWatcher();
+function forwardServerMessage(msg: ServerMessage): void {
+  if (msg.type === "agentSendMessage") {
+    recentSendMessages.push({ id: msg.id, toolId: msg.toolId, from: msg.from, to: msg.to, message: msg.message });
+    if (recentSendMessages.length > MAX_SEND_MESSAGES) recentSendMessages.shift();
+  }
+  broadcast(msg);
+}
 
-watcher.on("fileAdded", (file: WatchedFile) => {
-  if (agents.has(file.sessionId)) return;
+function rebuildAgentPlacement(agent: TrackedAgent): void {
+  broadcast({ type: "agentClosed", id: agent.id });
+  broadcast({
+    type: "agentCreated",
+    id: agent.id,
+    folderName: agent.projectName,
+    parentAgentId: agent.parentAgentId,
+  });
+  broadcast(buildAgentRoleMessage(agent));
+  if (agent.model || agent.turnCount > 0) {
+    broadcast(buildAgentStatsMessage(agent));
+  }
+  if (agent.activeTools.size === 0) {
+    broadcast({ type: "agentStatus", id: agent.id, status: "waiting" });
+  }
+}
+
+function applyCodexSubagentHint(hint: { sessionId: string; parentSessionId: string; nickname?: string; role?: string }): void {
+  codexSubagentHints.set(hint.sessionId, hint);
+
+  const key = getAgentKey("codex", hint.sessionId);
+  const agent = agents.get(key);
+  if (!agent) return;
+
+  let needsPlacementRebuild = false;
+
+  if (hint.nickname && agent.projectName !== hint.nickname) {
+    agent.projectName = hint.nickname;
+    broadcast({ type: "agentRenamed", id: agent.id, folderName: agent.projectName });
+  }
+
+  if (hint.role && agent.agentSetting !== hint.role) {
+    agent.agentSetting = hint.role;
+    syncRoleAndBroadcast(agent);
+  }
+
+  if (!agent.parentSessionId) {
+    agent.parentSessionId = hint.parentSessionId;
+  }
+
+  const parentAgent = agents.get(getAgentKey("codex", hint.parentSessionId));
+  if (parentAgent && agent.parentAgentId !== parentAgent.id) {
+    agent.parentAgentId = parentAgent.id;
+    needsPlacementRebuild = true;
+  }
+
+  if (needsPlacementRebuild) {
+    rebuildAgentPlacement(agent);
+  }
+}
+
+function handleFileAdded(file: WatchedFile): void {
+  const agentKey = getAgentKey(file.provider, file.sessionId);
+  if (agents.has(agentKey)) return;
   lastActivityTime = Date.now();
 
-  // Check if this session was previously tracked — restore its ID and seat data
-  const prevAgent = previousAgentState?.agents.find((a) => a.sessionId === file.sessionId);
+  const prevAgent = findPreviousAgent(file.provider, file.sessionId);
   const agentId = prevAgent?.id ?? nextAgentId++;
 
-  // Ensure nextAgentId stays ahead of any restored ID
   if (agentId >= nextAgentId) {
     nextAgentId = agentId + 1;
   }
 
+  const codexHint = file.provider === "codex" ? codexSubagentHints.get(file.sessionId) : undefined;
+  const parentSessionId = codexHint?.parentSessionId ?? file.parentSessionId;
+
   const agent: TrackedAgent = {
+    key: agentKey,
+    provider: file.provider,
     id: agentId,
     sessionId: file.sessionId,
-    projectDir: dirname(file.path),
-    projectName: file.projectName,
+    projectDir: file.projectDir,
+    projectName: codexHint?.nickname
+      ?? (file.provider === "codex" ? file.projectName : prevAgent?.projectName ?? file.projectName),
     jsonlFile: file.path,
     fileOffset: 0,
     lineBuffer: "",
@@ -818,7 +913,6 @@ watcher.on("fileAdded", (file: WatchedFile) => {
     conversation: [],
   };
 
-  // Restore role from persisted state if available
   if (prevAgent?.agentSetting) {
     agent.agentSetting = prevAgent.agentSetting;
   }
@@ -826,34 +920,29 @@ watcher.on("fileAdded", (file: WatchedFile) => {
     agent.agentDescription = prevAgent.agentDescription;
   }
 
-  // Handle subagent JSONL files: resolve parentSessionId → parentAgentId
-  if (file.parentSessionId) {
-    agent.parentSessionId = file.parentSessionId;
-    // Look up the parent agent by sessionId
-    const parentAgent = agents.get(file.parentSessionId);
+  if (parentSessionId) {
+    agent.parentSessionId = parentSessionId;
+    const parentAgent = agents.get(getAgentKey(file.provider, parentSessionId));
     if (parentAgent) {
       agent.parentAgentId = parentAgent.id;
     }
   }
 
-  // Use agentType from meta.json as agentSetting if not already set
   if (file.agentType && !agent.agentSetting) {
     agent.agentSetting = file.agentType;
   }
-
-  // Use description from meta.json
+  if (codexHint?.role) {
+    agent.agentSetting = codexHint.role;
+  }
   if (file.agentDescription) {
     agent.agentDescription = file.agentDescription;
   }
 
-  // Resolve display role from agentSetting + description
   const isSubagent = !!agent.parentSessionId;
   const { displayRole } = resolveDisplayRole(agent.agentSetting, agent.agentDescription, isSubagent);
   agent.role = displayRole;
 
-  // agentSetting will be populated from JSONL as lines are parsed
-
-  agents.set(file.sessionId, agent);
+  agents.set(agent.key, agent);
   broadcast({
     type: "agentCreated",
     id: agent.id,
@@ -862,20 +951,16 @@ watcher.on("fileAdded", (file: WatchedFile) => {
   });
   broadcast(buildAgentRoleMessage(agent));
 
-  // Log role resolution for debugging
   if (displayRole) {
-    console.log(`  Role: ${agent.agentSetting || '(none)'} → "${displayRole}" (desc: ${agent.agentDescription || '(none)'})`);
+    console.log(`[${file.provider}] Role: ${agent.agentSetting || "(none)"} -> "${displayRole}" (desc: ${agent.agentDescription || "(none)"})`);
   }
 
   if (prevAgent) {
-    console.log(`Agent ${agent.id} rejoined (restored): ${agent.projectName} (${file.sessionId.slice(0, 8)})${agent.parentAgentId ? ` [subagent of ${agent.parentAgentId}]` : ""}`);
+    console.log(`[${file.provider}] Agent ${agent.id} rejoined: ${agent.projectName} (${file.sessionId.slice(0, 8)})${agent.parentAgentId ? ` [subagent of ${agent.parentAgentId}]` : ""}`);
   } else {
-    console.log(`Agent ${agent.id} joined: ${agent.projectName} (${file.sessionId.slice(0, 8)})${agent.parentAgentId ? ` [subagent of ${agent.parentAgentId}]` : ""}`);
+    console.log(`[${file.provider}] Agent ${agent.id} joined: ${agent.projectName} (${file.sessionId.slice(0, 8)})${agent.parentAgentId ? ` [subagent of ${agent.parentAgentId}]` : ""}`);
   }
 
-  // Post-replay idle check: if agent has no active tools after JSONL replay,
-  // it's idle — send "waiting" so frontend triggers sofa behavior.
-  // Small delay to let replay and initial messages settle.
   setTimeout(() => {
     if (agent.activeTools.size === 0) {
       agent.isWaiting = true;
@@ -883,25 +968,49 @@ watcher.on("fileAdded", (file: WatchedFile) => {
       broadcast({ type: "agentStatus", id: agent.id, status: "waiting" });
     }
   }, 1000);
-});
+}
 
-watcher.on("fileRemoved", (file: WatchedFile) => {
-  const agent = agents.get(file.sessionId);
+function handleFileRemoved(file: WatchedFile): void {
+  const agentKey = getAgentKey(file.provider, file.sessionId);
+  const agent = agents.get(agentKey);
   if (!agent) return;
 
-  agents.delete(file.sessionId);
-  cleanupAgentParserState(agent.id);
+  agents.delete(agentKey);
+  if (file.provider === "claude") {
+    cleanupAgentParserState(agent.id);
+  } else {
+    cleanupCodexParserState();
+  }
   broadcast({ type: "agentClosed", id: agent.id });
-  console.log(`Agent ${agent.id} left: ${agent.projectName}`);
-});
+  console.log(`[${file.provider}] Agent ${agent.id} left: ${agent.projectName}`);
+}
 
-watcher.on("line", (file: WatchedFile, line: string) => {
-  const agent = agents.get(file.sessionId);
+function handleWatchedLine(file: WatchedFile, line: string): void {
+  const agent = agents.get(getAgentKey(file.provider, file.sessionId));
   if (!agent) return;
-  lastActivityTime = Date.now();
 
-  processTranscriptLine(line, agent, broadcast, onAgentStatsUpdate);
-});
+  lastActivityTime = Date.now();
+  agent.lastActivityTime = lastActivityTime;
+
+  if (file.provider === "claude") {
+    processTranscriptLine(line, agent, forwardServerMessage, onAgentStatsUpdate);
+    return;
+  }
+
+  processCodexTranscriptLine(line, agent, {
+    emit: forwardServerMessage,
+    onStatsUpdate: onAgentStatsUpdate,
+    onSubagentHint: applyCodexSubagentHint,
+    resolveSessionLabel: (sessionId) => resolveSessionLabel("codex", sessionId),
+  });
+}
+
+const watchers = [new JsonlWatcher(), new CodexJsonlWatcher()];
+for (const watcher of watchers) {
+  watcher.on("fileAdded", handleFileAdded);
+  watcher.on("fileRemoved", handleFileRemoved);
+  watcher.on("line", handleWatchedLine);
+}
 
 // ── GitHub Issues Pipeline Tracking ─────────────────────────────────────────
 const PIPELINE_POLL_INTERVAL_MS = 60_000; // Poll every 60s
@@ -1027,12 +1136,14 @@ setTimeout(fetchPipelineIssues, 5000);
 const pipelineIssuesPollTimer = setInterval(fetchPipelineIssues, PIPELINE_POLL_INTERVAL_MS);
 
 // Start
-watcher.start();
+for (const watcher of watchers) {
+  watcher.start();
+}
 
 function startServer(retries = 1): void {
   server.listen(PORT, () => {
     console.log(`Pixel Agents server running at http://localhost:${PORT}`);
-    console.log(`Watching ~/.claude/projects/ for active sessions...`);
+    console.log(`Watching ~/.claude/projects and ~/.codex/sessions for active sessions...`);
   });
   server.on("error", (err: NodeJS.ErrnoException) => {
     if (err.code === "EADDRINUSE" && retries > 0) {
@@ -1066,7 +1177,9 @@ startServer();
 function cleanupAll(): void {
   saveAgentState();
   cleanupSpawnedClaudes();
-  watcher.stop();
+  for (const watcher of watchers) {
+    watcher.stop();
+  }
   layoutFsWatcher?.close();
   layoutFsWatcher = null;
   clearInterval(layoutPollTimer);

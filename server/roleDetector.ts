@@ -10,6 +10,7 @@ export interface RoleColors {
 const ROLE_COLOR_MAP: Record<string, RoleColors> = {
   "code reviewer":       { primary: "#4aff7a", badge: "#1a4e2a" },
   "explore":             { primary: "#ffda4a", badge: "#5e4e1a" },
+  "explorer":            { primary: "#ffda4a", badge: "#5e4e1a" },
   "merge agent":         { primary: "#ff7a4a", badge: "#6e3a1a" },
   "docs agent":          { primary: "#4affda", badge: "#1a5e4e" },
   "ios builder":         { primary: "#4a9eff", badge: "#1a3a6e" },
@@ -23,6 +24,7 @@ const ROLE_COLOR_MAP: Record<string, RoleColors> = {
   "devops engineer":     { primary: "#4affb0", badge: "#1a5e3e" },
   "performance analyst": { primary: "#dda0ff", badge: "#4a1a5e" },
   "general-purpose":     { primary: "#aaaaaa", badge: "#444444" },
+  "default":             { primary: "#8899aa", badge: "#3a4450" },
   "boss":                { primary: "#ff0000", badge: "#8b0000" },
   "slave":               { primary: "#888888", badge: "#333333" },
   "worker":              { primary: "#8899aa", badge: "#3a4450" },
@@ -127,6 +129,7 @@ const DERIVED_ROLE_COLORS: Record<string, RoleColors> = {
 const AGENT_SETTING_DISPLAY_NAMES: Record<string, string> = {
   "plan":              "planner",
   "explore":           "devExplorer",
+  "explorer":          "explorer",
   "code reviewer":     "codeReviewer",
   "merge agent":       "teamLeadMerger",
   "docs agent":        "docWriter",
@@ -157,6 +160,7 @@ const AGENT_SETTING_QUALIFIED_BASE: Record<string, QualifiedBase> = {
   "backend builder":   { preferred: "BackendDev",  compact: "BackDev" },
   "qa tester":         { preferred: "QAValidator",  compact: "QA" },
   "claude-code-guide": { preferred: "Guide",       compact: "Guide" },
+  "explorer":          { preferred: "Explorer",    compact: "Explorer" },
 };
 
 const KNOWN_ABBREVIATIONS: Record<string, string> = {

@@ -5,21 +5,7 @@ import type { SubagentCharacter, AgentStats, AgentRoleInfo } from '../../hooks/u
 import { TILE_SIZE, CharacterState } from '../types.js'
 import { TOOL_OVERLAY_VERTICAL_OFFSET, CHARACTER_SITTING_OFFSET_PX } from '../../constants.js'
 import { TokenBar } from '../../components/TokenBar.js'
-
-const MODEL_CONTEXT_LIMITS: Record<string, number> = {
-  "claude-opus-4-6": 200000,
-  "claude-sonnet-4-6": 200000,
-  "claude-haiku-4-5": 200000,
-  "default": 200000,
-}
-
-function getContextLimit(model?: string): number {
-  if (!model) return MODEL_CONTEXT_LIMITS["default"]
-  for (const [key, limit] of Object.entries(MODEL_CONTEXT_LIMITS)) {
-    if (key !== "default" && model.includes(key)) return limit
-  }
-  return MODEL_CONTEXT_LIMITS["default"]
-}
+import { getContextLimit } from '../../modelInfo.js'
 
 interface ToolOverlayProps {
   officeState: OfficeState
@@ -106,6 +92,8 @@ export function ToolOverlay({
         const isSelected = selectedId === id
         const isHovered = hoveredId === id
         const isSub = ch.isSubagent
+        const roleInfo = agentRoles.get(id) ?? null
+        const subName = ch.folderName || `subagent-${id}`
 
         const sittingOffset = ch.state === CharacterState.TYPE ? CHARACTER_SITTING_OFFSET_PX : 0
         const screenX = (deviceOffsetX + ch.x * zoom) / dpr
@@ -143,7 +131,6 @@ export function ToolOverlay({
         }
 
         // Role & stats
-        const roleInfo = agentRoles.get(id) ?? null
         const stats = !isSub ? agentStats.get(id) : null
         const totalTokens = stats ? stats.totalInputTokens + stats.totalOutputTokens : 0
         const contextLimit = stats ? getContextLimit(stats.model) : 0
@@ -199,25 +186,37 @@ export function ToolOverlay({
                 )
               )}
               {isSub ? (
-                /* Subagent: only colored badge, no name */
-                <span
-                  style={{
-                    fontSize: '11px',
-                    lineHeight: 1,
-                    padding: '1px 4px',
-                    background: roleInfo?.colors?.badge ?? 'rgba(120,160,255,0.15)',
-                    color: roleInfo?.colors?.primary ?? 'rgba(120,160,255,0.9)',
-                    border: `1px solid ${roleInfo?.colors?.primary ?? 'rgba(120,160,255,0.3)'}`,
-                    borderRadius: 0,
-                    textTransform: 'none',
-                    letterSpacing: '0.5px',
-                    fontWeight: 'bold',
-                    whiteSpace: 'nowrap',
-                    flexShrink: 0,
-                  }}
-                >
-                  {roleInfo?.role || ch.folderName || 'sub'}
-                </span>
+                <>
+                  <span
+                    style={{
+                      fontSize: '18px',
+                      color: 'var(--pixel-text-dim)',
+                      maxWidth: 140,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {subName}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      lineHeight: 1,
+                      padding: '1px 4px',
+                      background: roleInfo?.colors?.badge ?? 'rgba(120,160,255,0.15)',
+                      color: roleInfo?.colors?.primary ?? 'rgba(120,160,255,0.9)',
+                      border: `1px solid ${roleInfo?.colors?.primary ?? 'rgba(120,160,255,0.3)'}`,
+                      borderRadius: 0,
+                      textTransform: 'none',
+                      letterSpacing: '0.5px',
+                      fontWeight: 'bold',
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0,
+                    }}
+                  >
+                    {roleInfo?.role || 'sub'}
+                  </span>
+                </>
               ) : (
                 /* Main agent: name + optional role badge */
                 <>

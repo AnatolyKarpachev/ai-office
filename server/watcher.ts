@@ -3,6 +3,7 @@ import { statSync, readdirSync, openSync, readSync, closeSync, readFileSync } fr
 import { join, basename, dirname } from "path";
 import { homedir } from "os";
 import { EventEmitter } from "events";
+import type { WatchedFile } from "./sourceTypes.js";
 
 const CLAUDE_PROJECTS_DIR = join(homedir(), ".claude", "projects");
 const ACTIVE_THRESHOLD_MS = 300_000; // 5 minutes — dead sessions drop quickly, re-added on new writes
@@ -65,20 +66,6 @@ function compactName(name: string, maxLen: number): string {
 
 function truncateName(name: string): string {
   return compactName(name, MAX_PROJECT_NAME_LENGTH);
-}
-
-export interface WatchedFile {
-  path: string;
-  sessionId: string;
-  projectName: string;
-  offset: number;
-  lineBuffer: string;
-  /** If this is a subagent file, the parent session's ID (extracted from path) */
-  parentSessionId?: string;
-  /** agentType read from the companion meta.json file */
-  agentType?: string;
-  /** description read from the companion meta.json file */
-  agentDescription?: string;
 }
 
 export class JsonlWatcher extends EventEmitter {
@@ -208,8 +195,10 @@ export class JsonlWatcher extends EventEmitter {
     }
 
     const file: WatchedFile = {
+      provider: "claude",
       path: filePath,
       sessionId,
+      projectDir: dirname(filePath),
       projectName,
       offset: 0,
       lineBuffer: "",

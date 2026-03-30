@@ -3,6 +3,7 @@ import type { OfficeState } from '../office/engine/officeState.js'
 import type { AgentStats, AgentRoleInfo, SubagentCharacter, ConversationMessage, AgentDetails } from '../hooks/useExtensionMessages.js'
 import type { ToolActivity } from '../office/types.js'
 import { RoleBadge } from './RoleBadge.js'
+import { getModelShortName } from '../modelInfo.js'
 
 interface ActivityEntry {
   id: number
@@ -12,6 +13,8 @@ interface ActivityEntry {
   type: 'tool_start' | 'tool_done' | 'permission' | 'status' | 'agent_joined' | 'agent_left' | 'sub_tool_start' | 'sub_tool_done' | 'sub_permission' | 'sub_joined' | 'sub_left' | 'send_message'
   timestamp: number
   isSubagent?: boolean
+  sendFrom?: string
+  sendTo?: string
 }
 
 let nextEntryId = 1
@@ -389,7 +392,7 @@ const detailSectionTitle: React.CSSProperties = { fontSize: '11px', color: '#888
 
 function AgentDetailsView({ details, folderName, onClose }: { details: AgentDetails; folderName?: string; onClose: () => void }) {
   const d = details
-  const modelShort = d.model ? d.model.replace('claude-', '').replace(/-\d+$/, '') : '?'
+  const modelShort = getModelShortName(d.model) ?? '?'
   const totalTokens = d.tokenBreakdown.input + d.tokenBreakdown.output
   const contextLimit = 200_000
   const cacheHitRate = d.tokenBreakdown.input > 0 ? Math.round((d.tokenBreakdown.cacheRead / Math.max(d.tokenBreakdown.input, 1)) * 100) : 0
@@ -732,9 +735,11 @@ export function RightSidebar({
         id: nextEntryId++,
         agentId: sm.id,
         agentName: sm.from,
-        text: `${sm.from} \u2192 ${sm.to}: ${sm.message}`,
+        text: sm.message,
         type: 'send_message',
         timestamp: sm.timestamp,
+        sendFrom: sm.from,
+        sendTo: sm.to,
       })
     }
 
@@ -916,69 +921,118 @@ export function RightSidebar({
           ) : (
             entries.map((entry) => {
               const entryRole = agentRoles.get(entry.agentId)
+              const isSendMsg = entry.type === 'send_message'
               return (
               <div
                 key={entry.id}
                 style={{
-                  padding: '3px 6px',
+                  padding: isSendMsg ? '4px 6px' : '3px 6px',
                   marginBottom: 1,
                   borderLeft: `2px solid ${getEntryColor(entry.type)}`,
                   marginLeft: entry.isSubagent ? 8 : 0,
                   transition: 'background 0.1s ease',
+                  ...(isSendMsg ? { background: 'rgba(0,100,30,0.35)', borderRadius: 2 } : {}),
                 }}
               >
-                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                  <span style={{
-                    fontSize: '14px',
-                    color: 'rgba(255,255,255,0.35)',
-                    fontFamily: 'monospace',
-                    flexShrink: 0,
-                  }}>
-                    {formatTime(entry.timestamp)}
-                  </span>
-                  <span style={{
-                    fontSize: '14px',
-                    color: getEntryColor(entry.type),
-                    fontWeight: 'bold',
-                    flexShrink: 0,
-                  }}>
-                    {getEntryIcon(entry.type)}
-                  </span>
-                  {entryRole?.role && <RoleBadge role={entryRole.role} colors={entryRole.colors} />}
-                  {entry.isSubagent ? (
-                    <span style={{
-                      fontSize: '10px', padding: '0 3px', fontWeight: 'bold',
-                      textTransform: 'none', letterSpacing: '0.3px',
-                      background: 'rgba(120,160,255,0.15)', color: 'rgba(120,160,255,0.9)',
-                      border: '1px solid rgba(120,160,255,0.3)',
-                      borderRadius: 0, whiteSpace: 'nowrap', lineHeight: '14px', flexShrink: 0,
-                    }}>
-                      {entry.agentName.includes(' > ') ? entry.agentName.split(' > ').pop() : entry.agentName}
-                    </span>
-                  ) : (
-                    <span style={{
+                {isSendMsg ? (
+                  /* SendMessage: two-line layout with labels */
+                  <>
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      <span style={{
+                        fontSize: '14px',
+                        color: 'rgba(255,255,255,0.35)',
+                        fontFamily: 'monospace',
+                        flexShrink: 0,
+                      }}>
+                        {formatTime(entry.timestamp)}
+                      </span>
+                      <span style={{
+                        fontSize: '14px', padding: '1px 5px', fontWeight: 'bold',
+                        background: 'rgba(255,165,0,0.2)', color: '#ffb347',
+                        border: '1px solid rgba(255,165,0,0.4)',
+                        borderRadius: 2, whiteSpace: 'nowrap', lineHeight: '18px',
+                      }}>
+                        {entry.sendFrom}
+                      </span>
+                      <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.5)' }}>→</span>
+                      <span style={{
+                        fontSize: '14px', padding: '1px 5px', fontWeight: 'bold',
+                        background: 'rgba(90,200,140,0.2)', color: '#5ac88c',
+                        border: '1px solid rgba(90,200,140,0.4)',
+                        borderRadius: 2, whiteSpace: 'nowrap', lineHeight: '18px',
+                      }}>
+                        {entry.sendTo}
+                      </span>
+                    </div>
+                    <div style={{
                       fontSize: '14px',
-                      color: 'rgba(90,140,255,0.8)',
-                      flexShrink: 0,
+                      color: 'rgba(255,255,255,0.55)',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
-                      maxWidth: 140,
+                      paddingLeft: 2,
+                      marginTop: 1,
                     }}>
-                      {entry.agentName}
-                    </span>
-                  )}
-                </div>
-                <div style={{
-                  fontSize: '15px',
-                  color: 'rgba(255,255,255,0.6)',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  paddingLeft: 2,
-                }}>
-                  {entry.text}
-                </div>
+                      {entry.text}
+                    </div>
+                  </>
+                ) : (
+                  /* Regular entries: single-line layout */
+                  <>
+                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                      <span style={{
+                        fontSize: '14px',
+                        color: 'rgba(255,255,255,0.35)',
+                        fontFamily: 'monospace',
+                        flexShrink: 0,
+                      }}>
+                        {formatTime(entry.timestamp)}
+                      </span>
+                      <span style={{
+                        fontSize: '14px',
+                        color: getEntryColor(entry.type),
+                        fontWeight: 'bold',
+                        flexShrink: 0,
+                      }}>
+                        {getEntryIcon(entry.type)}
+                      </span>
+                      {entryRole?.role && <RoleBadge role={entryRole.role} colors={entryRole.colors} />}
+                      {entry.isSubagent ? (
+                        <span style={{
+                          fontSize: '10px', padding: '0 3px', fontWeight: 'bold',
+                          textTransform: 'none', letterSpacing: '0.3px',
+                          background: 'rgba(120,160,255,0.15)', color: 'rgba(120,160,255,0.9)',
+                          border: '1px solid rgba(120,160,255,0.3)',
+                          borderRadius: 0, whiteSpace: 'nowrap', lineHeight: '14px', flexShrink: 0,
+                        }}>
+                          {entry.agentName.includes(' > ') ? entry.agentName.split(' > ').pop() : entry.agentName}
+                        </span>
+                      ) : (
+                        <span style={{
+                          fontSize: '14px',
+                          color: 'rgba(90,140,255,0.8)',
+                          flexShrink: 0,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          maxWidth: 140,
+                        }}>
+                          {entry.agentName}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{
+                      fontSize: '15px',
+                      color: 'rgba(255,255,255,0.6)',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                      paddingLeft: 2,
+                    }}>
+                      {entry.text}
+                    </div>
+                  </>
+                )}
               </div>
               )
             })
