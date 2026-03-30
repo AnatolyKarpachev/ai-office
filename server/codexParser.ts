@@ -137,6 +137,42 @@ function setCodexTokenUsageFromTotals(
   return changed;
 }
 
+function setCodexContextUsage(
+  lastUsage: Record<string, unknown>,
+  contextWindow: unknown,
+  agent: TrackedAgent,
+): boolean {
+  let changed = false;
+
+  const inputTokens = typeof lastUsage.input_tokens === "number" ? lastUsage.input_tokens : 0;
+  const outputTokens = typeof lastUsage.output_tokens === "number" ? lastUsage.output_tokens : 0;
+  const cacheRead = typeof lastUsage.cached_input_tokens === "number" ? lastUsage.cached_input_tokens : 0;
+  const totalTokens = typeof lastUsage.total_tokens === "number" ? lastUsage.total_tokens : inputTokens + outputTokens;
+
+  if (agent.currentInputTokens !== inputTokens) {
+    agent.currentInputTokens = inputTokens;
+    changed = true;
+  }
+  if (agent.currentOutputTokens !== outputTokens) {
+    agent.currentOutputTokens = outputTokens;
+    changed = true;
+  }
+  if (agent.currentCacheRead !== cacheRead) {
+    agent.currentCacheRead = cacheRead;
+    changed = true;
+  }
+  if (agent.currentContextTokens !== totalTokens) {
+    agent.currentContextTokens = totalTokens;
+    changed = true;
+  }
+  if (typeof contextWindow === "number" && agent.currentContextLimit !== contextWindow) {
+    agent.currentContextLimit = contextWindow;
+    changed = true;
+  }
+
+  return changed;
+}
+
 function finishCodexTool(
   agent: TrackedAgent,
   callId: string,
@@ -333,7 +369,10 @@ export function processCodexTranscriptLine(
   if (eventType === "token_count") {
     const info = (payload.info ?? {}) as Record<string, unknown>;
     const totalUsage = (info.total_token_usage ?? {}) as Record<string, unknown>;
-    const didChange = setCodexTokenUsageFromTotals(totalUsage, agent);
+    const lastUsage = (info.last_token_usage ?? {}) as Record<string, unknown>;
+    const didChange =
+      setCodexTokenUsageFromTotals(totalUsage, agent) ||
+      setCodexContextUsage(lastUsage, info.model_context_window, agent);
     if (didChange) {
       onStatsUpdate?.(agent);
     }

@@ -312,7 +312,8 @@ export function LeftSidebar({
               const hasActiveTools = tools?.some((t) => !t.done)
               const statusLabel = getStatusLabel(id, agentTools, agentStatuses, isActive)
               const totalTokens = stats ? stats.totalInputTokens + stats.totalOutputTokens : 0
-              const contextLimit = stats ? getContextLimit(stats.model) : 0
+              const contextTokens = stats?.currentContextTokens ?? totalTokens
+              const contextLimit = stats?.currentContextLimit ?? (stats ? getContextLimit(stats.model) : 0)
               const isHovered = hoveredAgent === id
               const subs = subsByParent.get(id) || []
 
@@ -350,7 +351,7 @@ export function LeftSidebar({
                     {stats && (
                       <>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <TokenBar totalTokens={totalTokens} contextLimit={contextLimit} model={stats.model} turnCount={stats.turnCount} visible={true} />
+                          <TokenBar totalTokens={totalTokens} usageTokens={contextTokens} contextLimit={contextLimit} model={stats.model} turnCount={stats.turnCount} visible={true} />
                           <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.35)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{formatNumber(totalTokens)} tok</span>
                         </div>
                         <div style={{ display: 'flex', gap: 8, marginTop: 2, fontSize: '14px', color: 'rgba(255,255,255,0.3)', fontFamily: 'monospace' }}>
@@ -400,12 +401,13 @@ export function LeftSidebar({
                               const subStats = agentStats.get(sub.id)
                               if (!subStats) return null
                               const subTotalTokens = subStats.totalInputTokens + subStats.totalOutputTokens
-                              const subContextLimit = getContextLimit(subStats.model)
+                              const subContextTokens = subStats.currentContextTokens ?? subTotalTokens
+                              const subContextLimit = subStats.currentContextLimit ?? getContextLimit(subStats.model)
                               if (subTotalTokens === 0) return null
                               return (
                                 <>
                                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-                                    <TokenBar totalTokens={subTotalTokens} contextLimit={subContextLimit} model={subStats.model} turnCount={subStats.turnCount} visible={true} />
+                                    <TokenBar totalTokens={subTotalTokens} usageTokens={subContextTokens} contextLimit={subContextLimit} model={subStats.model} turnCount={subStats.turnCount} visible={true} />
                                     <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.25)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{formatNumber(subTotalTokens)} tok</span>
                                   </div>
                                   <div style={{ display: 'flex', gap: 6, marginTop: 1, fontSize: '12px', color: 'rgba(255,255,255,0.2)', fontFamily: 'monospace' }}>

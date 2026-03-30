@@ -394,7 +394,11 @@ function AgentDetailsView({ details, folderName, onClose }: { details: AgentDeta
   const d = details
   const modelShort = getModelShortName(d.model) ?? '?'
   const totalTokens = d.tokenBreakdown.input + d.tokenBreakdown.output
-  const contextLimit = 200_000
+  const contextInput = d.contextUsage?.input ?? d.tokenBreakdown.input
+  const contextOutput = d.contextUsage?.output ?? d.tokenBreakdown.output
+  const contextCacheRead = d.contextUsage?.cacheRead ?? d.tokenBreakdown.cacheRead
+  const contextTotal = d.contextUsage?.total ?? totalTokens
+  const contextLimit = d.contextUsage?.limit ?? 200_000
   const cacheHitRate = d.tokenBreakdown.input > 0 ? Math.round((d.tokenBreakdown.cacheRead / Math.max(d.tokenBreakdown.input, 1)) * 100) : 0
   const avgTurnMs = d.turnCount > 0 ? d.totalDurationMs / d.turnCount : 0
   const reversedHistory = [...d.toolHistory].reverse().slice(0, 20)
@@ -422,10 +426,11 @@ function AgentDetailsView({ details, folderName, onClose }: { details: AgentDeta
 
         {/* Tokens */}
         <div style={detailSectionTitle}>Tokens</div>
-        <div style={detailRowStyle}><span style={detailLabelStyle}>Input:</span><PixelBar value={d.tokenBreakdown.input} max={contextLimit} color="#5a8cff" /><span style={{ ...detailValueStyle, marginLeft: 4 }}>{formatNumberCompact(d.tokenBreakdown.input)}</span></div>
-        <div style={detailRowStyle}><span style={detailLabelStyle}>Output:</span><PixelBar value={d.tokenBreakdown.output} max={contextLimit} color="#5ac88c" /><span style={{ ...detailValueStyle, marginLeft: 4 }}>{formatNumberCompact(d.tokenBreakdown.output)}</span></div>
-        <div style={detailRowStyle}><span style={detailLabelStyle}>Cache:</span><PixelBar value={d.tokenBreakdown.cacheRead} max={contextLimit} color="#c678dd" /><span style={{ ...detailValueStyle, marginLeft: 4 }}>{formatNumberCompact(d.tokenBreakdown.cacheRead)}</span></div>
-        <div style={detailRowStyle}><span style={detailLabelStyle}>Total:</span><PixelBar value={totalTokens} max={contextLimit} color="#e5c07b" /><span style={{ ...detailValueStyle, marginLeft: 4 }}>{formatNumberCompact(totalTokens)}/{formatNumberCompact(contextLimit)}</span></div>
+        <div style={detailRowStyle}><span style={detailLabelStyle}>Input:</span><PixelBar value={contextInput} max={contextLimit} color="#5a8cff" /><span style={{ ...detailValueStyle, marginLeft: 4 }}>{formatNumberCompact(contextInput)}</span></div>
+        <div style={detailRowStyle}><span style={detailLabelStyle}>Output:</span><PixelBar value={contextOutput} max={contextLimit} color="#5ac88c" /><span style={{ ...detailValueStyle, marginLeft: 4 }}>{formatNumberCompact(contextOutput)}</span></div>
+        <div style={detailRowStyle}><span style={detailLabelStyle}>Cache:</span><PixelBar value={contextCacheRead} max={contextLimit} color="#c678dd" /><span style={{ ...detailValueStyle, marginLeft: 4 }}>{formatNumberCompact(contextCacheRead)}</span></div>
+        <div style={detailRowStyle}><span style={detailLabelStyle}>Context:</span><PixelBar value={contextTotal} max={contextLimit} color="#e5c07b" /><span style={{ ...detailValueStyle, marginLeft: 4 }}>{formatNumberCompact(contextTotal)}/{formatNumberCompact(contextLimit)}</span></div>
+        {d.contextUsage && <div style={detailRowStyle}><span style={detailLabelStyle}>Lifetime:</span><span style={detailValueStyle}>{formatNumberCompact(totalTokens)}</span></div>}
 
         {/* Performance */}
         <div style={detailSectionTitle}>Performance</div>

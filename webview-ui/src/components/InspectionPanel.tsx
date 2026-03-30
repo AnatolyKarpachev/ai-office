@@ -11,6 +11,7 @@ export interface AgentDetails {
   permissionMode?: string
   toolHistory: Array<{ name: string; timestamp: string; durationMs?: number }>
   tokenBreakdown: { input: number; output: number; cacheRead: number; cacheCreation: number }
+  contextUsage?: { input: number; output: number; cacheRead: number; total: number; limit: number }
   turnCount: number
   totalDurationMs: number
   startTime?: string
@@ -148,7 +149,11 @@ export function InspectionPanel({ agentId, agentDetails, folderName, onClose }: 
   const d = agentDetails
   const modelShort = getModelShortName(d.model) ?? 'unknown'
   const totalTokens = d.tokenBreakdown.input + d.tokenBreakdown.output
-  const contextLimit = 200_000
+  const contextInput = d.contextUsage?.input ?? d.tokenBreakdown.input
+  const contextOutput = d.contextUsage?.output ?? d.tokenBreakdown.output
+  const contextCacheRead = d.contextUsage?.cacheRead ?? d.tokenBreakdown.cacheRead
+  const contextTotal = d.contextUsage?.total ?? totalTokens
+  const contextLimit = d.contextUsage?.limit ?? 200_000
   const cacheHitRate =
     d.tokenBreakdown.input > 0
       ? Math.round((d.tokenBreakdown.cacheRead / Math.max(d.tokenBreakdown.input, 1)) * 100)
@@ -240,26 +245,32 @@ export function InspectionPanel({ agentId, agentDetails, folderName, onClose }: 
           <div style={sectionTitleStyle}>Token Usage</div>
           <div style={rowStyle}>
             <span style={{ ...labelStyle, minWidth: 60 }}>Input:</span>
-            <PixelBar value={d.tokenBreakdown.input} max={contextLimit} color="#5a8cff" />
-            <span style={{ ...valueStyle, marginLeft: 4 }}>{formatNumber(d.tokenBreakdown.input)}</span>
+            <PixelBar value={contextInput} max={contextLimit} color="#5a8cff" />
+            <span style={{ ...valueStyle, marginLeft: 4 }}>{formatNumber(contextInput)}</span>
           </div>
           <div style={rowStyle}>
             <span style={{ ...labelStyle, minWidth: 60 }}>Output:</span>
-            <PixelBar value={d.tokenBreakdown.output} max={contextLimit} color="#5ac88c" />
-            <span style={{ ...valueStyle, marginLeft: 4 }}>{formatNumber(d.tokenBreakdown.output)}</span>
+            <PixelBar value={contextOutput} max={contextLimit} color="#5ac88c" />
+            <span style={{ ...valueStyle, marginLeft: 4 }}>{formatNumber(contextOutput)}</span>
           </div>
           <div style={rowStyle}>
             <span style={{ ...labelStyle, minWidth: 60 }}>Cache:</span>
-            <PixelBar value={d.tokenBreakdown.cacheRead} max={contextLimit} color="#c678dd" />
-            <span style={{ ...valueStyle, marginLeft: 4 }}>{formatNumber(d.tokenBreakdown.cacheRead)}</span>
+            <PixelBar value={contextCacheRead} max={contextLimit} color="#c678dd" />
+            <span style={{ ...valueStyle, marginLeft: 4 }}>{formatNumber(contextCacheRead)}</span>
           </div>
           <div style={rowStyle}>
-            <span style={{ ...labelStyle, minWidth: 60 }}>Total:</span>
-            <PixelBar value={totalTokens} max={contextLimit} color="#e5c07b" />
+            <span style={{ ...labelStyle, minWidth: 60 }}>Context:</span>
+            <PixelBar value={contextTotal} max={contextLimit} color="#e5c07b" />
             <span style={{ ...valueStyle, marginLeft: 4 }}>
-              {formatNumber(totalTokens)}/{formatNumber(contextLimit)}
+              {formatNumber(contextTotal)}/{formatNumber(contextLimit)}
             </span>
           </div>
+          {d.contextUsage && (
+            <div style={rowStyle}>
+              <span style={{ ...labelStyle, minWidth: 60 }}>Lifetime:</span>
+              <span style={valueStyle}>{formatNumber(totalTokens)}</span>
+            </div>
+          )}
         </div>
 
         {/* Performance section */}

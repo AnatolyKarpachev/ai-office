@@ -133,7 +133,8 @@ export function ToolOverlay({
         // Role & stats
         const stats = !isSub ? agentStats.get(id) : null
         const totalTokens = stats ? stats.totalInputTokens + stats.totalOutputTokens : 0
-        const contextLimit = stats ? getContextLimit(stats.model) : 0
+        const contextTokens = stats?.currentContextTokens ?? totalTokens
+        const contextLimit = stats?.currentContextLimit ?? (stats ? getContextLimit(stats.model) : 0)
 
         // Show expanded overlay on hover/select/alwaysShow
         const showExpanded = alwaysShowOverlay || isSelected || isHovered
@@ -334,6 +335,7 @@ export function ToolOverlay({
               <div style={{ marginTop: 2 }}>
                 <TokenBar
                   totalTokens={totalTokens}
+                  usageTokens={contextTokens}
                   contextLimit={contextLimit}
                   model={stats.model}
                   turnCount={stats.turnCount}

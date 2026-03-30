@@ -2,6 +2,7 @@ import { getModelShortName } from '../modelInfo.js'
 
 interface TokenBarProps {
   totalTokens: number
+  usageTokens?: number
   contextLimit: number
   model?: string
   turnCount: number
@@ -14,10 +15,11 @@ function formatNumber(n: number): string {
   return String(n)
 }
 
-export function TokenBar({ totalTokens, contextLimit, model, turnCount, visible }: TokenBarProps) {
+export function TokenBar({ totalTokens, usageTokens, contextLimit, model, turnCount, visible }: TokenBarProps) {
   if (!visible || contextLimit === 0) return null
 
-  const pct = Math.min((totalTokens / contextLimit) * 100, 100)
+  const contextTokens = usageTokens ?? totalTokens
+  const pct = Math.min((contextTokens / contextLimit) * 100, 100)
   const modelShort = getModelShortName(model)
 
   // Color gradient: green (<50%) -> yellow (50-80%) -> red (>80%)
@@ -30,7 +32,7 @@ export function TokenBar({ totalTokens, contextLimit, model, turnCount, visible 
     barColor = '#f44336'
   }
 
-  const tooltipText = `${formatNumber(totalTokens)} / ${formatNumber(contextLimit)} tokens (${Math.round(pct)}%) | ${turnCount} turns`
+  const tooltipText = `${formatNumber(contextTokens)} / ${formatNumber(contextLimit)} tokens in context (${Math.round(pct)}%) | ${formatNumber(totalTokens)} total | ${turnCount} turns`
 
   return (
     <div

@@ -46,6 +46,8 @@ export interface AgentStats {
   totalOutputTokens: number
   totalCacheRead: number
   totalCacheCreation: number
+  currentContextTokens?: number
+  currentContextLimit?: number
   turnCount: number
   totalDurationMs: number
   cacheHitRate: number
@@ -72,6 +74,7 @@ export interface AgentDetails {
   permissionMode?: string
   toolHistory: Array<{ name: string; timestamp: string; durationMs?: number }>
   tokenBreakdown: { input: number; output: number; cacheRead: number; cacheCreation: number }
+  contextUsage?: { input: number; output: number; cacheRead: number; total: number; limit: number }
   turnCount: number
   totalDurationMs: number
   startTime?: string
@@ -496,6 +499,8 @@ export function useExtensionMessages(
           totalOutputTokens: msg.totalOutputTokens as number,
           totalCacheRead: msg.totalCacheRead as number,
           totalCacheCreation: msg.totalCacheCreation as number,
+          currentContextTokens: msg.currentContextTokens as number | undefined,
+          currentContextLimit: msg.currentContextLimit as number | undefined,
           turnCount: msg.turnCount as number,
           totalDurationMs: msg.totalDurationMs as number,
           cacheHitRate: msg.cacheHitRate as number,
@@ -516,6 +521,7 @@ export function useExtensionMessages(
           permissionMode: msg.permissionMode as string | undefined,
           toolHistory: msg.toolHistory as Array<{ name: string; timestamp: string; durationMs?: number }>,
           tokenBreakdown: msg.tokenBreakdown as { input: number; output: number; cacheRead: number; cacheCreation: number },
+          contextUsage: msg.contextUsage as { input: number; output: number; cacheRead: number; total: number; limit: number } | undefined,
           turnCount: msg.turnCount as number,
           totalDurationMs: msg.totalDurationMs as number,
           startTime: msg.startTime as string | undefined,
