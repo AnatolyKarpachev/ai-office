@@ -20,7 +20,6 @@ export interface EditorActions {
   panRef: React.MutableRefObject<{ x: number; y: number }>
   saveTimerRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>
   setLastSavedLayout: (layout: OfficeLayout) => void
-  handleOpenClaude: () => void
   handleToggleEditMode: () => void
   handleToolChange: (tool: EditToolType) => void
   handleTileTypeChange: (type: TileTypeVal) => void
@@ -36,6 +35,7 @@ export interface EditorActions {
   handleRedo: () => void
   handleReset: () => void
   handleSave: () => void
+  handleImportLayout: (layout: OfficeLayout) => void
   handleZoomChange: (zoom: number) => void
   handleToggleSpawnEdit: () => void
   handleClearAgentSpawn: () => void
@@ -82,10 +82,6 @@ export function useEditorActions(
     saveLayout(newLayout)
     setEditorTick((n) => n + 1)
   }, [getOfficeState, editorState, saveLayout])
-
-  const handleOpenClaude = useCallback(() => {
-    vscode.postMessage({ type: 'openClaude' })
-  }, [])
 
   const handleToggleEditMode = useCallback(() => {
     setIsEditMode((prev) => {
@@ -331,6 +327,20 @@ export function useEditorActions(
     setIsDirty(false)
   }, [getOfficeState, editorState])
 
+  const handleImportLayout = useCallback((layout: OfficeLayout) => {
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+    const os = getOfficeState()
+    os.rebuildFromLayout(layout)
+    lastSavedLayoutRef.current = structuredClone(layout)
+    editorState.reset()
+    vscode.postMessage({ type: 'saveLayout', layout })
+    setIsDirty(false)
+    setEditorTick((n) => n + 1)
+  }, [getOfficeState, editorState])
+
   // Notify React that imperative editor selection changed (e.g., from OfficeCanvas mouseUp)
   const handleEditorSelectionChange = useCallback(() => {
     colorEditUidRef.current = null
@@ -556,7 +566,6 @@ export function useEditorActions(
     panRef,
     saveTimerRef,
     setLastSavedLayout,
-    handleOpenClaude,
     handleToggleEditMode,
     handleToolChange,
     handleTileTypeChange,
@@ -572,6 +581,7 @@ export function useEditorActions(
     handleRedo,
     handleReset,
     handleSave,
+    handleImportLayout,
     handleZoomChange,
     handleToggleSpawnEdit,
     handleClearAgentSpawn,

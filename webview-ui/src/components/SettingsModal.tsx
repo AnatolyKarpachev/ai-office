@@ -5,11 +5,10 @@ import { isSoundEnabled, setSoundEnabled } from '../notificationSound.js'
 interface SettingsModalProps {
   isOpen: boolean
   onClose: () => void
-  isDebugMode: boolean
-  onToggleDebugMode: () => void
+  onExportLayout: () => void
+  onImportLayout: () => void
   alwaysShowOverlay: boolean
   onToggleAlwaysShowOverlay: () => void
-  externalAssetDirectories: string[]
 }
 
 const menuItemBase: React.CSSProperties = {
@@ -27,19 +26,21 @@ const menuItemBase: React.CSSProperties = {
   textAlign: 'left',
 }
 
+const aboutLinkStyle: React.CSSProperties = {
+  color: 'var(--pixel-accent)',
+  textDecoration: 'underline',
+}
+
 export function SettingsModal({
   isOpen,
   onClose,
-  isDebugMode,
-  onToggleDebugMode,
+  onExportLayout,
+  onImportLayout,
   alwaysShowOverlay,
   onToggleAlwaysShowOverlay,
-  externalAssetDirectories,
 }: SettingsModalProps) {
   const [hovered, setHovered] = useState<string | null>(null)
   const [soundLocal, setSoundLocal] = useState(isSoundEnabled)
-  const [showDirInput, setShowDirInput] = useState(false)
-  const [dirInputValue, setDirInputValue] = useState('')
 
   if (!isOpen) return null
 
@@ -121,7 +122,7 @@ export function SettingsModal({
         </button>
         <button
           onClick={() => {
-            vscode.postMessage({ type: 'exportLayout' })
+            onExportLayout()
             onClose()
           }}
           onMouseEnter={() => setHovered('export')}
@@ -135,7 +136,7 @@ export function SettingsModal({
         </button>
         <button
           onClick={() => {
-            vscode.postMessage({ type: 'importLayout' })
+            onImportLayout()
             onClose()
           }}
           onMouseEnter={() => setHovered('import')}
@@ -147,113 +148,6 @@ export function SettingsModal({
         >
           Import Layout
         </button>
-        <button
-          onClick={() => setShowDirInput((prev) => !prev)}
-          onMouseEnter={() => setHovered('addAssets')}
-          onMouseLeave={() => setHovered(null)}
-          style={{
-            ...menuItemBase,
-            background: hovered === 'addAssets' ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
-          }}
-        >
-          Add Asset Directory
-        </button>
-        {showDirInput && (
-          <div style={{ display: 'flex', alignItems: 'center', padding: '4px 10px', gap: 4 }}>
-            <input
-              type="text"
-              value={dirInputValue}
-              onChange={(e) => setDirInputValue(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && dirInputValue.trim()) {
-                  vscode.postMessage({ type: 'addExternalAssetDirectory', path: dirInputValue.trim() })
-                  setDirInputValue('')
-                  setShowDirInput(false)
-                }
-              }}
-              placeholder="/path/to/assets"
-              style={{
-                flex: 1,
-                background: 'rgba(0, 0, 0, 0.3)',
-                border: '1px solid var(--pixel-border)',
-                borderRadius: 0,
-                color: 'rgba(255, 255, 255, 0.8)',
-                fontSize: '18px',
-                padding: '2px 6px',
-                outline: 'none',
-              }}
-              autoFocus
-            />
-            <button
-              onClick={() => {
-                if (dirInputValue.trim()) {
-                  vscode.postMessage({ type: 'addExternalAssetDirectory', path: dirInputValue.trim() })
-                  setDirInputValue('')
-                  setShowDirInput(false)
-                }
-              }}
-              onMouseEnter={() => setHovered('addDirOk')}
-              onMouseLeave={() => setHovered(null)}
-              style={{
-                background: hovered === 'addDirOk' ? 'rgba(90, 140, 255, 0.3)' : 'transparent',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                borderRadius: 0,
-                color: 'rgba(255, 255, 255, 0.7)',
-                fontSize: '18px',
-                cursor: 'pointer',
-                padding: '2px 8px',
-                flexShrink: 0,
-              }}
-            >
-              OK
-            </button>
-          </div>
-        )}
-        {externalAssetDirectories.map((dir) => (
-          <div
-            key={dir}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '4px 10px',
-              gap: 8,
-            }}
-          >
-            <span
-              style={{
-                fontSize: '18px',
-                color: 'rgba(255, 255, 255, 0.5)',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-                maxWidth: 180,
-              }}
-              title={dir}
-            >
-              {dir.split(/[/\\]/).pop() ?? dir}
-            </span>
-            <button
-              onClick={() =>
-                vscode.postMessage({ type: 'removeExternalAssetDirectory', path: dir })
-              }
-              onMouseEnter={() => setHovered(`remove-${dir}`)}
-              onMouseLeave={() => setHovered(null)}
-              style={{
-                background: hovered === `remove-${dir}` ? 'rgba(255, 80, 80, 0.2)' : 'transparent',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                borderRadius: 0,
-                color: 'rgba(255, 255, 255, 0.5)',
-                fontSize: '18px',
-                cursor: 'pointer',
-                padding: '1px 6px',
-                flexShrink: 0,
-              }}
-            >
-              X
-            </button>
-          </div>
-        ))}
         <button
           onClick={() => {
             const newVal = !isSoundEnabled()
@@ -317,28 +211,23 @@ export function SettingsModal({
             {alwaysShowOverlay ? 'X' : ''}
           </span>
         </button>
-        <button
-          onClick={onToggleDebugMode}
-          onMouseEnter={() => setHovered('debug')}
-          onMouseLeave={() => setHovered(null)}
+        <div
           style={{
-            ...menuItemBase,
-            background: hovered === 'debug' ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
+            marginTop: '8px',
+            padding: '10px',
+            borderTop: '1px solid var(--pixel-border)',
+            fontSize: '20px',
+            lineHeight: 1.45,
+            color: 'rgba(255, 255, 255, 0.78)',
+            maxWidth: 520,
           }}
         >
-          <span>Debug View</span>
-          {isDebugMode && (
-            <span
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: '50%',
-                background: 'rgba(90, 140, 255, 0.8)',
-                flexShrink: 0,
-              }}
-            />
-          )}
-        </button>
+          Проект поддерживается по личной инициативе и содержит баги, которые стараюсь оперативно
+          исправлять. Если вам понравилось, то лучшая благодарность это подписка на канал:{' '}
+          <a href="https://t.me/segagridchin" target="_blank" rel="noreferrer" style={aboutLinkStyle}>
+            t.me/segagridchin
+          </a>
+        </div>
       </div>
     </>
   )

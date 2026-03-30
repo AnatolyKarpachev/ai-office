@@ -12,6 +12,7 @@ import { ToolOverlay } from './office/components/ToolOverlay.js'
 import { EditorState } from './office/editor/editorState.js'
 import { EditorToolbar } from './office/editor/EditorToolbar.js'
 import { OfficeState } from './office/engine/officeState.js'
+import { deserializeLayout, serializeLayout } from './office/layout/index.js'
 import { isRotatable } from './office/layout/furnitureCatalog.js'
 import { EditTool } from './office/types.js'
 import { vscode } from './vscodeApi.js'
@@ -161,6 +162,42 @@ function App() {
     [],
   )
 
+  const officeState = getOfficeState()
+
+  const handleExportLayout = useCallback(() => {
+    const layout = officeState.getLayout()
+    const blob = new Blob([serializeLayout(layout)], { type: 'application/json;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'pixel-agents-layout.json'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  }, [officeState])
+
+  const handleImportLayout = useCallback(() => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = '.json,application/json'
+    input.onchange = () => {
+      const file = input.files?.[0]
+      if (!file) return
+      void file.text().then((text) => {
+        const layout = deserializeLayout(text)
+        if (!layout) {
+          window.alert('Invalid layout JSON')
+          return
+        }
+        editor.handleImportLayout(layout)
+      }).catch(() => {
+        window.alert('Failed to read layout file')
+      })
+    }
+    input.click()
+  }, [editor])
+
   const containerRef = useRef<HTMLDivElement>(null)
 
   const [editorTickForKeyboard, setEditorTickForKeyboard] = useState(0)
@@ -187,8 +224,6 @@ function App() {
     const focusId = meta ? meta.parentAgentId : agentId
     vscode.postMessage({ type: 'focusAgent', id: focusId })
   }, [])
-
-  const officeState = getOfficeState()
 
   // Force dependency on editorTickForKeyboard to propagate keyboard-triggered re-renders
   void editorTickForKeyboard
@@ -297,6 +332,8 @@ function App() {
       <BottomToolbar
         isEditMode={editor.isEditMode}
         onToggleEditMode={editor.handleToggleEditMode}
+        onExportLayout={handleExportLayout}
+        onImportLayout={handleImportLayout}
         alwaysShowOverlay={alwaysShowOverlay}
         onToggleAlwaysShowOverlay={handleToggleAlwaysShowOverlay}
       />

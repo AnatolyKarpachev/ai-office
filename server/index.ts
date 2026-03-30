@@ -6,7 +6,7 @@ import { homedir } from "os";
 import { fileURLToPath } from "url";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, watch, statSync, renameSync } from "fs";
 import type { FSWatcher } from "fs";
-import { spawn, execSync, type ChildProcess } from "child_process";
+import { spawn, execFileSync, execSync, type ChildProcess } from "child_process";
 import crypto from "crypto";
 import { JsonlWatcher } from "./watcher.js";
 import { CodexJsonlWatcher } from "./codexWatcher.js";
@@ -40,6 +40,9 @@ const MODEL_CONTEXT_LIMITS: Record<string, number> = {
   "claude-haiku-4-5": 200000,
   "default": 200000,
 };
+
+const CLAUDE_PROJECTS_DIR = join(homedir(), ".claude", "projects");
+const CODEX_SESSIONS_DIR = join(homedir(), ".codex", "sessions");
 
 function buildAgentStatsMessage(agent: TrackedAgent): ServerMessage {
   const totalTokens = agent.totalInputTokens + agent.totalOutputTokens;
@@ -288,6 +291,78 @@ function writeLayoutToFile(layout: Record<string, unknown>): void {
   }
 }
 
+function launchDetached(command: string, args: string[]): void {
+  const child = spawn(command, args, { detached: true, stdio: "ignore" });
+  child.unref();
+}
+
+function runAppleScript(script: string): string | null {
+  try {
+    const output = execFileSync("osascript", ["-e", script], { encoding: "utf-8" }).trim();
+    return output || null;
+  } catch {
+    return null;
+  }
+}
+
+function quoteAppleScriptString(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function openSessionsFolder(): void {
+  const paths = [CLAUDE_PROJECTS_DIR, CODEX_SESSIONS_DIR].filter((dir) => existsSync(dir));
+  if (paths.length === 0) {
+    launchDetached("open", [join(homedir(), ".claude")]);
+    return;
+  }
+  for (const dir of paths) {
+    launchDetached("open", [dir]);
+  }
+}
+
+function chooseExportPath(defaultName: string): string | null {
+  return runAppleScript(
+    `POSIX path of (choose file name with prompt "Export layout" default name "${quoteAppleScriptString(defaultName)}")`,
+  );
+}
+
+function chooseImportPath(): string | null {
+  return runAppleScript(
+    'POSIX path of (choose file with prompt "Import layout JSON")',
+  );
+}
+
+function isLayoutPayload(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== "object") return false;
+  const layout = value as Record<string, unknown>;
+  return layout.version === 1 && Array.isArray(layout.tiles) && Array.isArray(layout.furniture);
+}
+
+function exportLayoutToFile(): void {
+  const layout = currentLayout ?? defaultLayout;
+  if (!layout) return;
+  const targetPath = chooseExportPath("pixel-agents-layout.json");
+  if (!targetPath) return;
+  writeFileSync(targetPath, JSON.stringify(layout, null, 2), "utf-8");
+  launchDetached("open", ["-R", targetPath]);
+  console.log(`[Server] Exported layout to ${targetPath}`);
+}
+
+function importLayoutFromFile(): void {
+  const sourcePath = chooseImportPath();
+  if (!sourcePath) return;
+  const raw = readFileSync(sourcePath, "utf-8");
+  const parsed = JSON.parse(raw) as unknown;
+  if (!isLayoutPayload(parsed)) {
+    throw new Error("Selected file is not a valid layout");
+  }
+  currentLayout = parsed;
+  layoutWatcherOwnWrite = true;
+  writeLayoutToFile(parsed);
+  broadcast({ type: "layoutLoaded", layout: parsed, version: 1, wasReset: false });
+  console.log(`[Server] Imported layout from ${sourcePath}`);
+}
+
 function loadPersistedSeats(): Record<number, { palette: number; hueShift: number; seatId: string | null }> | null {
   if (existsSync(persistedSeatsPath)) {
     try {
@@ -489,6 +564,20 @@ wss.on("connection", (ws) => {
         cfg.soundEnabled = !!msg.enabled;
         saveConfig(cfg);
         console.log(`[Server] Sound enabled: ${cfg.soundEnabled}`);
+      } else if (msg.type === "openSessionsFolder") {
+        openSessionsFolder();
+      } else if (msg.type === "exportLayout") {
+        try {
+          exportLayoutToFile();
+        } catch (err) {
+          console.error(`[Server] Failed to export layout: ${err instanceof Error ? err.message : err}`);
+        }
+      } else if (msg.type === "importLayout") {
+        try {
+          importLayoutFromFile();
+        } catch (err) {
+          console.error(`[Server] Failed to import layout: ${err instanceof Error ? err.message : err}`);
+        }
       } else if (msg.type === "addExternalAssetDirectory") {
         const newPath = typeof msg.path === "string" ? msg.path.trim() : "";
         if (!newPath) return;

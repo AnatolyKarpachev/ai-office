@@ -18,7 +18,10 @@ export function useEditorKeyboard(
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         // Multi-stage Esc: deselect item → close tool → deselect placed → close editor
-        if (editorState.activeTool === EditTool.FURNITURE_PICK) {
+        if (editorState.isSelectingSpawn) {
+          editorState.isSelectingSpawn = false
+          editorState.clearSpawnHover()
+        } else if (editorState.activeTool === EditTool.FURNITURE_PICK) {
           editorState.activeTool = EditTool.FURNITURE_PLACE
           editorState.clearGhost()
         } else if (editorState.activeTool === EditTool.FURNITURE_PLACE && editorState.selectedFurnitureType !== '') {
@@ -39,7 +42,7 @@ export function useEditorKeyboard(
         if (editorState.selectedFurnitureUid) {
           onDeleteSelected()
         }
-      } else if (e.key === 'r' || e.key === 'R') {
+      } else if (e.key === 'r' || e.key === 'R' || e.key === 'k' || e.key === 'K' || e.key === 'к' || e.key === 'К') {
         onRotateSelected()
       } else if (e.key === 't' || e.key === 'T') {
         onToggleState()

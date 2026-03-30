@@ -106,6 +106,9 @@ export type ClientMessage =
   | { type: "saveLayout"; layout: unknown }
   | { type: "saveAgentSeats"; seats: Record<number, { palette: number; hueShift: number; seatId: string | null }> }
   | { type: "saveSoundEnabled"; enabled: boolean }
+  | { type: "openSessionsFolder" }
+  | { type: "exportLayout" }
+  | { type: "importLayout" }
   | { type: "addExternalAssetDirectory"; path: string }
   | { type: "removeExternalAssetDirectory"; path: string }
   | { type: "openClaude" }
