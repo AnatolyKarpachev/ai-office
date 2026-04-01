@@ -206,28 +206,6 @@ export function useExtensionMessages(
     // Buffer agents from existingAgents until layout is loaded
     let pendingAgents: Array<{ id: number; palette?: number; hueShift?: number; seatId?: string; folderName?: string; parentAgentId?: number }> = []
 
-    // Spawn queue — stagger addAgent calls so characters don't pile up at entrance
-    const spawnQueue: Array<() => void> = []
-    let spawnTimer: ReturnType<typeof setTimeout> | null = null
-    function enqueueSpawn(fn: () => void) {
-      spawnQueue.push(fn)
-      // Debounce: wait 100ms to collect all arrivals, then drain with 800ms gaps
-      if (!spawnTimer) {
-        spawnTimer = setTimeout(() => {
-          spawnTimer = null
-          drainSpawnQueue()
-        }, 100)
-      }
-    }
-    function drainSpawnQueue() {
-      if (spawnQueue.length === 0) return
-      const fn = spawnQueue.shift()!
-      fn()
-      if (spawnQueue.length > 0) {
-        setTimeout(drainSpawnQueue, 800)
-      }
-    }
-
     const handler = (e: MessageEvent) => {
       const msg = e.data
       const os = getOfficeState()
@@ -247,9 +225,9 @@ export function useExtensionMessages(
           // Default layout — snapshot whatever OfficeState built
           onLayoutLoaded?.(os.getLayout())
         }
-        // Add buffered agents staggered so they don't pile up at spawn point
+        // Existing agents restore instantly (they teleport to saved seats)
         for (const p of pendingAgents) {
-          enqueueSpawn(() => os.addAgent(p.id, p.palette, p.hueShift, p.seatId, true, p.folderName, p.parentAgentId))
+          os.addAgent(p.id, p.palette, p.hueShift, p.seatId, true, p.folderName, p.parentAgentId)
         }
         pendingAgents = []
         // Force-sweep: ensure all boss/lead agents sit in role-restricted seats
@@ -274,7 +252,9 @@ export function useExtensionMessages(
         } else if (!existing) {
           setAgents((prev) => (prev.includes(id) ? prev : [...prev, id]))
           setSelectedAgent(id)
-          enqueueSpawn(() => os.addAgent(id, undefined, undefined, undefined, undefined, folderName, parentAgentId))
+          // Add immediately — sidebar + canvas data appear at once
+          // Server-side stagger handles entrance animation timing
+          os.addAgent(id, undefined, undefined, undefined, undefined, folderName, parentAgentId)
         }
         saveAgentSeats(os)
       } else if (msg.type === 'agentRenamed') {
