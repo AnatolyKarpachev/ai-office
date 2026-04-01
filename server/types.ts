@@ -67,6 +67,8 @@ export interface TrackedAgent {
   // Parent-child relationship for subagent JSONL files
   parentSessionId?: string;  // session ID of the parent agent (from file path)
   parentAgentId?: number;    // resolved numeric ID of the parent agent
+  teamName?: string;         // team name from TeamCreate (e.g., "pipeline-debate")
+  isTeamLead?: boolean;      // true if this agent is the team lead (no agentName in team)
 }
 
 // Messages sent from server to client via WebSocket

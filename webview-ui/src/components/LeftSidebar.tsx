@@ -346,7 +346,7 @@ export function LeftSidebar({
                       <span style={{ fontSize: '18px', color: 'var(--pixel-text)', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                         {ch.folderName || `agent-${id}`}
                       </span>
-                      {roleInfo?.role && <RoleBadge role={roleInfo.role} colors={roleInfo.colors} />}
+                      {roleInfo?.role && <span style={{ marginLeft: 'auto' }}><RoleBadge role={roleInfo.role} colors={roleInfo.colors} /></span>}
                     </div>
                     <div style={{ fontSize: '14px', color: hasPermission ? 'var(--pixel-status-permission)' : isActive ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 3 }}>
                       {statusLabel}
@@ -389,15 +389,17 @@ export function LeftSidebar({
                               <span style={{ fontSize: '14px', color: 'var(--pixel-text)', fontWeight: 'bold', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
                                 {subName}
                               </span>
-                              {subRole?.role
-                                ? <RoleBadge role={subRole.role} colors={subRole.colors} />
-                                : <span style={{
-                                    fontSize: '11px', padding: '0 4px', fontWeight: 'bold',
-                                    textTransform: 'none', letterSpacing: '0.5px',
-                                    background: 'rgba(120,160,255,0.15)', color: 'rgba(120,160,255,0.9)',
-                                    border: '1px solid rgba(120,160,255,0.3)',
-                                    borderRadius: 0, whiteSpace: 'nowrap', lineHeight: '16px',
-                                  }}>{sub.label || 'subtask'}</span>}
+                              <span style={{ marginLeft: 'auto' }}>
+                                {subRole?.role
+                                  ? <RoleBadge role={subRole.role} colors={subRole.colors} />
+                                  : <span style={{
+                                      fontSize: '11px', padding: '0 4px', fontWeight: 'bold',
+                                      textTransform: 'none', letterSpacing: '0.5px',
+                                      background: 'rgba(120,160,255,0.15)', color: 'rgba(120,160,255,0.9)',
+                                      border: '1px solid rgba(120,160,255,0.3)',
+                                      borderRadius: 0, whiteSpace: 'nowrap', lineHeight: '16px',
+                                    }}>{sub.label || 'subtask'}</span>}
+                              </span>
                             </div>
                             <div style={{ fontSize: '14px', color: subHasPermission ? 'var(--pixel-status-permission)' : subIsActive ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subActivity}</div>
                             {(() => {
@@ -419,6 +421,38 @@ export function LeftSidebar({
                                     <span>{formatDuration(subStats.totalDurationMs)}</span>
                                   </div>
                                 </>
+                              )
+                            })()}
+                            {/* Level 3: sub-subagents */}
+                            {(() => {
+                              const subSubs = subsByParent.get(sub.id) || []
+                              if (subSubs.length === 0) return null
+                              return (
+                                <div style={{ marginLeft: 10, borderLeft: '2px solid rgba(255,255,255,0.05)', paddingLeft: 4, marginTop: 2 }}>
+                                  {subSubs.map((ss) => {
+                                    const ssCh = officeState.characters.get(ss.id)
+                                    const ssRole = agentRoles.get(ss.id)
+                                    const ssName = ssCh?.folderName || ss.label || `sub-${ss.id}`
+                                    const ssStats = agentStats.get(ss.id)
+                                    const ssTotalTokens = ssStats ? ssStats.totalInputTokens + ssStats.totalOutputTokens : 0
+                                    const ssContextTokens = ssStats?.currentContextTokens ?? ssTotalTokens
+                                    const ssContextLimit = ssStats?.currentContextLimit ?? (ssStats ? getContextLimit(ssStats.model) : 0)
+                                    return (
+                                      <div key={ss.id} style={{ padding: '2px 4px', fontSize: '12px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                          <span style={{ color: 'rgba(255,255,255,0.4)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{ssName}</span>
+                                          {ssRole?.role && <span style={{ marginLeft: 'auto' }}><RoleBadge role={ssRole.role} colors={ssRole.colors} /></span>}
+                                        </div>
+                                        {ssStats && ssTotalTokens > 0 && (
+                                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                                            <TokenBar totalTokens={ssTotalTokens} usageTokens={ssContextTokens} contextLimit={ssContextLimit} model={ssStats.model} turnCount={ssStats.turnCount} visible={true} />
+                                            <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.2)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{formatNumber(ssContextTokens)} tok</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )
+                                  })}
+                                </div>
                               )
                             })()}
                           </div>

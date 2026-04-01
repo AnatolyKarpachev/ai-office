@@ -266,10 +266,16 @@ export function useExtensionMessages(
         const id = msg.id as number
         const folderName = msg.folderName as string | undefined
         const parentAgentId = msg.parentAgentId as number | undefined
-        setAgents((prev) => (prev.includes(id) ? prev : [...prev, id]))
-        setSelectedAgent(id)
-        // Stagger spawn so agents don't pile up at entrance
-        enqueueSpawn(() => os.addAgent(id, undefined, undefined, undefined, undefined, folderName, parentAgentId))
+        const existing = os.characters.get(id)
+        if (existing && parentAgentId && !existing.parentAgentId) {
+          // Update existing agent with new parent (team resolution)
+          existing.parentAgentId = parentAgentId
+          existing.isSubagent = true
+        } else if (!existing) {
+          setAgents((prev) => (prev.includes(id) ? prev : [...prev, id]))
+          setSelectedAgent(id)
+          enqueueSpawn(() => os.addAgent(id, undefined, undefined, undefined, undefined, folderName, parentAgentId))
+        }
         saveAgentSeats(os)
       } else if (msg.type === 'agentRenamed') {
         const id = msg.id as number

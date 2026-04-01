@@ -104,6 +104,8 @@ function syncRoleAndBroadcast(agent: TrackedAgent): void {
 function syncAgentNameAndBroadcast(agent: TrackedAgent): void {
   if (agent.provider !== "claude") return;
   if (agent.nameSource === "explicit") return;
+  // Don't override team-derived names (from agentName or teamName fields)
+  if (agent.nameSource === "derived" && agent.teamName) return;
 
   const isSubagent = !!agent.parentSessionId;
   const derivedName = resolveDerivedAgentName(agent.agentSetting, agent.agentDescription, isSubagent);
@@ -121,6 +123,36 @@ function onAgentStatsUpdate(agent: TrackedAgent): void {
   syncAgentNameAndBroadcast(agent);
   // Recalculate role when stats change (model detected, tools used, etc.)
   syncRoleAndBroadcast(agent);
+  // Resolve team parent-child relationships
+  resolveTeamParent(agent);
+}
+
+/** Link teammate agents to their team lead, and team leads to their spawner */
+function resolveTeamParent(agent: TrackedAgent): void {
+  if (!agent.teamName || agent.parentAgentId !== undefined) return;
+
+  if (agent.isTeamLead) {
+    // Link team lead to the nearest MegaBoss/top-level session without a team
+    for (const [, other] of agents) {
+      if (!other.teamName && !other.parentSessionId && !other.parentAgentId && other.id !== agent.id && other.provider === "claude") {
+        agent.parentAgentId = other.id;
+        broadcast({ type: "agentCreated", id: agent.id, folderName: agent.projectName, parentAgentId: other.id });
+        console.log(`[team] lead ${agent.projectName} (${agent.id}) → parent ${other.projectName} (${other.id})`);
+        break;
+      }
+    }
+    return;
+  }
+
+  // Link teammate to team lead (same teamName, isTeamLead=true)
+  for (const [, other] of agents) {
+    if (other.teamName === agent.teamName && other.isTeamLead && other.id !== agent.id) {
+      agent.parentAgentId = other.id;
+      broadcast({ type: "agentCreated", id: agent.id, folderName: agent.projectName, parentAgentId: other.id });
+      console.log(`[team] ${agent.projectName} (${agent.id}) → parent ${other.projectName} (${other.id}) via team "${agent.teamName}"`);
+      break;
+    }
+  }
 }
 
 // State
@@ -741,38 +773,47 @@ wss.on("connection", (ws) => {
         }
         testAgentIds.clear();
         testAgentData.clear();
-        const count = Math.min(msg.count || 5, 12);
-        console.log(`[Server] Spawning ${count} test agents (staggered 1s apart)`);
-        const leadId = nextAgentId; // remember lead id before incrementing
-        const names = ["Lead", "Explorer", "Coder", "Reviewer", "Tester", "Builder", "Planner", "Fixer", "Writer", "Auditor", "Runner", "Helper"];
-        const roles = ["boss", "Explore", "Code Reviewer", "Plan", "general-purpose", "test-runner"];
-        // Pre-allocate IDs so they're sequential
-        const agentIds = Array.from({ length: count }, () => nextAgentId++);
-        for (let i = 0; i < count; i++) {
+
+        // 4-level hierarchy: MegaBoss(real) → pipeDebate → teammates → subagents
+        // Find first real MegaBoss to use as root parent
+        let rootParentId: number | undefined;
+        for (const [, a] of agents) {
+          if (!a.parentAgentId && !a.teamName && a.provider === "claude") {
+            rootParentId = a.id;
+            break;
+          }
+        }
+        const hierarchy = [
+          { name: "pipeDebate",    role: "boss",          parent: -1, model: "claude-opus-4-6",    tokens: [15000, 8000], useRootParent: true },
+          { name: "advocate-cur",  role: "Code Reviewer", parent: 0,  model: "claude-opus-4-6",    tokens: [12000, 6000] },
+          { name: "advocate-auto", role: "Explore",       parent: 0,  model: "claude-opus-4-6",    tokens: [9000, 4500] },
+          { name: "judge",         role: "Plan",          parent: 0,  model: "claude-opus-4-6",    tokens: [18000, 9000] },
+          { name: "codeExplorer",  role: "Explore",       parent: 1,  model: "claude-sonnet-4-6",  tokens: [4000, 2000] },
+          { name: "testRunner",    role: "test-runner",   parent: 1,  model: "claude-sonnet-4-6",  tokens: [3000, 1500] },
+        ] as Array<{ name: string; role: string; parent: number; model: string; tokens: number[]; useRootParent?: boolean }>;
+
+        const ids = hierarchy.map(() => nextAgentId++);
+        console.log(`[Server] Spawning ${ids.length} test agents (4-level hierarchy, staggered)`);
+
+        for (let i = 0; i < hierarchy.length; i++) {
           setTimeout(() => {
-            const id = agentIds[i];
-            const isSubagent = i > 0;
-            const parentId = isSubagent ? agentIds[0] : undefined;
-            const folderName = names[i % names.length];
-            broadcast({ type: "agentCreated", id, folderName, parentAgentId: parentId });
+            const h = hierarchy[i];
+            const id = ids[i];
+            const parentId = h.useRootParent ? rootParentId : (h.parent >= 0 ? ids[h.parent] : undefined);
+            broadcast({ type: "agentCreated", id, folderName: h.name, parentAgentId: parentId });
             broadcast({
-              type: "agentStats", id,
-              model: i % 2 === 0 ? "claude-opus-4-6" : "claude-sonnet-4-6",
-              totalInputTokens: Math.floor(Math.random() * 50000) + 1000,
-              totalOutputTokens: Math.floor(Math.random() * 20000) + 500,
-              totalCacheRead: Math.floor(Math.random() * 30000),
-              totalCacheCreation: Math.floor(Math.random() * 5000),
-              turnCount: Math.floor(Math.random() * 20) + 1,
-              totalDurationMs: Math.floor(Math.random() * 300000) + 10000,
-              cacheHitRate: Math.floor(Math.random() * 80) + 10,
+              type: "agentStats", id, model: h.model,
+              totalInputTokens: h.tokens[0], totalOutputTokens: h.tokens[1],
+              totalCacheRead: Math.floor(h.tokens[0] * 0.3), totalCacheCreation: Math.floor(h.tokens[0] * 0.1),
+              turnCount: Math.floor(Math.random() * 8) + 2,
+              totalDurationMs: Math.floor(Math.random() * 200000) + 30000,
+              cacheHitRate: Math.floor(Math.random() * 40) + 10,
             });
-            const role = roles[i % roles.length];
-            broadcast({ type: "agentRole", id, role, autoDetected: true, colors: getRoleColors(role) });
+            broadcast({ type: "agentRole", id, role: h.role, autoDetected: true, colors: getRoleColors(h.role) });
             testAgentIds.add(id);
-            const model = i % 2 === 0 ? "claude-opus-4-6" : "claude-sonnet-4-6";
-            testAgentData.set(id, { folderName, role, parentAgentId: parentId, model });
-            console.log(`  Test agent ${id}: ${folderName} (role=${role})${isSubagent ? ` [sub of ${parentId}]` : ""}`);
-          }, i * 1000); // stagger 1 second apart
+            testAgentData.set(id, { folderName: h.name, role: h.role, parentAgentId: parentId, model: h.model });
+            console.log(`  Test agent ${id}: ${h.name} (${h.role})${parentId ? ` [sub of ${parentId}]` : ""}`);
+          }, i * 800);
         }
       }
     } catch (err) {
@@ -857,6 +898,9 @@ interface PersistedAgentState {
   palette?: number;
   hueShift?: number;
   seatId?: string | null;
+  parentAgentId?: number;
+  teamName?: string;
+  isTeamLead?: boolean;
 }
 
 function saveAgentState(): void {
@@ -877,6 +921,9 @@ function saveAgentState(): void {
         seatId: seat?.seatId,
         agentSetting: agent.agentSetting,
         agentDescription: agent.agentDescription,
+        parentAgentId: agent.parentAgentId,
+        teamName: agent.teamName,
+        isTeamLead: agent.isTeamLead,
       });
     }
     const json = JSON.stringify({ agents: states, nextAgentId, savedAt: Date.now() }, null, 2);
@@ -1040,6 +1087,19 @@ function handleFileAdded(file: WatchedFile): void {
   }
   if (prevAgent?.agentDescription) {
     agent.agentDescription = prevAgent.agentDescription;
+  }
+  if (prevAgent?.teamName) {
+    agent.teamName = prevAgent.teamName;
+    agent.isTeamLead = prevAgent.isTeamLead;
+    // Rename team lead from "MegaBoss" to teamName
+    if (agent.isTeamLead && agent.nameSource === "fallback") {
+      const words = prevAgent.teamName.split(/[-_\s]+/).filter(Boolean).slice(0, 2);
+      agent.projectName = (words[0] + (words[1] ? words[1][0].toUpperCase() + words[1].slice(1) : "")).slice(0, 15);
+      agent.nameSource = "derived";
+    }
+  }
+  if (prevAgent?.parentAgentId !== undefined) {
+    agent.parentAgentId = prevAgent.parentAgentId;
   }
 
   if (parentSessionId) {
@@ -1295,6 +1355,13 @@ function startServer(retries = 1): void {
   server.listen(PORT, () => {
     console.log(`Pixel Agents server running at http://localhost:${PORT}`);
     console.log(`Watching ~/.claude/projects and ~/.codex/sessions for active sessions...`);
+    // Resolve all team parent-child relationships after initial load
+    setTimeout(() => {
+      for (const [, agent] of agents) {
+        resolveTeamParent(agent);
+      }
+      saveAgentState();
+    }, 2000);
   });
   server.on("error", (err: NodeJS.ErrnoException) => {
     if (err.code === "EADDRINUSE" && retries > 0) {

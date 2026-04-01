@@ -236,6 +236,20 @@ export function processTranscriptLine(
     statsChanged = true;
   }
 
+  // Extract teamName from any record — teammate sessions have this on every line
+  if (!agent.teamName && typeof record.teamName === "string" && record.teamName) {
+    agent.teamName = record.teamName as string;
+    agent.isTeamLead = !record.agentName;
+    // Rename team lead from "MegaBoss" to teamName-based name
+    if (agent.isTeamLead && agent.nameSource === "fallback") {
+      const truncated = compactName(record.teamName as string, MAX_AGENT_NAME_LENGTH);
+      agent.projectName = truncated;
+      agent.nameSource = "derived";
+      emit({ type: "agentRenamed", id: agent.id, folderName: truncated });
+    }
+    statsChanged = true;
+  }
+
   // Extract agentName from any record — teammate sessions have this on every line
   if (agent.nameSource !== "explicit" && typeof record.agentName === "string" && record.agentName) {
     const truncated = compactName(record.agentName as string, MAX_AGENT_NAME_LENGTH);
