@@ -236,6 +236,17 @@ export function processTranscriptLine(
     statsChanged = true;
   }
 
+  // Extract agentName from any record — teammate sessions have this on every line
+  if (agent.nameSource !== "explicit" && typeof record.agentName === "string" && record.agentName) {
+    const truncated = compactName(record.agentName as string, MAX_AGENT_NAME_LENGTH);
+    if (agent.projectName !== truncated) {
+      agent.projectName = truncated;
+      agent.nameSource = "derived";
+      emit({ type: "agentRenamed", id: agent.id, folderName: truncated });
+      statsChanged = true;
+    }
+  }
+
   // Handle agent-name records — Claude CLI writes these with the session's display name
   if (type === "agent-name") {
     const agentName = record.agentName as string | undefined;
