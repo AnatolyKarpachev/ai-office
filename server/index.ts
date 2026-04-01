@@ -559,9 +559,12 @@ function sendInitialData(ws: WebSocket): void {
     ws.send(JSON.stringify({ type: "layoutLoaded", layout: null, version: 0, wasReset: false }));
   }
 
-  // Send accumulated SendMessage events so new clients see inter-agent communication history
+  // Send accumulated SendMessage events — only from agents that still exist
+  const activeIds = new Set(agentList.map(a => a.id));
   for (const sm of recentSendMessages) {
-    ws.send(JSON.stringify({ type: "agentSendMessage", ...sm }));
+    if (activeIds.has(sm.id)) {
+      ws.send(JSON.stringify({ type: "agentSendMessage", ...sm }));
+    }
   }
 
   // Re-send test agents so they survive page refresh
@@ -1166,6 +1169,10 @@ function handleFileRemoved(file: WatchedFile): void {
     cleanupCodexParserState();
   }
   broadcast({ type: "agentClosed", id: agent.id });
+  // Clean up stale SendMessage events from this agent
+  for (let i = recentSendMessages.length - 1; i >= 0; i--) {
+    if (recentSendMessages[i].id === agent.id) recentSendMessages.splice(i, 1);
+  }
   console.log(`[${file.provider}] Agent ${agent.id} left: ${agent.projectName}`);
 }
 
