@@ -742,17 +742,6 @@ export class OfficeState {
     if (preferredPalette !== undefined) {
       palette = preferredPalette
       hueShift = preferredHueShift ?? 0
-    } else if (parentAgentId !== undefined) {
-      // Subagent: inherit parent's palette with a slight hue shift
-      const parentCh = this.characters.get(parentAgentId)
-      if (parentCh) {
-        palette = parentCh.palette
-        hueShift = parentCh.hueShift
-      } else {
-        const pick = this.pickDiversePalette()
-        palette = pick.palette
-        hueShift = pick.hueShift
-      }
     } else {
       const pick = this.pickDiversePalette()
       palette = pick.palette
@@ -984,8 +973,9 @@ export class OfficeState {
 
     const id = this.nextSubagentId--
     const parentCh = this.characters.get(parentAgentId)
-    const palette = parentCh ? parentCh.palette : 0
-    const hueShift = parentCh ? parentCh.hueShift : 0
+    const pick = this.pickDiversePalette()
+    const palette = pick.palette
+    const hueShift = pick.hueShift
 
     // Cluster-aware seat scoring: find seat closest to team cluster
     // Use parent's seat position (stable) instead of current tile (may be wandering)
