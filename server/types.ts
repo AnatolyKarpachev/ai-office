@@ -1,3 +1,4 @@
+import type { GithubTasksConfig } from "./configPersistence.js";
 import type { AgentProvider } from "./sourceTypes.js";
 
 // Agent activity states
@@ -18,6 +19,7 @@ export interface TrackedAgent {
   sessionId: string;
   projectDir: string;
   projectName: string;
+  nameSource?: "fallback" | "derived" | "explicit";
   jsonlFile: string;
   fileOffset: number;
   lineBuffer: string;
@@ -88,7 +90,7 @@ export type ServerMessage =
   | { type: "wallTilesLoaded"; sets: unknown[] }
   | { type: "furnitureAssetsLoaded"; catalog: unknown[]; sprites: Record<string, unknown> }
   | { type: "layoutLoaded"; layout: unknown; version: number; wasReset?: boolean }
-  | { type: "settingsLoaded"; soundEnabled: boolean; externalAssetDirectories: string[]; serverMode?: string }
+  | { type: "settingsLoaded"; soundEnabled: boolean; externalAssetDirectories: string[]; githubTasks: GithubTasksConfig; serverMode?: string }
   | { type: "externalAssetDirectoriesUpdated"; dirs: string[] }
   | { type: "agentStats"; id: number; model?: string; totalInputTokens: number; totalOutputTokens: number; totalCacheRead: number; totalCacheCreation: number; currentContextTokens?: number; currentContextLimit?: number; turnCount: number; totalDurationMs: number; cacheHitRate: number }
   | { type: "agentDetails"; id: number; model?: string; gitBranch?: string; cwd?: string; sessionId: string; version?: string; permissionMode?: string; toolHistory: Array<{ name: string; timestamp: string; durationMs?: number }>; tokenBreakdown: { input: number; output: number; cacheRead: number; cacheCreation: number }; contextUsage?: { input: number; output: number; cacheRead: number; total: number; limit: number }; turnCount: number; totalDurationMs: number; startTime?: string }

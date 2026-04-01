@@ -520,3 +520,22 @@ export function resolveDisplayRole(
     colors: getRoleColors("worker"),
   };
 }
+
+/**
+ * Derive a compact display name for a Claude subagent from its assigned role
+ * and description. Top-level agents keep their explicit session/project name.
+ */
+export function resolveDerivedAgentName(
+  agentSetting: string | undefined,
+  description: string | undefined,
+  isSubagent?: boolean,
+): string | null {
+  if (!isSubagent) return null;
+
+  const { displayRole } = resolveDisplayRole(agentSetting, description, true);
+  if (!displayRole || displayRole === "worker" || displayRole === "boss") {
+    return null;
+  }
+
+  return displayRole;
+}

@@ -1,6 +1,12 @@
+/**
+ * Original addition by Sergey Gridchin, 2026.
+ * Licensed under the Sergey Source-Available Noncommercial License 1.0.
+ * See LICENSE-SERGEY-ADDITIONS and NOTICE.
+ */
+
 import { useState, useCallback } from 'react'
 import type { OfficeState } from '../office/engine/officeState.js'
-import type { AgentStats, AgentRoleInfo, SubagentCharacter, PipelineIssue } from '../hooks/useExtensionMessages.js'
+import type { AgentStats, AgentRoleInfo, GithubTasksConfig, SubagentCharacter, PipelineIssue } from '../hooks/useExtensionMessages.js'
 import type { ToolActivity } from '../office/types.js'
 import { RoleBadge } from './RoleBadge.js'
 import { TokenBar } from './TokenBar.js'
@@ -86,17 +92,11 @@ function getSubagentActivity(
 }
 
 function getIssueLabelColor(label: string): string {
-  if (label.includes('p0')) return '#e55'
-  if (label.includes('p1')) return '#f90'
-  if (label.includes('p2')) return '#fc0'
-  if (label.includes('p3')) return '#5ac88c'
-  if (label === 'wip') return '#3794ff'
-  if (label === 'pipeline-ready') return '#5ac88c'
-  if (label === 'hold') return '#f90'
-  if (label === 'backlog') return 'rgba(255,255,255,0.3)'
-  if (label === 'fixed') return '#5ac88c'
-  if (label === 'bug') return '#e55'
-  if (label === 'enhancement') return '#3794ff'
+  const normalized = label.toLowerCase()
+  if (normalized.includes('bug') || normalized.includes('blocked')) return '#e55'
+  if (normalized.includes('feature') || normalized.includes('enhancement')) return '#3794ff'
+  if (normalized.includes('high') || normalized.includes('urgent')) return '#f90'
+  if (normalized.includes('done') || normalized.includes('fixed') || normalized.includes('release')) return '#5ac88c'
   return 'rgba(255,255,255,0.4)'
 }
 
@@ -146,6 +146,7 @@ interface LeftSidebarProps {
   agents: number[]
   agentTools: Record<number, ToolActivity[]>
   agentStatuses: Record<number, string>
+  githubTasks: GithubTasksConfig
   agentStats: Map<number, AgentStats>
   agentRoles: Map<number, AgentRoleInfo>
   subagentCharacters: SubagentCharacter[]
@@ -197,6 +198,7 @@ export function LeftSidebar({
   agents,
   agentTools,
   agentStatuses,
+  githubTasks,
   agentStats,
   agentRoles,
   subagentCharacters,
@@ -464,7 +466,9 @@ export function LeftSidebar({
           <div style={{ overflowY: 'auto', padding: '0 8px 6px', flex: '1 1 0', minHeight: 0 }}>
             {pipelineIssues.length === 0 ? (
               <div style={{ fontSize: '14px', color: 'rgba(255,255,255,0.3)', fontStyle: 'italic' }}>
-                No pipeline issues found
+                {githubTasks.enabled
+                  ? 'No GitHub issues found, or GitHub CLI is not configured.'
+                  : 'GitHub tasks are disabled in ~/.pixel-agents/config.json.'}
               </div>
             ) : (
               pipelineIssues.map((issue) => (
@@ -482,13 +486,13 @@ export function LeftSidebar({
                     {issue.pipelineState && (
                       <span style={{
                         fontSize: '12px', padding: '1px 5px', marginLeft: 'auto',
-                        background: `${getPipelineStateColor(issue.pipelineState)}22`,
-                        color: getPipelineStateColor(issue.pipelineState),
-                        border: `1px solid ${getPipelineStateColor(issue.pipelineState)}44`,
+                        background: `${(githubTasks.pipeline.states.find((state) => state.id === issue.pipelineState)?.color || getPipelineStateColor(issue.pipelineState))}22`,
+                        color: githubTasks.pipeline.states.find((state) => state.id === issue.pipelineState)?.color || getPipelineStateColor(issue.pipelineState),
+                        border: `1px solid ${(githubTasks.pipeline.states.find((state) => state.id === issue.pipelineState)?.color || getPipelineStateColor(issue.pipelineState))}44`,
                         borderRadius: 0, whiteSpace: 'nowrap', fontWeight: 'bold',
                         textTransform: 'uppercase', letterSpacing: '0.3px',
                       }}>
-                        {getPipelineStateLabel(issue.pipelineState)}
+                        {githubTasks.pipeline.states.find((state) => state.id === issue.pipelineState)?.label || getPipelineStateLabel(issue.pipelineState)}
                       </span>
                     )}
                   </div>
@@ -514,12 +518,16 @@ export function LeftSidebar({
                     const gates = (issue as any).gates || []
                     const hasGateData = gates.length > 0
 
+                    const configuredState = githubTasks.pipeline.states.find((state) => state.id === issue.pipelineState)
+                    const stateColor = configuredState?.color || getPipelineStateColor(issue.pipelineState)
+                    const configuredGates = githubTasks.pipeline.gates.length > 0 ? githubTasks.pipeline.gates : PIPELINE_GATES
+
                     if (hasGateData) {
                       const passCount = gates.filter((g: any) => g.status === 'pass').length
                       return (
                         <div style={{ marginTop: 4 }}>
                           <div style={{ display: 'flex', gap: 2 }}>
-                            {PIPELINE_GATES.map(({ gate, label }) => {
+                            {configuredGates.map(({ gate, label }) => {
                               const entry = gates.find((g: any) => g.gate === gate)
                               const s = entry?.status
                               const color = s === 'pass' ? '#5ac88c' : s === 'fail' ? '#e55' : 'rgba(255,255,255,0.08)'
@@ -546,16 +554,24 @@ export function LeftSidebar({
                             fontSize: 12, color: 'rgba(255,255,255,0.4)', fontFamily: 'monospace',
                             textAlign: 'right', marginTop: 2,
                           }}>
-                            {passCount}/{PIPELINE_GATES.length}
+                            {passCount}/{configuredGates.length}
                           </div>
                         </div>
                       )
                     }
 
                     // Fallback: single bar for states without gate data
-                    const pct = getPipelineProgress(issue.pipelineState)
+                    const pct = githubTasks.pipeline.states.length > 0
+                      ? (() => {
+                          if (issue.pipelineState === 'blocked') return -1
+                          if (issue.pipelineState === 'done') return 100
+                          const states = githubTasks.pipeline.states
+                          const idx = states.findIndex((state) => state.id === issue.pipelineState)
+                          return idx < 0 ? 0 : Math.round((idx / Math.max(states.length - 1, 1)) * 100)
+                        })()
+                      : getPipelineProgress(issue.pipelineState)
                     const isBlocked = pct === -1
-                    const barColor = isBlocked ? '#e55' : getPipelineStateColor(issue.pipelineState)
+                    const barColor = isBlocked ? '#e55' : stateColor
                     const displayPct = isBlocked ? 100 : pct
                     return (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>

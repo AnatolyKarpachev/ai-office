@@ -1,3 +1,9 @@
+/**
+ * Original addition by Sergey Gridchin, 2026.
+ * Licensed under the Sergey Source-Available Noncommercial License 1.0.
+ * See LICENSE-SERGEY-ADDITIONS and NOTICE.
+ */
+
 const MODEL_CONTEXT_LIMITS: Record<string, number> = {
   "claude-opus-4-6": 200000,
   "claude-sonnet-4-6": 200000,

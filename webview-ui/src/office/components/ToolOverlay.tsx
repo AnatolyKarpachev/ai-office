@@ -188,22 +188,24 @@ export function ToolOverlay({
               )}
               {isSub ? (
                 <>
+                  {(!roleInfo?.role || roleInfo.role.toLowerCase() === 'boss') && (
+                    <span
+                      style={{
+                        fontSize: '18px',
+                        color: 'var(--pixel-text-dim)',
+                        maxWidth: 140,
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {subName}
+                    </span>
+                  )}
                   <span
                     style={{
-                      fontSize: '18px',
-                      color: 'var(--pixel-text-dim)',
-                      maxWidth: 140,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    {subName}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: '11px',
+                      fontSize: (!roleInfo?.role || roleInfo.role.toLowerCase() === 'boss') ? '11px' : '14px',
                       lineHeight: 1,
-                      padding: '1px 4px',
+                      padding: (!roleInfo?.role || roleInfo.role.toLowerCase() === 'boss') ? '1px 4px' : '2px 6px',
                       background: roleInfo?.colors?.badge ?? 'rgba(120,160,255,0.15)',
                       color: roleInfo?.colors?.primary ?? 'rgba(120,160,255,0.9)',
                       border: `1px solid ${roleInfo?.colors?.primary ?? 'rgba(120,160,255,0.3)'}`,
@@ -215,26 +217,28 @@ export function ToolOverlay({
                       flexShrink: 0,
                     }}
                   >
-                    {roleInfo?.role || 'sub'}
+                    {roleInfo?.role || subName}
                   </span>
                 </>
               ) : (
-                /* Main agent: name + optional role badge */
+                /* Main agent: show role badge only for non-boss; show name + badge for boss */
                 <>
-                  <span
-                    style={{
-                      fontSize: '18px',
-                      color: 'var(--pixel-text-dim)',
-                    }}
-                  >
-                    {ch.folderName || `agent-${id}`}
-                  </span>
+                  {(!roleInfo?.role || roleInfo.role.toLowerCase() === 'boss') && (
+                    <span
+                      style={{
+                        fontSize: '18px',
+                        color: 'var(--pixel-text-dim)',
+                      }}
+                    >
+                      {ch.folderName || `agent-${id}`}
+                    </span>
+                  )}
                   {roleInfo && roleInfo.role && (
                     <span
                       style={{
-                        fontSize: '11px',
+                        fontSize: roleInfo.role.toLowerCase() === 'boss' ? '11px' : '14px',
                         lineHeight: 1,
-                        padding: '1px 4px',
+                        padding: roleInfo.role.toLowerCase() === 'boss' ? '1px 4px' : '2px 6px',
                         background: roleInfo.colors.badge,
                         color: roleInfo.colors.primary,
                         border: `1px solid ${roleInfo.colors.primary}`,
@@ -285,7 +289,7 @@ export function ToolOverlay({
                   >
                     {activityText}
                   </span>
-                  {ch.folderName && (
+                  {ch.folderName && (!roleInfo?.role || roleInfo.role.toLowerCase() === 'boss') && (
                     <span
                       style={{
                         fontSize: '16px',

@@ -40,28 +40,18 @@ function extractProjectName(projectDirName: string): string {
   return "";
 }
 
-/** Compact a name to fit within maxLen using camelCase (no dashes). */
+/** Compact a name to fit within maxLen — max 2 words, proportionally shortened. */
 function compactName(name: string, maxLen: number): string {
   if (name.length <= maxLen) return name;
   const words = name.split(/[-_\s]+/).filter(Boolean);
   if (words.length === 0) return name.slice(0, maxLen);
-
-  const camel = words[0] + words.slice(1).map(w => w[0].toUpperCase() + w.slice(1)).join("");
-  if (camel.length <= maxLen) return camel;
-
-  const shortened = words.slice();
-  for (let iter = 0; iter < 50; iter++) {
-    const result = shortened[0] + shortened.slice(1).map(w => w[0].toUpperCase() + w.slice(1)).join("");
-    if (result.length <= maxLen) return result;
-    let maxWord = 0, maxWordLen = 0;
-    for (let i = 0; i < shortened.length; i++) {
-      if (shortened[i].length > maxWordLen) { maxWordLen = shortened[i].length; maxWord = i; }
-    }
-    if (maxWordLen <= 3) break;
-    shortened[maxWord] = shortened[maxWord].slice(0, Math.max(3, maxWordLen - 1));
-  }
-  const result = shortened[0] + shortened.slice(1).map(w => w[0].toUpperCase() + w.slice(1)).join("");
-  return result.slice(0, maxLen);
+  const w1 = words[0].toLowerCase();
+  const w2 = words.length > 1 ? words[1][0].toUpperCase() + words[1].slice(1) : "";
+  if ((w1 + w2).length <= maxLen) return w1 + w2;
+  const total = w1.length + w2.length;
+  const budget1 = Math.max(3, Math.min(w1.length, Math.floor((w1.length / total) * maxLen)));
+  const budget2 = Math.max(3, maxLen - budget1);
+  return w1.slice(0, budget1) + (w2 ? w2.slice(0, budget2) : "");
 }
 
 function truncateName(name: string): string {

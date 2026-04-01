@@ -94,6 +94,28 @@ export interface GateStatus {
   timestamp: string
 }
 
+export interface GithubTaskStateConfig {
+  id: string
+  label: string
+  color: string
+  labels: string[]
+}
+
+export interface GithubTaskGateConfig {
+  gate: number
+  label: string
+}
+
+export interface GithubTasksConfig {
+  enabled: boolean
+  maxIssues: number
+  pipeline: {
+    enabled: boolean
+    states: GithubTaskStateConfig[]
+    gates: GithubTaskGateConfig[]
+  }
+}
+
 export interface PipelineIssue {
   number: number
   title: string
@@ -116,6 +138,7 @@ export interface ExtensionMessageState {
   loadedAssets?: { catalog: FurnitureAsset[]; sprites: Record<string, string[][]> }
   workspaceFolders: WorkspaceFolder[]
   externalAssetDirectories: string[]
+  githubTasks: GithubTasksConfig
   agentStats: Map<number, AgentStats>
   agentRoles: Map<number, AgentRoleInfo>
   agentDetails: AgentDetails | null
@@ -151,6 +174,15 @@ export function useExtensionMessages(
   const [loadedAssets, setLoadedAssets] = useState<{ catalog: FurnitureAsset[]; sprites: Record<string, string[][]> } | undefined>()
   const [workspaceFolders, setWorkspaceFolders] = useState<WorkspaceFolder[]>([])
   const [externalAssetDirectories, setExternalAssetDirectories] = useState<string[]>([])
+  const [githubTasks, setGithubTasks] = useState<GithubTasksConfig>({
+    enabled: true,
+    maxIssues: 30,
+    pipeline: {
+      enabled: false,
+      states: [],
+      gates: [],
+    },
+  })
   const [agentStatsMap, setAgentStatsMap] = useState<Map<number, AgentStats>>(new Map())
   const [agentRolesMap, setAgentRolesMap] = useState<Map<number, AgentRoleInfo>>(new Map())
   const [agentDetailsState, setAgentDetailsState] = useState<AgentDetails | null>(null)
@@ -174,6 +206,28 @@ export function useExtensionMessages(
     // Buffer agents from existingAgents until layout is loaded
     let pendingAgents: Array<{ id: number; palette?: number; hueShift?: number; seatId?: string; folderName?: string; parentAgentId?: number }> = []
 
+    // Spawn queue — stagger addAgent calls so characters don't pile up at entrance
+    const spawnQueue: Array<() => void> = []
+    let spawnTimer: ReturnType<typeof setTimeout> | null = null
+    function enqueueSpawn(fn: () => void) {
+      spawnQueue.push(fn)
+      // Debounce: wait 100ms to collect all arrivals, then drain with 800ms gaps
+      if (!spawnTimer) {
+        spawnTimer = setTimeout(() => {
+          spawnTimer = null
+          drainSpawnQueue()
+        }, 100)
+      }
+    }
+    function drainSpawnQueue() {
+      if (spawnQueue.length === 0) return
+      const fn = spawnQueue.shift()!
+      fn()
+      if (spawnQueue.length > 0) {
+        setTimeout(drainSpawnQueue, 800)
+      }
+    }
+
     const handler = (e: MessageEvent) => {
       const msg = e.data
       const os = getOfficeState()
@@ -193,9 +247,9 @@ export function useExtensionMessages(
           // Default layout — snapshot whatever OfficeState built
           onLayoutLoaded?.(os.getLayout())
         }
-        // Add buffered agents now that layout (and seats) are correct
+        // Add buffered agents staggered so they don't pile up at spawn point
         for (const p of pendingAgents) {
-          os.addAgent(p.id, p.palette, p.hueShift, p.seatId, true, p.folderName, p.parentAgentId)
+          enqueueSpawn(() => os.addAgent(p.id, p.palette, p.hueShift, p.seatId, true, p.folderName, p.parentAgentId))
         }
         pendingAgents = []
         // Force-sweep: ensure all boss/lead agents sit in role-restricted seats
@@ -214,7 +268,8 @@ export function useExtensionMessages(
         const parentAgentId = msg.parentAgentId as number | undefined
         setAgents((prev) => (prev.includes(id) ? prev : [...prev, id]))
         setSelectedAgent(id)
-        os.addAgent(id, undefined, undefined, undefined, undefined, folderName, parentAgentId)
+        // Stagger spawn so agents don't pile up at entrance
+        enqueueSpawn(() => os.addAgent(id, undefined, undefined, undefined, undefined, folderName, parentAgentId))
         saveAgentSeats(os)
       } else if (msg.type === 'agentRenamed') {
         const id = msg.id as number
@@ -473,6 +528,9 @@ export function useExtensionMessages(
         if (Array.isArray(msg.externalAssetDirectories)) {
           setExternalAssetDirectories(msg.externalAssetDirectories as string[])
         }
+        if (msg.githubTasks) {
+          setGithubTasks(msg.githubTasks as GithubTasksConfig)
+        }
         if (msg.serverMode) {
           setServerMode(msg.serverMode as string)
         }
@@ -583,6 +641,7 @@ export function useExtensionMessages(
     loadedAssets,
     workspaceFolders,
     externalAssetDirectories,
+    githubTasks,
     agentStats: agentStatsMap,
     agentRoles: agentRolesMap,
     agentDetails: agentDetailsState,

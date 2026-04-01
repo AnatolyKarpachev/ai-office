@@ -1,4 +1,10 @@
 /**
+ * Original addition by Sergey Gridchin, 2026.
+ * Licensed under the Sergey Source-Available Noncommercial License 1.0.
+ * See LICENSE-SERGEY-ADDITIONS and NOTICE.
+ */
+
+/**
  * Config Persistence — Read/write ~/.pixel-agents/config.json
  *
  * Stores user preferences that should persist across server restarts:
@@ -16,12 +22,91 @@ const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 export interface PixelAgentsConfig {
   soundEnabled: boolean;
   externalAssetDirectories: string[];
+  githubTasks: GithubTasksConfig;
+}
+
+export interface GithubTaskStateConfig {
+  id: string;
+  label: string;
+  color: string;
+  labels: string[];
+}
+
+export interface GithubTaskGateConfig {
+  gate: number;
+  label: string;
+}
+
+export interface GithubTasksConfig {
+  enabled: boolean;
+  maxIssues: number;
+  pipeline: {
+    enabled: boolean;
+    states: GithubTaskStateConfig[];
+    gates: GithubTaskGateConfig[];
+  };
 }
 
 const DEFAULT_CONFIG: PixelAgentsConfig = {
   soundEnabled: true,
   externalAssetDirectories: [],
+  githubTasks: {
+    enabled: true,
+    maxIssues: 30,
+    pipeline: {
+      enabled: false,
+      states: [
+        { id: "todo", label: "To Do", color: "#fc0", labels: ["todo", "backlog"] },
+        { id: "in_progress", label: "In Progress", color: "#3794ff", labels: ["in-progress", "wip"] },
+        { id: "review_ready", label: "Review", color: "#a78bfa", labels: ["review-ready"] },
+        { id: "done", label: "Done", color: "#5ac88c", labels: ["done", "completed"] },
+        { id: "blocked", label: "Blocked", color: "#e55", labels: ["blocked"] },
+      ],
+      gates: [],
+    },
+  },
 };
+
+function normalizeGithubTasksConfig(config: Partial<GithubTasksConfig> | undefined): GithubTasksConfig {
+  const pipeline = config?.pipeline;
+  return {
+    enabled: typeof config?.enabled === "boolean" ? config.enabled : DEFAULT_CONFIG.githubTasks.enabled,
+    maxIssues: typeof config?.maxIssues === "number" && config.maxIssues > 0
+      ? Math.min(Math.max(Math.floor(config.maxIssues), 1), 100)
+      : DEFAULT_CONFIG.githubTasks.maxIssues,
+    pipeline: {
+      enabled: typeof pipeline?.enabled === "boolean"
+        ? pipeline.enabled
+        : DEFAULT_CONFIG.githubTasks.pipeline.enabled,
+      states: Array.isArray(pipeline?.states)
+        ? pipeline.states
+            .filter((state): state is GithubTaskStateConfig => {
+              return !!state
+                && typeof state.id === "string"
+                && typeof state.label === "string"
+                && typeof state.color === "string"
+                && Array.isArray(state.labels);
+            })
+            .map((state) => ({
+              id: state.id,
+              label: state.label,
+              color: state.color,
+              labels: state.labels.filter((label): label is string => typeof label === "string"),
+            }))
+        : DEFAULT_CONFIG.githubTasks.pipeline.states.map((state) => ({ ...state, labels: [...state.labels] })),
+      gates: Array.isArray(pipeline?.gates)
+        ? pipeline.gates
+            .filter((gate): gate is GithubTaskGateConfig => {
+              return !!gate
+                && typeof gate.gate === "number"
+                && Number.isFinite(gate.gate)
+                && typeof gate.label === "string";
+            })
+            .map((gate) => ({ gate: Math.floor(gate.gate), label: gate.label }))
+        : DEFAULT_CONFIG.githubTasks.pipeline.gates.map((gate) => ({ ...gate })),
+    },
+  };
+}
 
 let cachedConfig: PixelAgentsConfig | null = null;
 
@@ -38,6 +123,7 @@ export function loadConfig(): PixelAgentsConfig {
       externalAssetDirectories: Array.isArray(parsed.externalAssetDirectories)
         ? parsed.externalAssetDirectories.filter((d): d is string => typeof d === "string")
         : [],
+      githubTasks: normalizeGithubTasksConfig(parsed.githubTasks),
     };
     return cachedConfig;
   } catch (err) {

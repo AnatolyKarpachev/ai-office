@@ -25,11 +25,6 @@ while true; do
   wait "$SERVER_PID"
   EXIT_CODE=$?
 
-  if [ $EXIT_CODE -eq 0 ]; then
-    echo "[start.sh] Server exited cleanly."
-    break
-  fi
-
-  echo "[start.sh] Server crashed (exit code $EXIT_CODE). Restarting in 2s..."
+  echo "[start.sh] Server exited (code $EXIT_CODE). Restarting in 2s..."
   sleep 2
 done

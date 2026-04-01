@@ -26,11 +26,6 @@ const menuItemBase: React.CSSProperties = {
   textAlign: 'left',
 }
 
-const aboutLinkStyle: React.CSSProperties = {
-  color: 'var(--pixel-accent)',
-  textDecoration: 'underline',
-}
-
 export function SettingsModal({
   isOpen,
   onClose,
@@ -139,7 +134,7 @@ export function SettingsModal({
             const newVal = !isSoundEnabled()
             setSoundEnabled(newVal)
             setSoundLocal(newVal)
-            vscode.postMessage({ type: 'setSoundEnabled', enabled: newVal })
+            vscode.postMessage({ type: 'saveSoundEnabled', enabled: newVal })
           }}
           onMouseEnter={() => setHovered('sound')}
           onMouseLeave={() => setHovered(null)}
@@ -208,11 +203,8 @@ export function SettingsModal({
             maxWidth: 520,
           }}
         >
-          Проект поддерживается по личной инициативе и содержит баги, которые стараюсь оперативно
-          исправлять. Если вам понравилось, то лучшая благодарность это подписка на канал:{' '}
-          <a href="https://t.me/segagridchin" target="_blank" rel="noreferrer" style={aboutLinkStyle}>
-            t.me/segagridchin
-          </a>
+          Claude CLI and Claude macOS app are supported. Codex agent rendering is available in a
+          basic form and will continue to evolve.
         </div>
       </div>
     </>

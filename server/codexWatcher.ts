@@ -1,3 +1,9 @@
+/**
+ * Original addition by Sergey Gridchin, 2026.
+ * Licensed under the Sergey Source-Available Noncommercial License 1.0.
+ * See LICENSE-SERGEY-ADDITIONS and NOTICE.
+ */
+
 import { watch } from "chokidar";
 import { statSync, readdirSync, openSync, readSync, closeSync, readFileSync } from "fs";
 import { basename, dirname, join } from "path";

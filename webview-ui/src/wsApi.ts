@@ -1,6 +1,6 @@
 // WebSocket API — replaces VS Code postMessage bridge
 const WS_URL = import.meta.env.DEV
-  ? "ws://localhost:3456"
+  ? "ws://localhost:9876"
   : `ws://${window.location.host}`;
 
 let ws: WebSocket | null = null;

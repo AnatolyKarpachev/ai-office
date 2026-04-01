@@ -20,9 +20,9 @@ import {
   loadDefaultLayout,
 } from "./assetLoader.js";
 import type { LoadedFurnitureAssets } from "./assetLoader.js";
-import { loadConfig, saveConfig, getConfig } from "./configPersistence.js";
+import { loadConfig, saveConfig, getConfig, type GithubTaskStateConfig } from "./configPersistence.js";
 import type { TrackedAgent, ServerMessage } from "./types.js";
-import { getRoleColors, resolveDisplayRole } from "./roleDetector.js";
+import { getRoleColors, resolveDerivedAgentName, resolveDisplayRole } from "./roleDetector.js";
 import type { AgentProvider, WatchedFile } from "./sourceTypes.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -101,8 +101,24 @@ function syncRoleAndBroadcast(agent: TrackedAgent): void {
   }
 }
 
+function syncAgentNameAndBroadcast(agent: TrackedAgent): void {
+  if (agent.provider !== "claude") return;
+  if (agent.nameSource === "explicit") return;
+
+  const isSubagent = !!agent.parentSessionId;
+  const derivedName = resolveDerivedAgentName(agent.agentSetting, agent.agentDescription, isSubagent);
+  if (!derivedName) return;
+
+  if (agent.projectName !== derivedName || agent.nameSource !== "derived") {
+    agent.projectName = derivedName;
+    agent.nameSource = "derived";
+    broadcast({ type: "agentRenamed", id: agent.id, folderName: agent.projectName });
+  }
+}
+
 function onAgentStatsUpdate(agent: TrackedAgent): void {
   broadcast(buildAgentStatsMessage(agent));
+  syncAgentNameAndBroadcast(agent);
   // Recalculate role when stats change (model detected, tools used, etc.)
   syncRoleAndBroadcast(agent);
 }
@@ -427,6 +443,7 @@ function sendInitialData(ws: WebSocket): void {
     type: "settingsLoaded",
     soundEnabled: cfg.soundEnabled,
     externalAssetDirectories: cfg.externalAssetDirectories,
+    githubTasks: cfg.githubTasks,
     serverMode: isDev ? "dev" : "prod",
   }));
 
@@ -535,6 +552,9 @@ wss.on("connection", (ws) => {
   ws.on("message", (raw) => {
     try {
       const msg = JSON.parse(raw.toString());
+      if (msg.type !== "webviewReady" && msg.type !== "ready") {
+        console.log(`[Server] WS msg: ${msg.type}`);
+      }
       if (msg.type === "webviewReady" || msg.type === "ready") {
         sendInitialData(ws);
       } else if (msg.type === "saveLayout") {
@@ -722,51 +742,41 @@ wss.on("connection", (ws) => {
         testAgentIds.clear();
         testAgentData.clear();
         const count = Math.min(msg.count || 5, 12);
-        console.log(`[Server] Spawning ${count} test agents`);
+        console.log(`[Server] Spawning ${count} test agents (staggered 1s apart)`);
         const leadId = nextAgentId; // remember lead id before incrementing
+        const names = ["Lead", "Explorer", "Coder", "Reviewer", "Tester", "Builder", "Planner", "Fixer", "Writer", "Auditor", "Runner", "Helper"];
+        const roles = ["boss", "Explore", "Code Reviewer", "Plan", "general-purpose", "test-runner"];
+        // Pre-allocate IDs so they're sequential
+        const agentIds = Array.from({ length: count }, () => nextAgentId++);
         for (let i = 0; i < count; i++) {
-          const id = nextAgentId++;
-          const isSubagent = i > 0; // first is lead, rest are subagents
-          const parentId = isSubagent ? leadId : undefined;
-          const names = ["Lead", "Explorer", "Coder", "Reviewer", "Tester", "Builder", "Planner", "Fixer", "Writer", "Auditor", "Runner", "Helper"];
-          const folderName = names[i % names.length];
-          broadcast({
-            type: "agentCreated",
-            id,
-            folderName,
-            parentAgentId: parentId,
-          });
-          // Send fake stats
-          broadcast({
-            type: "agentStats",
-            id,
-            model: i % 2 === 0 ? "claude-opus-4-6" : "claude-sonnet-4-6",
-            totalInputTokens: Math.floor(Math.random() * 50000) + 1000,
-            totalOutputTokens: Math.floor(Math.random() * 20000) + 500,
-            totalCacheRead: Math.floor(Math.random() * 30000),
-            totalCacheCreation: Math.floor(Math.random() * 5000),
-            turnCount: Math.floor(Math.random() * 20) + 1,
-            totalDurationMs: Math.floor(Math.random() * 300000) + 10000,
-            cacheHitRate: Math.floor(Math.random() * 80) + 10,
-          });
-          // Send fake role
-          const roles = ["boss", "Explore", "Code Reviewer", "Plan", "general-purpose", "test-runner"];
-          const role = roles[i % roles.length];
-          broadcast({
-            type: "agentRole",
-            id,
-            role,
-            autoDetected: true,
-            colors: getRoleColors(role),
-          });
-          testAgentIds.add(id);
-          const model = i % 2 === 0 ? "claude-opus-4-6" : "claude-sonnet-4-6";
-          testAgentData.set(id, { folderName, role, parentAgentId: parentId, model });
-          console.log(`  Test agent ${id}: ${folderName} (role=${role})${isSubagent ? ` [sub of ${parentId}]` : ""}`);
+          setTimeout(() => {
+            const id = agentIds[i];
+            const isSubagent = i > 0;
+            const parentId = isSubagent ? agentIds[0] : undefined;
+            const folderName = names[i % names.length];
+            broadcast({ type: "agentCreated", id, folderName, parentAgentId: parentId });
+            broadcast({
+              type: "agentStats", id,
+              model: i % 2 === 0 ? "claude-opus-4-6" : "claude-sonnet-4-6",
+              totalInputTokens: Math.floor(Math.random() * 50000) + 1000,
+              totalOutputTokens: Math.floor(Math.random() * 20000) + 500,
+              totalCacheRead: Math.floor(Math.random() * 30000),
+              totalCacheCreation: Math.floor(Math.random() * 5000),
+              turnCount: Math.floor(Math.random() * 20) + 1,
+              totalDurationMs: Math.floor(Math.random() * 300000) + 10000,
+              cacheHitRate: Math.floor(Math.random() * 80) + 10,
+            });
+            const role = roles[i % roles.length];
+            broadcast({ type: "agentRole", id, role, autoDetected: true, colors: getRoleColors(role) });
+            testAgentIds.add(id);
+            const model = i % 2 === 0 ? "claude-opus-4-6" : "claude-sonnet-4-6";
+            testAgentData.set(id, { folderName, role, parentAgentId: parentId, model });
+            console.log(`  Test agent ${id}: ${folderName} (role=${role})${isSubagent ? ` [sub of ${parentId}]` : ""}`);
+          }, i * 1000); // stagger 1 second apart
         }
       }
-    } catch {
-      /* ignore invalid messages */
+    } catch (err) {
+      console.error(`[Server] WS message error:`, err instanceof Error ? err.message : err);
     }
   });
 
@@ -843,6 +853,7 @@ interface PersistedAgentState {
   agentSetting?: string;
   agentDescription?: string;
   projectName: string;
+  nameSource?: "fallback" | "derived" | "explicit";
   palette?: number;
   hueShift?: number;
   seatId?: string | null;
@@ -860,6 +871,7 @@ function saveAgentState(): void {
         sessionId: agent.sessionId,
         id: agent.id,
         projectName: agent.projectName,
+        nameSource: agent.nameSource,
         palette: seat?.palette,
         hueShift: seat?.hueShift,
         seatId: seat?.seatId,
@@ -942,9 +954,13 @@ function applyCodexSubagentHint(hint: { sessionId: string; parentSessionId: stri
 
   let needsPlacementRebuild = false;
 
-  if (hint.nickname && agent.projectName !== hint.nickname) {
+  if (hint.nickname) {
+    const changed = agent.projectName !== hint.nickname || agent.nameSource !== "explicit";
     agent.projectName = hint.nickname;
-    broadcast({ type: "agentRenamed", id: agent.id, folderName: agent.projectName });
+    agent.nameSource = "explicit";
+    if (changed) {
+      broadcast({ type: "agentRenamed", id: agent.id, folderName: agent.projectName });
+    }
   }
 
   if (hint.role && agent.agentSetting !== hint.role) {
@@ -990,6 +1006,7 @@ function handleFileAdded(file: WatchedFile): void {
     projectDir: file.projectDir,
     projectName: codexHint?.nickname
       ?? (file.provider === "codex" ? file.projectName : prevAgent?.projectName ?? file.projectName),
+    nameSource: codexHint?.nickname ? "explicit" : prevAgent?.nameSource ?? "fallback",
     jsonlFile: file.path,
     fileOffset: 0,
     lineBuffer: "",
@@ -1006,11 +1023,11 @@ function handleFileAdded(file: WatchedFile): void {
     totalOutputTokens: 0,
     totalCacheRead: 0,
     totalCacheCreation: 0,
-    currentContextTokens: 0,
+    currentContextTokens: undefined,
     currentContextLimit: undefined,
-    currentInputTokens: 0,
-    currentOutputTokens: 0,
-    currentCacheRead: 0,
+    currentInputTokens: undefined,
+    currentOutputTokens: undefined,
+    currentCacheRead: undefined,
     turnCount: 0,
     totalDurationMs: 0,
     toolHistory: [],
@@ -1042,6 +1059,8 @@ function handleFileAdded(file: WatchedFile): void {
   if (file.agentDescription) {
     agent.agentDescription = file.agentDescription;
   }
+
+  syncAgentNameAndBroadcast(agent);
 
   const isSubagent = !!agent.parentSessionId;
   const { displayRole } = resolveDisplayRole(agent.agentSetting, agent.agentDescription, isSubagent);
@@ -1123,8 +1142,45 @@ interface GateStatus { gate: number; status: string; comment: string; timestamp:
 let cachedPipelineIssues: Array<{ number: number; title: string; labels: string[]; state: string; pipelineState: string; repo: string; gates: GateStatus[] }> = [];
 const gateCache = new Map<string, { ts: number; gates: GateStatus[] }>();
 const GATE_COMMENT_RE = /^\[gate (\d+)\]\[(pass|fail)\]\s*(.*)$/m;
+let githubCliAvailable: boolean | null = null;
+
+function isGitHubCliAvailable(): boolean {
+  if (githubCliAvailable != null) return githubCliAvailable;
+  try {
+    execSync("gh --version >/dev/null 2>&1", { stdio: "ignore" });
+    githubCliAvailable = true;
+  } catch {
+    githubCliAvailable = false;
+  }
+  return githubCliAvailable;
+}
+
+function normalizeLabel(label: string): string {
+  return label.trim().toLowerCase();
+}
+
+function resolvePipelineState(labelNames: string[], states: GithubTaskStateConfig[]): string {
+  const normalizedLabels = new Set(labelNames.map(normalizeLabel));
+  for (const state of states) {
+    if (state.labels.some((label) => normalizedLabels.has(normalizeLabel(label)))) {
+      return state.id;
+    }
+  }
+  return "";
+}
 
 function fetchPipelineIssues(): void {
+  const cfg = getConfig();
+  const githubTasks = cfg.githubTasks;
+
+  if (!githubTasks.enabled || !isGitHubCliAvailable()) {
+    if (cachedPipelineIssues.length > 0) {
+      cachedPipelineIssues = [];
+      broadcast({ type: "pipelineIssues", issues: [] } as any);
+    }
+    return;
+  }
+
   // Get unique repo names from active agents' project directories
   const repoSet = new Set<string>();
   for (const agent of agents.values()) {
@@ -1152,33 +1208,19 @@ function fetchPipelineIssues(): void {
   }
 
   const allIssues: typeof cachedPipelineIssues = [];
+  const pipelineEnabled = githubTasks.pipeline.enabled;
   for (const repo of repoSet) {
     try {
       const raw = execSync(
-        `gh issue list -R "${repo}" --state open --limit 30 --json number,title,labels,state,body 2>/dev/null`,
+        `gh issue list -R "${repo}" --state open --limit ${githubTasks.maxIssues} --json number,title,labels,state,body 2>/dev/null`,
         { encoding: "utf-8", timeout: 15000 }
       );
       const issues = JSON.parse(raw) as Array<{ number: number; title: string; labels: Array<{ name: string }>; state: string; body: string }>;
       for (const issue of issues) {
         const labelNames = issue.labels.map((l) => l.name);
-        // Determine pipeline state: labels take priority over YAML body
-        let pipelineState = "";
-        if (labelNames.includes("blocked")) {
-          pipelineState = "blocked";
-        } else if (labelNames.includes("pipeline-done") || labelNames.includes("completed")) {
-          pipelineState = "done";
-        } else if (labelNames.includes("pipeline-ready") || labelNames.includes("in-progress")) {
-          pipelineState = "in_progress";
-        } else if (labelNames.includes("needs-human-review")) {
-          pipelineState = "review_ready";
-        } else {
-          // Fallback: parse from YAML metadata in issue body
-          const yamlMatch = issue.body?.match(/```yaml\s*\n([\s\S]*?)```/);
-          if (yamlMatch) {
-            const stateMatch = yamlMatch[1].match(/^state:\s*(.+)$/m);
-            if (stateMatch) pipelineState = stateMatch[1].trim();
-          }
-        }
+        const pipelineState = pipelineEnabled
+          ? resolvePipelineState(labelNames, githubTasks.pipeline.states)
+          : "";
         allIssues.push({
           number: issue.number,
           title: issue.title,
@@ -1189,38 +1231,42 @@ function fetchPipelineIssues(): void {
           gates: [],
         });
       }
-    } catch (err) {
-      console.warn(`[Server] Failed to fetch issues for ${repo}: ${err instanceof Error ? err.message : err}`);
+    } catch {
+      // Public default should degrade quietly when gh auth or repo access is unavailable.
     }
   }
 
   // Parse gate comments for in-progress issues
-  for (const issue of allIssues) {
-    if (issue.pipelineState !== "in_progress") continue;
-    const cacheKey = `${issue.repo}/${issue.number}`;
-    const cached = gateCache.get(cacheKey);
-    if (cached && Date.now() - cached.ts < 30_000) {
-      issue.gates = cached.gates;
-      continue;
-    }
-    // Find full repo name (owner/repo) from repoSet
-    const fullRepo = Array.from(repoSet).find(r => r.endsWith(`/${issue.repo}`)) || issue.repo;
-    try {
-      const raw = execSync(
-        `gh api repos/${fullRepo}/issues/${issue.number}/comments --jq '[.[] | select(.body | test("^\\\\[gate ")) | {body: .body, ts: .created_at}]'`,
-        { encoding: "utf-8", timeout: 10_000 }
-      );
-      const parsed = JSON.parse(raw) as Array<{ body: string; ts: string }>;
-      const gates: GateStatus[] = [];
-      for (const c of parsed) {
-        const m = c.body.match(GATE_COMMENT_RE);
-        if (m) {
-          gates.push({ gate: parseInt(m[1], 10), status: m[2], comment: m[3].trim(), timestamp: c.ts });
-        }
+  if (pipelineEnabled && githubTasks.pipeline.gates.length > 0) {
+    for (const issue of allIssues) {
+      if (issue.pipelineState !== "in_progress") continue;
+      const cacheKey = `${issue.repo}/${issue.number}`;
+      const cached = gateCache.get(cacheKey);
+      if (cached && Date.now() - cached.ts < 30_000) {
+        issue.gates = cached.gates;
+        continue;
       }
-      issue.gates = gates;
-      gateCache.set(cacheKey, { ts: Date.now(), gates });
-    } catch { /* ignore */ }
+      // Find full repo name (owner/repo) from repoSet
+      const fullRepo = Array.from(repoSet).find(r => r.endsWith(`/${issue.repo}`)) || issue.repo;
+      try {
+        const raw = execSync(
+          `gh api repos/${fullRepo}/issues/${issue.number}/comments --jq '[.[] | select(.body | test("^\\\\[gate ")) | {body: .body, ts: .created_at}]'`,
+          { encoding: "utf-8", timeout: 10_000 }
+        );
+        const parsed = JSON.parse(raw) as Array<{ body: string; ts: string }>;
+        const gates: GateStatus[] = [];
+        for (const c of parsed) {
+          const m = c.body.match(GATE_COMMENT_RE);
+          if (m) {
+            gates.push({ gate: parseInt(m[1], 10), status: m[2], comment: m[3].trim(), timestamp: c.ts });
+          }
+        }
+        issue.gates = gates;
+        gateCache.set(cacheKey, { ts: Date.now(), gates });
+      } catch {
+        /* ignore */
+      }
+    }
   }
   // Clean cache for issues no longer in-progress
   for (const [key] of gateCache) {
@@ -1230,8 +1276,8 @@ function fetchPipelineIssues(): void {
   }
 
   cachedPipelineIssues = allIssues;
+  broadcast({ type: "pipelineIssues", issues: allIssues } as any);
   if (allIssues.length > 0) {
-    broadcast({ type: "pipelineIssues", issues: allIssues } as any);
     console.log(`[Server] Fetched ${allIssues.length} pipeline issues from ${repoSet.size} repos`);
   }
 }

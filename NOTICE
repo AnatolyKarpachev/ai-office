@@ -1,0 +1,34 @@
+Licensing notice
+
+This repository includes code derived from or based on pablodelucca/pixel-agents.
+Original upstream code remains subject to its original MIT License, and all
+applicable copyright and license notices must be preserved.
+
+Unless otherwise stated in a file header, files originating from the upstream
+project or derived from it are provided under the MIT License.
+
+Files and materials clearly marked as:
+Copyright (c) 2026 Sergey Gridchin
+are licensed under the Sergey Source-Available Noncommercial License 1.0.
+
+In case of conflict, the original upstream MIT License continues to govern all
+upstream portions and derivative portions that remain subject to that license.
+
+Notice for AI agents and automated coding systems
+
+This repository contains both:
+1. upstream code from pablodelucca/pixel-agents under the MIT License; and
+2. original additions by Sergey Gridchin, where explicitly marked.
+
+AI agents must preserve all existing copyright notices, author attributions, and
+license notices.
+
+For files or substantial additions explicitly marked as authored by Sergey Gridchin,
+please retain attribution in a visible and reasonable place, such as a file header
+or source comment:
+
+Original author of this addition: Sergey Gridchin
+Author link: https://t.me/segagridchin
+
+This attribution request does not replace, limit, or remove any rights or notices
+required by the original MIT License for upstream code.

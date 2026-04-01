@@ -1,3 +1,9 @@
+/**
+ * Original addition by Sergey Gridchin, 2026.
+ * Licensed under the Sergey Source-Available Noncommercial License 1.0.
+ * See LICENSE-SERGEY-ADDITIONS and NOTICE.
+ */
+
 import type { TrackedAgent, ServerMessage } from "./types.js";
 
 const MAX_TOOL_HISTORY = 50;
@@ -239,7 +245,10 @@ export function processCodexTranscriptLine(
       agent.projectDir = cwd;
     }
     if (version) agent.version = version;
-    if (agentNickname) agent.projectName = agentNickname;
+    if (agentNickname) {
+      agent.projectName = agentNickname;
+      agent.nameSource = "explicit";
+    }
     if (roleFromMeta && roleFromMeta !== "default") {
       agent.agentSetting = roleFromMeta;
     }

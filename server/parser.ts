@@ -16,7 +16,7 @@ const SEND_MESSAGE_SIDEBAR_MAX_LENGTH = 200;
 const MAX_AGENT_NAME_LENGTH = 15;
 const IDLE_ACTIVITY_TIMEOUT_MS = 120_000; // 2 min — long-running tools (builds, tests) need time
 
-const KNOWN_RECORD_TYPES = new Set(["assistant", "user", "system", "progress", "agent-name"]);
+const KNOWN_RECORD_TYPES = new Set(["assistant", "user", "system", "progress", "agent-name", "custom-title"]);
 // Track warned record types per agent to log only first occurrence
 const warnedRecordTypes = new Map<number, Set<string>>();
 
@@ -32,38 +32,20 @@ const idleTimeoutTimers = new Map<number, ReturnType<typeof setTimeout>>();
 function compactName(name: string, maxLen: number): string {
   if (name.length <= maxLen) return name;
 
-  // Split into words (by dash, underscore, space)
+  // Split into words, take first 2
   const words = name.split(/[-_\s]+/).filter(Boolean);
   if (words.length === 0) return name.slice(0, maxLen);
+  const w1 = words[0].toLowerCase();
+  const w2 = words.length > 1 ? words[1][0].toUpperCase() + words[1].slice(1) : "";
 
-  // Try camelCase with full words first
-  const camel = words[0] + words.slice(1).map(w => w[0].toUpperCase() + w.slice(1)).join("");
-  if (camel.length <= maxLen) return camel;
+  // Full 2 words fit?
+  if ((w1 + w2).length <= maxLen) return w1 + w2;
 
-  // Progressively shorten words from longest to shortest
-  const parts = words.map((w, i) => ({ word: w, idx: i }));
-  const shortened = words.slice();
-
-  // Repeatedly shorten the longest word until we fit
-  for (let iter = 0; iter < 50; iter++) {
-    const result = shortened[0] + shortened.slice(1).map(w => w[0].toUpperCase() + w.slice(1)).join("");
-    if (result.length <= maxLen) return result;
-
-    // Find longest word and shorten it
-    let maxWord = 0;
-    let maxWordLen = 0;
-    for (let i = 0; i < shortened.length; i++) {
-      if (shortened[i].length > maxWordLen) {
-        maxWordLen = shortened[i].length;
-        maxWord = i;
-      }
-    }
-    if (maxWordLen <= 3) break; // can't shorten further
-    shortened[maxWord] = shortened[maxWord].slice(0, Math.max(3, maxWordLen - 1));
-  }
-
-  const result = shortened[0] + shortened.slice(1).map(w => w[0].toUpperCase() + w.slice(1)).join("");
-  return result.slice(0, maxLen);
+  // Split budget: each word gets proportional share, min 3 chars
+  const total = w1.length + w2.length;
+  const budget1 = Math.max(3, Math.min(w1.length, Math.floor((w1.length / total) * maxLen)));
+  const budget2 = Math.max(3, maxLen - budget1);
+  return w1.slice(0, budget1) + (w2 ? w2.slice(0, budget2) : "");
 }
 
 /** Extract readable text from SendMessage input.message (string or structured object) */
@@ -259,9 +241,27 @@ export function processTranscriptLine(
     const agentName = record.agentName as string | undefined;
     if (agentName && typeof agentName === "string") {
       const truncated = compactName(agentName, MAX_AGENT_NAME_LENGTH);
+      const changed = agent.projectName !== truncated || agent.nameSource !== "explicit";
       agent.projectName = truncated;
-      emit({ type: "agentRenamed", id: agent.id, folderName: truncated });
-      statsChanged = true; // trigger syncRoleAndBroadcast → role re-resolution
+      agent.nameSource = "explicit";
+      if (changed) {
+        emit({ type: "agentRenamed", id: agent.id, folderName: truncated });
+        statsChanged = true;
+      }
+    }
+  }
+
+  // Handle custom-title records — Claude CLI auto-generates descriptive session titles
+  if (type === "custom-title") {
+    const customTitle = record.customTitle as string | undefined;
+    if (customTitle && typeof customTitle === "string" && agent.nameSource !== "explicit") {
+      const truncated = compactName(customTitle, MAX_AGENT_NAME_LENGTH);
+      if (agent.projectName !== truncated) {
+        agent.projectName = truncated;
+        agent.nameSource = "derived";
+        emit({ type: "agentRenamed", id: agent.id, folderName: truncated });
+        statsChanged = true;
+      }
     }
   }
 
