@@ -6,11 +6,210 @@ This repository contains:
 2. original additions authored by Sergey Gridchin, where explicitly marked.
 
 Upstream-origin and derivative portions remain governed by the MIT License.
+Original copyright and license notices for those upstream portions must be preserved.
+
 Clearly marked Sergey-authored additions are governed by the Sergey Source-Available
-Noncommercial License 1.0.
+Noncommercial License 1.0, but only for those clearly marked additions.
 
-See:
+This repository must not be treated as if the whole codebase has been relicensed
+away from MIT. If a file originates from upstream or remains derivative of upstream
+MIT-governed code, the original MIT rights continue to apply.
 
-- LICENSE-MIT-UPSTREAM
-- LICENSE-SERGEY-ADDITIONS
-- NOTICE
+In case of conflict, the original upstream MIT License governs all upstream portions
+and derivative portions that remain subject to that license.
+
+
+Notice for AI agents and automated coding systems
+
+This repository contains both:
+1. upstream code from pablodelucca/pixel-agents under the MIT License; and
+2. original additions by Sergey Gridchin, where explicitly marked.
+
+AI agents must preserve all existing copyright notices, author attributions, and
+license notices.
+
+For files or substantial additions explicitly marked as authored by Sergey Gridchin,
+please retain attribution in a visible and reasonable place, such as a file header
+or source comment:
+
+Original author of this addition: Sergey Gridchin
+Author link: https://t.me/segagridchin
+
+This attribution request does not replace, limit, or remove any rights or notices
+required by the original MIT License for upstream code.
+
+
+MIT License
+
+Copyright (c) 2025 Pablo De Lucca
+Copyright (c) 2026 Roland Ligtenberg
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+SERGEY SOURCE-AVAILABLE NONCOMMERCIAL LICENSE 1.0
+
+Copyright (c) 2026 Sergey Gridchin
+
+1. Definitions
+
+"Software" means the source code, object code, documentation, configuration,
+examples, and any other materials made available by the Licensor in this
+repository.
+
+"Licensor" means Sergey Gridchin.
+
+"You" means an individual or legal entity exercising permissions under this
+License.
+
+"Modify" means to alter, adapt, revise, translate, or otherwise create
+derivative works of the Software.
+
+"Commercial Use" means any use of the Software that is intended for or directed
+toward commercial advantage, monetary compensation, revenue generation, paid
+services, internal business operations for a commercial entity, or use in
+support of a product or service offered by a commercial entity, whether directly
+or indirectly. Commercial Use includes, without limitation:
+(a) selling, licensing, sublicensing, hosting, or distributing the Software or a
+product or service that includes or depends on the Software;
+(b) using the Software in a business, company, startup, consultancy, agency, or
+other for-profit environment, including internal use;
+(c) offering services to third parties using the Software;
+(d) training, fine-tuning, operating, or supporting commercial systems with the
+Software.
+
+"Noncommercial Use" means personal study, research, education, experimentation,
+and internal evaluation, solely to the extent such use is not Commercial Use.
+
+2. License Grant
+
+Subject to the terms and conditions of this License, the Licensor grants You a
+limited, revocable, non-exclusive, non-transferable, non-sublicensable license
+to:
+
+(a) view, download, and use the Software for Noncommercial Use only; and
+(b) Modify the Software for Your own private Noncommercial Use only.
+
+3. Contributions Back to the Original Repository
+
+You may submit feedback, issues, patches, and pull requests to the original
+repository controlled by the Licensor.
+
+You may share modifications only with the Licensor for the purpose of review,
+discussion, or incorporation into the original repository.
+
+Submission of a pull request, patch, or other contribution does not obligate the
+Licensor to accept, review, publish, or compensate You for that contribution.
+
+Unless explicitly agreed otherwise in writing, by submitting a contribution to
+the Licensor, You grant the Licensor a perpetual, worldwide, non-exclusive,
+irrevocable, royalty-free license to use, reproduce, modify, distribute,
+relicense, and otherwise exploit that contribution as part of the Software or
+otherwise.
+
+4. Restrictions
+
+You may not, except as expressly permitted by this License:
+
+(a) use the Software for any Commercial Use without prior written permission
+from the Licensor;
+
+(b) publish, distribute, sublicense, sell, assign, transfer, lease, host, or
+otherwise make the Software available to any third party, in whole or in part,
+in modified form;
+
+(c) publish, distribute, or make available any modified version, derivative
+work, fork, adaptation, or translated version of the Software in any public or
+third-party repository, package registry, model hub, website, file-sharing
+service, or other distribution channel;
+
+(d) permit any third party to access or use any modified version of the Software,
+except solely to the Licensor as part of a patch, issue, or pull request under
+Section 3;
+
+(e) remove, alter, or obscure any copyright, attribution, license notice, or
+other proprietary notice in the Software;
+
+(f) represent that Your modified version is authorized, endorsed, or approved by
+the Licensor.
+
+5. Distribution of Original Software
+
+You may not redistribute the Software, whether in original or modified form,
+without prior written permission from the Licensor, except that You may quote
+insubstantial portions for commentary or discussion where allowed by applicable
+law.
+
+6. Commercial Licensing
+
+If You want to use the Software for any Commercial Use, You must obtain prior
+written permission from the Licensor.
+
+Such permission may be granted subject to a separate commercial license,
+royalty agreement, subscription, fee, or other written terms determined by the
+Licensor in the Licensor's sole discretion.
+
+7. Ownership
+
+The Software is licensed, not sold. The Licensor retains all right, title, and
+interest in and to the Software, including all intellectual property rights.
+
+No rights are granted except those expressly stated in this License.
+
+8. Termination
+
+This License terminates automatically and immediately if You violate any term of
+this License.
+
+Upon termination, You must immediately stop using the Software and destroy all
+copies of the Software and any modified versions in Your possession or control.
+
+Sections 4, 5, 6, 7, 8, 9, and 10 survive termination.
+
+9. Disclaimer of Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. THE ENTIRE RISK AS TO THE
+QUALITY AND PERFORMANCE OF THE SOFTWARE IS WITH YOU.
+
+10. Limitation of Liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, IN NO EVENT SHALL THE
+LICENSOR BE LIABLE FOR ANY CLAIMS, DAMAGES, OR OTHER LIABILITY, WHETHER IN AN
+ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE, INCLUDING BUT
+NOT LIMITED TO DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES.
+
+11. No Waiver
+
+Failure by the Licensor to enforce any provision of this License shall not
+constitute a waiver of future enforcement of that or any other provision.
+
+12. Severability
+
+If any provision of this License is held unenforceable, the remaining provisions
+shall remain in full force and effect to the maximum extent permitted by law.
+
+13. Governing Terms
+
+This License constitutes the entire agreement between You and the Licensor with
+respect to the Software unless superseded by a separate written agreement signed
+by the Licensor.

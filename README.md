@@ -1,84 +1,203 @@
-# Офис для агентов Claude Code
-*Office for Claude Code Agents*
+<h1>Визуализация ИИ агентов Claude и Codex в real time</h1>
+<p><em>Office for visualization Claude Code Agents</em></p>
+<p align="center">
+  <img src="docs/images/main_picture_agent_visualization.png" width="980" alt="Главный экран визуализации агентов" />
+</p>
+YouTube: <a href="https://www.youtube.com/watch?v=seJ8nwOdRYA" target="_blank">https://www.youtube.com/watch?v=seJ8nwOdRYA</a>
 
-Standalone pixel office for `Claude CLI` and `Claude macOS app`, with basic `Codex` agent support.
+<p>Пиксельный офис <code>Claude CLI</code>, <code>Claude macOS app</code>, with basic <code>Codex</code> agent support.</p>
 
-Отдельное браузерное приложение, которое превращает агентные сессии Claude в живой пиксельный офис: агенты появляются в заданной точке, собираются кластерами, тянутся друг к другу, работают за столами, отдыхают на софах и оставляют понятный след в сайдбарах.
+<p>Real-time визуализация агентов Claude и Codex: кто появился в офисе, кто кого вызвал, кто над чем работает, кто простаивает, сколько токенов сгорает и как между собой общаются агенты прямо во время сессии.</p>
 
-This is a standalone browser app for Claude-powered agent sessions. Agents spawn into a pixel office, cluster around related work, sit at desks, rest on sofas when idle, and expose useful runtime context in sidebars.
+<p>Отдельное браузерное приложение, которое превращает агентные сессии Claude в живой пиксельный офис: агенты появляются в заданной точке, собираются кластерами, тянутся друг к другу, работают за столами, отдыхают на софах и оставляют понятный "бумажный след" в сайдбарах. Не требует API, использует ваш аккаунт. Никаких дополнительных расходов на токены. </p>
 
-![Screenshot](webview-ui/public/Screenshot.jpg)
+<p>This is a standalone browser app for Claude-powered agent sessions. Agents spawn into a pixel office, cluster around related work, sit at desks, rest on sofas when idle, and expose useful runtime context in sidebars. Does not require an API, uses your account. No extra token costs.</p>
 
-> Based on [pablodelucca/pixel-agents](https://github.com/pablodelucca/pixel-agents) and subsequent standalone work. Upstream-origin and derivative portions remain under MIT. New Sergey-authored additions are called out separately in this repository.
 
-## Summary
-Этот проект нужен, когда вы хотите видеть не просто логи Claude, а живую карту агентной работы: кто кого вызвал, кто над чем занят, сколько токенов тратится, что обсуждают агенты между собой и какие issues сейчас активны в репозитории.
+<h2>Summary</h2>
 
-This project gives you a visual operations layer over Claude sessions: hierarchy, activity, token usage, agent-to-agent communication, and optional GitHub issue tracking.
+<p>Когда вы хотите видеть живую карту работы ИИ агентов: кто кого вызвал, кто над чем занят, сколько токенов тратится, что обсуждают агенты между собой и какие issues сейчас активны в репозитории.</p>
 
-## Features
-- Кресло босса и строгая иерархия: агент, который вызвал другого агента, выше в иерархии.
-- Кластерное поведение: агенты собираются рядом и визуально тянутся к связанным участникам работы.
-- Левый сайдбар с агентами, их ролями, токенами, контекстом и статусами.
-- Отдельный сайдбар с задачами из GitHub-репозитория.
-- Настраиваемый прогресс-бар под ваш pipeline через `~/.pixel-agents/config.json`.
-- Расширенный набор встроенных office assets, работающий из коробки.
-- Сайдбар событий с фактом общения агентов между собой.
-- Просмотр чата конкретного агента и deep inspection по double-click.
-- Координата появления агентов и точка ухода учитываются в layout и рендере.
-- Подсветка координат, подсветка типов ячеек и подписи агентов.
-- Умное добавление имени агента по специальности.
-- Если агент простаивает, он может уйти отдыхать на софу; есть pause/idle визуал.
-- Soft zoom через touchpad/pinch и плавный pan по canvas.
-- Базовая поддержка Codex-сессий и subagents уже есть, но это ещё early version.
+<p>This project gives you a visual operations layer over Claude sessions: hierarchy, activity, token usage, agent-to-agent communication, and optional GitHub issue tracking.</p>
 
-## Requirements
-- macOS with `Claude CLI` or `Claude macOS app`
-- Node.js `20.19+`
-- `npm`
-- Optional: GitHub CLI `gh` for the TASKS sidebar
+<h2>Visual Overview</h2>
 
-## Getting Started
-Установка теперь идёт из корня репозитория. `webview-ui` зависимости подтягиваются автоматически на `npm install`.
+<p>Главная идея интерфейса: не просто список сессий, а живая карта офиса, где видно иерархию, кластеры, события, точки спавна, ожидание апрува и отдельные каналы общения между агентами.</p>
 
-```bash
-npm install
-npm run build
+<p>The UI is built as a live office map instead of a terminal log dump: hierarchy, clustering, communication, approval waits, spawn points, and sidebars are visible at a glance.</p>
+
+<h3>Main office</h3>
+
+<p align="left">
+  <img src="docs/images/big_office_for_thousand_agents.png" width="920" alt="Большой офис" />
+</p>
+
+<h3>Boss seat</h3>
+
+<p align="left">
+  <img src="docs/images/boss_chair.png" width="520" alt="Кресло босса" />
+</p>
+
+<h3>Hierarchy</h3>
+
+<p align="left">
+  <img src="docs/images/hierarchy_of_agents.png" width="260" alt="Иерархия агентов" />
+</p>
+
+<h3>Grouping by clusters </h3>
+<p align="left">
+  <img src="docs/images/grouping_by_cluster.png"  width="260" alt="Кластеризация агентов" />
+</p>
+
+<h3>Communication tracking </h3>
+
+<p align="left">
+  <img src="docs/images/communication_between_agents.png" width="260" alt="Общение между агентами" />
+</p>
+
+<h3>Events</h3>
+
+<p align="left">
+  <img src="docs/images/events_tracking.png" width="260" alt="Трекинг событий" />
+</p>
+
+<h3>Approvals alerts</h3>
+
+<p align="left">
+  <img src="docs/images/show_waiting_for_approval_from_agents.png" width="340" alt="Ожидание подтверждения действий" />
+</p>
+
+<h3>Spawn position</h3>
+  
+<p align="left">
+  <img src="docs/images/spawn_position_setup.png" width="560" alt="Настройка точки появления" />
+</p>
+
+<h3>Import/export for sharing</h3>
+
+<p align="left">
+  <img src="docs/images/impor_export_layout.png" width="560" alt="Импорт и экспорт layout" />
+</p>
+
+<h3>Extra Assets </h3>
+<p align="left">
+  <img src="docs/images/extra_assets.png" width="560" alt="Расширенный набор ассетов" />
+</p>
+
+<h3>Codex support</h3>
+
+<p align="left">
+  <img src="docs/images/codex_support.png" width="260" alt="Поддержка Codex" />
+</p>
+
+<p align="left">
+  <img src="docs/images/codex_support1.png" width="560" alt="Поддержка Codex, дополнительный пример" />
+</p>
+
+<h2>Features</h2>
+
+<ul>
+  <li>Кресло босса: его может занять только основной LEAD/BOSS агент.</li>
+  <li>Строгая иерархия: агент, который вызвал другого агента, выше в иерархии.</li>
+  <li>Кластерное поведение: агенты собираются рядом и визуально тянутся к связанным участникам работы.</li>
+  <li>Левый сайдбар с агентами, их ролями, токенами, контекстом и статусами.</li>
+  <li>Отдельный сайдбар с задачами из GitHub-репозитория.</li>
+  <li>Расширенный пак предметов.</li>
+  <li>Настраиваемый прогресс-бар под ваш pipeline через <code>~/.pixel-agents/config.json</code>.</li>
+  <li>Расширенный набор встроенных office assets, работающий из коробки.</li>
+  <li>Сайдбар событий с фактом общения агентов между собой.</li>
+  <li>Просмотр чата конкретного агента и deep inspection по double-click.</li>
+  <li>Координата появления агентов и точка ухода учитываются в layout и рендере.</li>
+  <li>Подсветка координат, подсветка типов ячеек и подписи агентов.</li>
+  <li>Умное добавление имени агента по специальности.</li>
+  <li>Если агент простаивает, он может уйти отдыхать на софу; есть pause/idle визуал.</li>
+  <li>Soft zoom через touchpad/pinch и плавный pan по canvas.</li>
+  <li>Базовая поддержка Codex-сессий и subagents уже есть, но это ещё early version.</li>
+</ul>
+
+<h2>Requirements</h2>
+
+<ul>
+  <li>macOS with <code>Claude CLI</code> or <code>Claude macOS app</code></li>
+  <li>Node.js <code>20.19+</code></li>
+  <li><code>npm</code></li>
+  <li>Optional: GitHub CLI <code>gh</code> for the TASKS sidebar</li>
+</ul>
+
+<h2>Getting Started</h2>
+
+<p>Быстрый старт одной командой из любого места:</p>
+
+<pre><code class="language-bash">git clone https://github.com/percheniy/office-for-claude-agents.git \
+  &amp;&amp; cd office-for-claude-agents \
+  &amp;&amp; npm install \
+  &amp;&amp; npm start
+</code></pre>
+
+<p>Если репозиторий уже клонирован и вы находитесь в его корне:</p>
+
+<pre><code class="language-bash">npm install
 npm start
-```
+</code></pre>
 
-Откройте:
+<p><code>webview-ui</code> зависимости подтягиваются автоматически на <code>npm install</code>, а <code>npm start</code> теперь сам делает build перед запуском сервера.</p>
 
-```text
-http://localhost:9876
-```
+<p>Откройте:</p>
 
-Open:
+<pre><code>http://localhost:9876
+</code></pre>
 
-```text
-http://localhost:9876
-```
+<p>Open:</p>
 
-## Usage
-### Claude CLI / Claude macOS app
-Приложение отслеживает:
+<pre><code>http://localhost:9876
+</code></pre>
 
-- `~/.claude/projects`
-- `~/.codex/sessions`
+<p>На первом запуске приложение само создаёт <code>~/.pixel-agents/layout.json</code> из bundled default layout, который уже включён в репозиторий.</p>
 
-Этого достаточно для `Claude CLI`, `Claude macOS app` и базового отображения `Codex` агентов.
+<p>On first launch the app writes <code>~/.pixel-agents/layout.json</code> from the bundled default office layout that already ships in this repository.</p>
 
-### TASKS sidebar
-По умолчанию TASKS работает в generic режиме:
+<p>Источники сессий ищутся автоматически в стандартных директориях <code>~/.claude/projects</code>, <code>~/.codex/sessions</code> и <code>~/.codex/archived_sessions</code>. Если у вас кастомные пути, можно переопределить их через <code>PIXEL_AGENTS_CLAUDE_PROJECTS_DIR</code>, <code>PIXEL_AGENTS_CODEX_SESSIONS_DIR</code>, <code>PIXEL_AGENTS_CODEX_ARCHIVED_SESSIONS_DIR</code> или через <code>~/.pixel-agents/config.json</code>.</p>
 
-- показывает open GitHub issues активного репозитория;
-- не наследует мой личный pipeline;
-- тихо деградирует, если `gh` не настроен.
+<p>The app auto-detects the standard session roots at <code>~/.claude/projects</code>, <code>~/.codex/sessions</code>, and <code>~/.codex/archived_sessions</code>. If your setup uses custom locations, override them with <code>PIXEL_AGENTS_CLAUDE_PROJECTS_DIR</code>, <code>PIXEL_AGENTS_CODEX_SESSIONS_DIR</code>, <code>PIXEL_AGENTS_CODEX_ARCHIVED_SESSIONS_DIR</code>, or <code>~/.pixel-agents/config.json</code>.</p>
 
-Если хотите свой pipeline progress bar, добавьте конфиг в `~/.pixel-agents/config.json`:
+<h2>Usage</h2>
 
-```json
-{
+<h3>Claude CLI / Claude macOS app</h3>
+
+<p>Приложение отслеживает:</p>
+
+<ul>
+  <li><code>~/.claude/projects</code></li>
+  <li><code>~/.codex/sessions</code></li>
+  <li><code>~/.codex/archived_sessions</code> for archived Codex threads</li>
+</ul>
+
+<p>Этого достаточно для <code>Claude CLI</code>, <code>Claude macOS app</code> и базового отображения <code>Codex</code> агентов.</p>
+
+<p>Если стандартные папки отсутствуют, приложение всё равно стартует и явно покажет в левом сайдбаре, какие пути проверялись и чем их переопределить.</p>
+
+<pre><code class="language-json">{
+  "sessionSources": {
+    "claudeProjectsDir": "/absolute/path/to/claude/projects",
+    "codexSessionsDir": "/absolute/path/to/codex/sessions",
+    "codexArchivedSessionsDir": "/absolute/path/to/codex/archived_sessions"
+  }
+}
+</code></pre>
+
+<h3>TASKS sidebar</h3>
+
+<p>По умолчанию TASKS работает в generic режиме:</p>
+
+<ul>
+  <li>показывает open GitHub issues активного репозитория;</li>
+  <li>не наследует мой личный pipeline;</li>
+  <li>тихо деградирует, если <code>gh</code> не настроен.</li>
+</ul>
+
+<p>Если хотите свой pipeline progress bar, добавьте конфиг в <code>~/.pixel-agents/config.json</code>:</p>
+
+<pre><code class="language-json">{
   "githubTasks": {
     "enabled": true,
     "maxIssues": 30,
@@ -99,56 +218,105 @@ http://localhost:9876
     }
   }
 }
-```
+</code></pre>
 
-## Layout Editor
-- Export / import layout JSON
-- Boss chair and role-restricted seats
-- Spawn-point editing
-- Coordinate highlighting
-- Cell type highlighting
-- Furniture placement, rotation, delete, undo/redo
-- Touchpad zoom + pan for large offices
+<h2>Layout Editor</h2>
 
-## Office Assets
-Встроенные assets входят в репозиторий и достаточны для первого запуска.
+<ul>
+  <li>Export / import layout JSON</li>
+  <li>Boss chair and role-restricted seats</li>
+  <li>Spawn-point editing</li>
+  <li>Coordinate highlighting</li>
+  <li>Cell type highlighting</li>
+  <li>Furniture placement, rotation, delete, undo/redo</li>
+  <li>Touchpad zoom + pan for large offices</li>
+</ul>
 
-Built-in assets ship with the repo and are enough for out-of-the-box use.
+<h2>Office Assets</h2>
 
-Дополнительные ассеты можно подключать через external asset directories. Если у вас есть коммерческие tilesets, подключайте их отдельно и локально, не коммитьте их в публичный репозиторий без лицензии.
+<p>Встроенные assets входят в репозиторий и достаточны для первого запуска.</p>
 
-## Tech Stack
-- Node.js
-- Express
-- WebSocket (`ws`)
-- React 19
-- TypeScript
-- Vite
-- Canvas 2D rendering
-- `gh` CLI integration for optional issue tracking
+<p>Built-in assets ship with the repo and are enough for out-of-the-box use.</p>
 
-## Known Limitations
-- Codex support is basic and still needs refinement.
-- TASKS sidebar depends on `gh` authentication if you want live GitHub issues.
-- Pipeline progress is opt-in via config and is not inferred magically.
-- Claude and Codex session formats may evolve; parser updates will be needed over time.
-- The app is currently macOS-first because layout import/export and some launch flows use AppleScript-based helpers.
+<p>Основной встроенный набор лежит в <code>webview-ui/public/assets</code>: characters, floors, walls, furniture manifests, sprites и bundled default layout.</p>
 
-## Star History
-[![Star History Chart](https://api.star-history.com/svg?repos=percheniy/office-for-claude-agents&type=Date)](https://www.star-history.com/#percheniy/office-for-claude-agents&Date)
+<p>The main built-in pack lives in <code>webview-ui/public/assets</code>: characters, floors, walls, furniture manifests, sprites, and the bundled default layout.</p>
 
-## Credits
-- [pablodelucca/pixel-agents](https://github.com/pablodelucca/pixel-agents) by Pablo De Lucca
-- Roland Ligtenberg for standalone groundwork
-- Sergey Gridchin for public standalone additions, Codex support, task sidebar generalization, richer inspection, and release packaging
+<p>Дополнительные ассеты можно подключать через external asset directories. Если у вас есть коммерческие tilesets, подключайте их отдельно и локально, не коммитьте их в публичный репозиторий без лицензии.</p>
+
+<h2>Tech Stack</h2>
+
+<ul>
+  <li>Node.js</li>
+  <li>Express</li>
+  <li>WebSocket (<code>ws</code>)</li>
+  <li>React 19</li>
+  <li>TypeScript</li>
+  <li>Vite</li>
+  <li>Canvas 2D rendering</li>
+  <li><code>gh</code> CLI integration for optional issue tracking</li>
+</ul>
+
+<h2>Known Limitations</h2>
+
+<ul>
+  <li>Codex support is basic and still needs refinement.</li>
+  <li>TASKS sidebar depends on <code>gh</code> authentication if you want live GitHub issues.</li>
+  <li>Pipeline progress is opt-in via config and is not inferred magically.</li>
+  <li>Claude and Codex session formats may evolve; parser updates will be needed over time.</li>
+  <li>The app is currently macOS-first because layout import/export and some launch flows use AppleScript-based helpers.</li>
+</ul>
+
+<h2>Star History</h2>
+
+<a href="https://www.star-history.com/?repos=percheniy%2Foffice-for-claude-agents&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=percheniy/office-for-claude-agents&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=percheniy/office-for-claude-agents&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=percheniy/office-for-claude-agents&type=date&legend=top-left" />
+ </picture>
+</a>
+
+<h2>Credits</h2>
+
+<ul>
+  <li><a href="https://github.com/pablodelucca/pixel-agents">pablodelucca/pixel-agents</a> by Pablo De Lucca</li>
+  <li>Roland Ligtenberg for standalone groundwork</li>
+  <li>Sergey Gridchin for public standalone additions, Codex support, task sidebar generalization, richer inspection, and release packaging</li>
+</ul>
 
 <details>
-<summary>License</summary>
+  <summary>License</summary>
 
-This repository contains a mixed-license codebase.
+  <p>This repository contains code derived from or based on <code>pablodelucca/pixel-agents</code>.</p>
 
-- Upstream-origin and derivative portions remain under the MIT License.
-- Clearly marked Sergey-authored additions are licensed under the Sergey Source-Available Noncommercial License 1.0.
-- See `NOTICE`, `LICENSE-MIT-UPSTREAM`, and `LICENSE-SERGEY-ADDITIONS` for details.
+  <ul>
+    <li>Original upstream code remains under the MIT License.</li>
+    <li>Original copyright notices and license notices must be preserved.</li>
+    <li>Clearly marked files created by Sergey Gridchin are governed by the Sergey Source-Available Noncommercial License 1.0 as stated in the root <code>LICENSE</code> file.</li>
+    <li>That separate license applies only to clearly marked Sergey-authored additions, not to upstream-origin or derivative MIT-governed portions.</li>
+    <li>If this repository is a fork or substantial modification of <code>pixel-agents</code>, it is not legally safe to claim a stricter license for the whole repository in a way that removes rights already granted by MIT.</li>
+    <li>In case of conflict, the original upstream MIT License continues to govern all upstream portions and derivative portions that remain subject to that license.</li>
+  </ul>
 
+  <p>Short form:</p>
+
+  <pre><code>Licensing notice
+
+This repository includes code derived from or based on pablodelucca/pixel-agents.
+Original upstream code remains subject to its original MIT License, and all
+applicable copyright and license notices must be preserved.
+
+Unless otherwise stated in a file header, files originating from the upstream
+project or derived from it are provided under the MIT License.
+
+Files and materials clearly marked as:
+Copyright (c) 2026 Sergey Gridchin
+are licensed under the Sergey Source-Available Noncommercial License 1.0.
+
+In case of conflict, the original upstream MIT License continues to govern all
+upstream portions and derivative portions that remain subject to that license.
+</code></pre>
+
+  <p>See the root <code>LICENSE</code> file for the canonical text used in this repository.</p>
 </details>
