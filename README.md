@@ -120,17 +120,29 @@ YouTube: <a href="https://www.youtube.com/watch?v=seJ8nwOdRYA" target="_blank">h
 
 <h3>HUD — Метрики агентов / Agent Metrics Dashboard</h3>
 
+<p align="left">
+  <img src="docs/images/hud_metrics.png" width="920" alt="HUD — сводка метрик агентов" />
+</p>
+
 <p>Полноэкранная панель метрик: токены, стоимость, cache hit rate, context usage на каждого агента. Сортировка по любому столбцу. Предупреждения о bottleneck (низкий cache hit, высокий context fill).</p>
 
 <p>Full-screen metrics panel: tokens, cost estimates, cache hit rates, context usage per agent. Sort by any column. Bottleneck warnings for low cache hit and high context usage.</p>
 
 <h3>Визуализация команд / Team Visualization</h3>
 
+<p align="left">
+  <img src="docs/images/team_clusters.png" width="560" alt="Team Clusters — подсветка команд полигонами" />
+</p>
+
 <p>Кнопка "Show teams" рисует полигоны (33% прозрачность) вокруг команд и пунктирные линии от лида ко всем участникам. Автоматически определяет иерархию через цепочку parentAgentId.</p>
 
 <p>"Show teams" button draws convex hull polygons (33% opacity) around teams and dashed lines from team lead to all members. Auto-detects hierarchy via parentAgentId chain.</p>
 
 <h3>Трансляция офиса / Share Office</h3>
+
+<p align="left">
+  <img src="docs/images/share_office.png" width="560" alt="Share Office — временная ссылка для трансляции" />
+</p>
 
 <p>Кнопка Share генерирует временную ссылку (10 или 60 минут) для друзей и коллег. Режим "только просмотр": без кнопок управления, без Tasks. Поддержка публичного URL через SSH tunnel + relay сервер. На мобильных устройствах показывает уведомление "отображение доступно только с desktop".</p>
 
@@ -176,22 +188,15 @@ YouTube: <a href="https://www.youtube.com/watch?v=seJ8nwOdRYA" target="_blank">h
 
 <p>Automatically installs dependencies, builds the project, and opens the browser at <code>http://localhost:9876</code>.</p>
 
-<h3>Дополнительные команды / Additional commands</h3>
-
-<pre><code class="language-bash">npx office-for-claude-agents --daemon       # Фоновый режим / Background mode
-npx office-for-claude-agents status          # Статус сервера / Server status
-npx office-for-claude-agents stop            # Остановить / Stop server
-npx office-for-claude-agents --port 3456     # Кастомный порт / Custom port
-npx office-for-claude-agents --no-open       # Не открывать браузер / Skip browser
-</code></pre>
-
-<h3>Из исходников / From source</h3>
+<details>
+  <summary>Из исходников / From source</summary>
 
 <pre><code class="language-bash">git clone https://github.com/percheniy/office-for-claude-agents.git \
   &amp;&amp; cd office-for-claude-agents \
   &amp;&amp; npm install \
   &amp;&amp; npm start
 </code></pre>
+</details>
 
 <p>Откройте:</p>
 
