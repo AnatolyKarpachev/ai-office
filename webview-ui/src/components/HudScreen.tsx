@@ -71,7 +71,7 @@ function contextFillColor(pct: number): string {
 const overlayStyle: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
-  zIndex: 51,
+  zIndex: 200,
   background: 'rgba(0, 0, 0, 0.75)',
   display: 'flex',
   alignItems: 'flex-start',

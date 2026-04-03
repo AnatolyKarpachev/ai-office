@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { vscode } from '../vscodeApi.js'
 import { isSoundEnabled, setSoundEnabled, isDesktopNotificationsEnabled, setDesktopNotificationsEnabled } from '../notificationSound.js'
 
@@ -42,37 +42,6 @@ export function SettingsModal({
   const [soundLocal, setSoundLocal] = useState(isSoundEnabled)
   const [desktopNotifLocal, setDesktopNotifLocal] = useState(isDesktopNotificationsEnabled)
 
-  // Share link state
-  const [shareUrl, setShareUrl] = useState<string | null>(null)
-  const [shareExpiry, setShareExpiry] = useState<number>(0)
-
-  useEffect(() => {
-    const handler = (e: MessageEvent) => {
-      const msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-      if (msg.type === 'shareLinkCreated') {
-        setShareUrl(msg.url);
-        setShareExpiry(msg.expiresAt);
-      }
-      if (msg.type === 'shareLinkRevoked') {
-        setShareUrl(null);
-        setShareExpiry(0);
-      }
-    };
-    window.addEventListener('message', handler);
-    return () => window.removeEventListener('message', handler);
-  }, []);
-
-  // Countdown timer
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    if (!shareUrl) return;
-    const interval = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(interval);
-  }, [shareUrl]);
-  const remaining = Math.max(0, Math.ceil((shareExpiry - now) / 1000));
-  const minutes = Math.floor(remaining / 60);
-  const seconds = remaining % 60;
-
   if (!isOpen) return null
 
   return (
@@ -87,7 +56,7 @@ export function SettingsModal({
           width: '100%',
           height: '100%',
           background: 'rgba(0, 0, 0, 0.5)',
-          zIndex: 49,
+          zIndex: 190,
         }}
       />
       {/* Centered modal */}
@@ -97,7 +66,7 @@ export function SettingsModal({
           top: '50%',
           left: '50%',
           transform: 'translate(-50%, -50%)',
-          zIndex: 50,
+          zIndex: 191,
           background: 'var(--pixel-bg)',
           border: '2px solid var(--pixel-border)',
           borderRadius: 0,
@@ -291,69 +260,6 @@ export function SettingsModal({
             {showTeamLines ? 'X' : ''}
           </span>
         </button>
-        {/* Share Office section */}
-        <div style={{
-          borderTop: '1px solid var(--pixel-border)',
-          marginTop: 4,
-          paddingTop: 4,
-        }}>
-          <div style={{ padding: '4px 10px', fontSize: '18px', color: 'rgba(255,255,255,0.5)', marginBottom: 2 }}>
-            SHARE OFFICE
-          </div>
-          {shareUrl ? (
-            <div style={{ padding: '4px 10px' }}>
-              <div style={{ fontSize: '16px', color: 'var(--pixel-green)', wordBreak: 'break-all', marginBottom: 4 }}>
-                {shareUrl}
-              </div>
-              <div style={{ fontSize: '16px', color: 'rgba(255,255,255,0.6)', marginBottom: 4 }}>
-                Expires in {minutes}:{seconds.toString().padStart(2, '0')}
-              </div>
-              <div style={{ display: 'flex', gap: 4 }}>
-                <button
-                  onClick={() => { navigator.clipboard.writeText(shareUrl); }}
-                  style={{ ...menuItemBase, fontSize: '18px', flex: 1, justifyContent: 'center' }}
-                >
-                  Copy Link
-                </button>
-                <button
-                  onClick={() => { vscode.postMessage({ type: 'revokeShareLink', token: shareUrl.split('/').pop() }); }}
-                  style={{ ...menuItemBase, fontSize: '18px', flex: 1, justifyContent: 'center', color: '#e55' }}
-                >
-                  Revoke
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div style={{ display: 'flex', gap: 4, padding: '4px 10px' }}>
-              <button
-                onClick={() => vscode.postMessage({ type: 'createShareLink', durationMs: 600000 })}
-                onMouseEnter={() => setHovered('share-10')}
-                onMouseLeave={() => setHovered(null)}
-                style={{
-                  ...menuItemBase,
-                  flex: 1,
-                  justifyContent: 'center',
-                  background: hovered === 'share-10' ? 'rgba(255,255,255,0.08)' : 'transparent',
-                }}
-              >
-                10 min
-              </button>
-              <button
-                onClick={() => vscode.postMessage({ type: 'createShareLink', durationMs: 3600000 })}
-                onMouseEnter={() => setHovered('share-60')}
-                onMouseLeave={() => setHovered(null)}
-                style={{
-                  ...menuItemBase,
-                  flex: 1,
-                  justifyContent: 'center',
-                  background: hovered === 'share-60' ? 'rgba(255,255,255,0.08)' : 'transparent',
-                }}
-              >
-                60 min
-              </button>
-            </div>
-          )}
-        </div>
         <div
           style={{
             marginTop: '8px',
@@ -365,8 +271,14 @@ export function SettingsModal({
             maxWidth: 520,
           }}
         >
-          Claude CLI and Claude macOS app are supported. Codex agent rendering is available in a
-          basic form and will continue to evolve.
+          Проект поддерживается по личной инициативе и содержит баги, которые стараюсь оперативно
+          исправлять. Если вам понравилось, то лучшая благодарность это подписка на канал:{' '}
+          <a href="https://t.me/segagridchin" target="_blank" rel="noreferrer" style={{
+            color: 'var(--pixel-accent)',
+            textDecoration: 'none',
+          }}>
+            t.me/segagridchin
+          </a>
         </div>
       </div>
     </>

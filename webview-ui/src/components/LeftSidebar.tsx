@@ -375,15 +375,13 @@ export function LeftSidebar({
             }}
           >
             {f}
-            {f !== 'all' && filterCounts[f] > 0 && (
-              <span style={{
-                fontSize: '10px',
-                opacity: 0.5,
-                marginLeft: 1,
-              }}>
-                {filterCounts[f]}
-              </span>
-            )}
+            <span style={{
+              fontSize: '10px',
+              opacity: 0.5,
+              marginLeft: 1,
+            }}>
+              {filterCounts[f]}
+            </span>
           </button>
         ))}
       </div>
