@@ -155,6 +155,7 @@ interface LeftSidebarProps {
   onInspectAgent: (id: number) => void
   pipelineIssues: PipelineIssue[]
   serverMode?: string
+  isShareMode?: boolean
 }
 
 const sidebarStyle: React.CSSProperties = {
@@ -207,6 +208,7 @@ export function LeftSidebar({
   onInspectAgent,
   pipelineIssues,
   serverMode,
+  isShareMode,
 }: LeftSidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
   const [tasksCollapsed, setTasksCollapsed] = useState(false)
@@ -467,7 +469,7 @@ export function LeftSidebar({
       </div>
 
       {/* ───── Tasks Section (bottom) ───── */}
-      <div style={{
+      {!isShareMode && <div style={{
         borderTop: '2px solid var(--pixel-border)',
         background: 'rgba(255,255,255,0.03)',
         flex: tasksCollapsed ? '0 0 auto' : '1 1 0',
@@ -640,7 +642,7 @@ export function LeftSidebar({
             )}
           </div>
         )}
-      </div>
+      </div>}
     </div>
   )
 }

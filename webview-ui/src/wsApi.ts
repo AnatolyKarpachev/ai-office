@@ -8,6 +8,10 @@ function getShareToken(): string | null {
   return match ? match[1] : null;
 }
 
+export function isShareMode(): boolean {
+  return getShareToken() !== null;
+}
+
 let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 

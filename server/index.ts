@@ -423,7 +423,10 @@ app.get("/share/:token", (req, res) => {
     res.status(410).send("Share link expired or invalid");
     return;
   }
-  res.sendFile(join(__dirname, "public", "index.html"));
+  // Inject <base href="/"> so assets resolve from root, not relative to /share/TOKEN/
+  const html = readFileSync(join(__dirname, "public", "index.html"), "utf-8");
+  const patched = html.replace("<head>", '<head><base href="/">');
+  res.type("html").send(patched);
 });
 
 // Serve production build
@@ -464,7 +467,7 @@ function broadcast(msg: ServerMessage): void {
   }
 }
 
-function sendInitialData(ws: WebSocket): void {
+function sendInitialData(ws: WebSocket, isReadOnly = false): void {
   // Send settings (persisted from config)
   const cfg = getConfig();
   ws.send(JSON.stringify({
@@ -472,7 +475,7 @@ function sendInitialData(ws: WebSocket): void {
     soundEnabled: cfg.soundEnabled,
     desktopNotifications: cfg.desktopNotifications,
     externalAssetDirectories: cfg.externalAssetDirectories,
-    githubTasks: cfg.githubTasks,
+    githubTasks: isReadOnly ? { enabled: false, maxIssues: 0, pipeline: { enabled: false, states: [], gates: [] } } : cfg.githubTasks,
     serverMode: isDev ? "dev" : "prod",
   }));
 
@@ -502,8 +505,8 @@ function sendInitialData(ws: WebSocket): void {
     );
   }
 
-  // Send cached pipeline issues
-  if (cachedPipelineIssues.length > 0) {
+  // Send cached pipeline issues (not for share viewers — confidential)
+  if (!isReadOnly && cachedPipelineIssues.length > 0) {
     ws.send(JSON.stringify({ type: "pipelineIssues", issues: cachedPipelineIssues }));
   }
 
@@ -608,7 +611,7 @@ wss.on("connection", (ws, req) => {
         if (!allowedTypes.includes(msg.type)) return;
       }
       if (msg.type === "webviewReady" || msg.type === "ready") {
-        sendInitialData(ws);
+        sendInitialData(ws, !!(ws as any).__readOnly);
       } else if (msg.type === "saveLayout") {
         try {
           currentLayout = msg.layout as Record<string, unknown>;

@@ -849,9 +849,12 @@ function renderTeamLines(
   // Collect all descendants of a given root (including root itself)
   const collectDescendants = (rootId: number): number[] => {
     const result: number[] = []
+    const visited = new Set<number>()
     const stack = [rootId]
     while (stack.length > 0) {
       const cur = stack.pop()!
+      if (visited.has(cur)) continue
+      visited.add(cur)
       result.push(cur)
       const children = childMap.get(cur)
       if (children) {
@@ -876,8 +879,8 @@ function renderTeamLines(
   const leadColorMap = new Map<number, string>()
 
   const charCenter = (ch: Character) => ({
-    x: offsetX + ch.x * zoom + TILE_SIZE / 2 * zoom,
-    y: offsetY + ch.y * zoom + TILE_SIZE / 2 * zoom,
+    x: offsetX + ch.x * zoom,
+    y: offsetY + ch.y * zoom,
   })
 
   // Check if points are collinear (all on the same line)

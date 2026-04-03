@@ -4,6 +4,7 @@ import { HudScreen } from './components/HudScreen.js'
 import { LeftSidebar } from './components/LeftSidebar.js'
 import { RightSidebar } from './components/RightSidebar.js'
 import { ZoomControls } from './components/ZoomControls.js'
+import { isShareMode } from './wsApi.js'
 import { PULSE_ANIMATION_DURATION_SEC } from './constants.js'
 import { useEditorActions } from './hooks/useEditorActions.js'
 import { useEditorKeyboard } from './hooks/useEditorKeyboard.js'
@@ -317,6 +318,7 @@ function App() {
           pipelineIssues={pipelineIssues}
           githubTasks={githubTasks}
           serverMode={serverMode}
+          isShareMode={isShareMode()}
         />
       )}
 
