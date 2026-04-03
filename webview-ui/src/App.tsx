@@ -160,6 +160,7 @@ function App() {
   const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(false)
   const [showTeamLines, setShowTeamLines] = useState(false)
   const [isHudOpen, setIsHudOpen] = useState(false)
+  const shareMode = isShareMode()
 
   const hudAgentsMap = useMemo(() => {
     const os = getOfficeState()
@@ -354,29 +355,72 @@ function App() {
         }}
       />
 
-      <HudScreen
-        isOpen={isHudOpen}
-        onClose={() => setIsHudOpen(false)}
-        agents={hudAgentsMap}
-        agentStats={agentStats}
-        agentRoles={agentRoles}
-      />
+      {!shareMode && (
+        <HudScreen
+          isOpen={isHudOpen}
+          onClose={() => setIsHudOpen(false)}
+          agents={hudAgentsMap}
+          agentStats={agentStats}
+          agentRoles={agentRoles}
+        />
+      )}
 
-      <BottomToolbar
-        isEditMode={editor.isEditMode}
-        onToggleEditMode={editor.handleToggleEditMode}
-        onExportLayout={handleExportLayout}
-        onImportLayout={handleImportLayout}
-        alwaysShowOverlay={alwaysShowOverlay}
-        onToggleAlwaysShowOverlay={handleToggleAlwaysShowOverlay}
-        showTeamLines={showTeamLines}
-        onToggleShowTeamLines={() => setShowTeamLines(v => !v)}
-        onFitView={handleFitView}
-        isHudOpen={isHudOpen}
-        onToggleHud={() => setIsHudOpen((v) => !v)}
-      />
+      {shareMode ? (
+        <div style={{
+          position: 'absolute',
+          bottom: 10,
+          left: 10,
+          zIndex: 'var(--pixel-controls-z)' as any,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          background: 'var(--pixel-bg)',
+          border: '2px solid var(--pixel-border)',
+          borderRadius: 0,
+          padding: '4px 6px',
+          boxShadow: 'var(--pixel-shadow)',
+        }}>
+          <button
+            onClick={handleFitView}
+            style={{
+              padding: '5px 10px', fontSize: '24px', color: 'var(--pixel-text)',
+              background: 'var(--pixel-btn-bg)', border: '2px solid transparent',
+              borderRadius: 0, cursor: 'pointer',
+            }}
+            title="Fit office to view"
+          >
+            Fit
+          </button>
+          <button
+            onClick={() => setShowTeamLines(v => !v)}
+            style={{
+              padding: '5px 10px', fontSize: '24px', color: 'var(--pixel-text)',
+              background: showTeamLines ? 'var(--pixel-active-bg)' : 'var(--pixel-btn-bg)',
+              border: showTeamLines ? '2px solid var(--pixel-accent)' : '2px solid transparent',
+              borderRadius: 0, cursor: 'pointer',
+            }}
+            title="Show team group lines and clusters"
+          >
+            Show teams
+          </button>
+        </div>
+      ) : (
+        <BottomToolbar
+          isEditMode={editor.isEditMode}
+          onToggleEditMode={editor.handleToggleEditMode}
+          onExportLayout={handleExportLayout}
+          onImportLayout={handleImportLayout}
+          alwaysShowOverlay={alwaysShowOverlay}
+          onToggleAlwaysShowOverlay={handleToggleAlwaysShowOverlay}
+          showTeamLines={showTeamLines}
+          onToggleShowTeamLines={() => setShowTeamLines(v => !v)}
+          onFitView={handleFitView}
+          isHudOpen={isHudOpen}
+          onToggleHud={() => setIsHudOpen((v) => !v)}
+        />
+      )}
 
-      {editor.isEditMode && editor.isDirty && (
+      {!shareMode && editor.isEditMode && editor.isDirty && (
         <EditActionBar editor={editor} editorState={editorState} />
       )}
 
