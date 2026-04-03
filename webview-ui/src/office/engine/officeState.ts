@@ -1251,11 +1251,15 @@ export class OfficeState {
         ch.moveProgress = 0
       }
     } else {
-      // Cancel sofa target — active agent should head back to desk
+      // Cancel sofa/coffee/smoking targets — active agent should head back to desk
       if (ch.loungeTargetSeatId) {
         ch.loungeTargetSeatId = null
         // Don't clear path — WALK state will repath to seat after current step
       }
+      ch.coffeeBreakTimer = 0
+      ch.coffeeSpotTarget = null
+      ch.smokingBreakTimer = 0
+      ch.smokingSpotTarget = null
       // Ensure boss/lead agents return to role-restricted seat closest to team cluster
       const role = this.agentRoles.get(id)
       if (role && ch.seatId) {

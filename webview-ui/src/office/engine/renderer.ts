@@ -601,15 +601,26 @@ export function renderCoffeeCups(
   for (const ch of characters) {
     if (ch.coffeeBreakTimer <= 0) continue
     if (ch.matrixEffect) continue
+    if (ch.state === CharacterState.TYPE) continue // sitting — no cup
 
     const cached = getCachedSprite(cupSprite, zoom)
-
-    // Position the cup so the hand connects to the character's body
-    // Character anchor is at bottom-center (ch.x, ch.y), sprite is 16x24
-    // Hand pixels start at column 2 of the 11-wide sprite, align to character's right side
-    const cupX = Math.round(offsetX + (ch.x + 3) * zoom)
     const cupY = Math.round(offsetY + (ch.y - 18) * zoom)
-    ctx.drawImage(cached, cupX, cupY)
+
+    ctx.save()
+    if (ch.dir === 1) { // LEFT — mirror to left side
+      const leftX = Math.round(offsetX + (ch.x - 3) * zoom)
+      ctx.translate(leftX, 0)
+      ctx.scale(-1, 1)
+      ctx.drawImage(cached, -cached.width, cupY)
+    } else if (ch.dir === 3) { // UP — behind character
+      ctx.globalAlpha = 0.5
+      const cupX = Math.round(offsetX + (ch.x + 3) * zoom)
+      ctx.drawImage(cached, cupX, cupY - Math.round(2 * zoom))
+    } else { // RIGHT or DOWN
+      const cupX = Math.round(offsetX + (ch.x + 3) * zoom)
+      ctx.drawImage(cached, cupX, cupY)
+    }
+    ctx.restore()
   }
 }
 
@@ -628,11 +639,26 @@ export function renderSmoking(
   for (const ch of characters) {
     if (ch.smokingBreakTimer <= 0) continue
     if (ch.matrixEffect) continue
+    if (ch.state === CharacterState.TYPE) continue // sitting — no smoking
 
     const cached = getCachedSprite(smokeSprite, zoom)
-    const sx = Math.round(offsetX + (ch.x + 3) * zoom)
     const sy = Math.round(offsetY + (ch.y - 16) * zoom)
-    ctx.drawImage(cached, sx, sy)
+
+    ctx.save()
+    if (ch.dir === 1) { // LEFT — mirror to left side
+      const leftX = Math.round(offsetX + (ch.x - 3) * zoom)
+      ctx.translate(leftX, 0)
+      ctx.scale(-1, 1)
+      ctx.drawImage(cached, -cached.width, sy)
+    } else if (ch.dir === 3) { // UP — behind character
+      ctx.globalAlpha = 0.5
+      const sx = Math.round(offsetX + (ch.x + 3) * zoom)
+      ctx.drawImage(cached, sx, sy - Math.round(2 * zoom))
+    } else { // RIGHT or DOWN
+      const sx = Math.round(offsetX + (ch.x + 3) * zoom)
+      ctx.drawImage(cached, sx, sy)
+    }
+    ctx.restore()
   }
 }
 
