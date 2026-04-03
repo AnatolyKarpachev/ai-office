@@ -162,6 +162,32 @@ function App() {
   const [isHudOpen, setIsHudOpen] = useState(false)
   const shareMode = isShareMode()
 
+  // Mobile detection for share mode
+  const isMobile = typeof window !== 'undefined' && (
+    /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+    || (window.innerWidth <= 768)
+  )
+
+  if (shareMode && isMobile) {
+    return (
+      <div style={{
+        width: '100%', height: '100%',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexDirection: 'column', gap: 16, padding: 32,
+        background: 'var(--pixel-bg)', color: 'var(--pixel-text)',
+        fontFamily: 'inherit', textAlign: 'center',
+      }}>
+        <div style={{ fontSize: '48px' }}>🖥</div>
+        <div style={{ fontSize: '24px', maxWidth: 400 }}>
+          Отображение доступно только с desktop
+        </div>
+        <div style={{ fontSize: '18px', color: 'rgba(255,255,255,0.4)', maxWidth: 400 }}>
+          Откройте эту ссылку на компьютере для просмотра пиксельного офиса
+        </div>
+      </div>
+    )
+  }
+
   const hudAgentsMap = useMemo(() => {
     const os = getOfficeState()
     const map = new Map<number, { name: string; status: string }>()
