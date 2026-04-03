@@ -771,9 +771,12 @@ wss.on("connection", (ws, req) => {
         console.log(`[Server] Role override set: agent ${targetId} → "${newRole}"`);
       } else if (msg.type === "createShareLink") {
         if ((ws as any).__readOnly) return;
-        const host = (ws as any).__host || `localhost:${PORT}`;
+        const cfg = getConfig();
         const share = createShareToken(msg.durationMs as number);
-        const url = `http://${host}/share/${share.token}`;
+        const baseUrl = cfg.shareProxyUrl
+          ? cfg.shareProxyUrl.replace(/\/$/, "")
+          : `http://${(ws as any).__host || `localhost:${PORT}`}`;
+        const url = `${baseUrl}/share/${share.token}`;
         ws.send(JSON.stringify({
           type: "shareLinkCreated",
           token: share.token,
@@ -1455,19 +1458,14 @@ function startServer(retries = 1): void {
   server.on("error", (err: NodeJS.ErrnoException) => {
     if (err.code === "EADDRINUSE" && retries > 0) {
       console.log(`[Server] Port ${PORT} in use, killing existing process and retrying...`);
-      const pids = findPidsOnPort(PORT);
-      for (const pid of pids) {
-        if (pid === process.pid) continue;
-        try { process.kill(pid, "SIGTERM"); } catch {}
-      }
       setTimeout(() => {
-        server.close();
-        const newServer = createServer(app);
-        // Re-attach WebSocket to new server
-        newServer.listen(PORT, () => {
-          console.log(`Pixel Agents server running at http://localhost:${PORT} (after retry)`);
-        });
-      }, 1000);
+        const pids = findPidsOnPort(PORT);
+        for (const pid of pids) {
+          if (pid === process.pid) continue;
+          try { process.kill(pid, "SIGTERM"); } catch {}
+        }
+        setTimeout(() => startServer(retries - 1), 1500);
+      }, 500);
     } else {
       console.error(`[Server] Fatal error: ${err.message}`);
       process.exit(1);

@@ -272,6 +272,48 @@ export const LAMP_SPRITE: SpriteData = (() => {
   ]
 })()
 
+// ── Coffee Cup Sprites ─────────────────────────────────────────
+
+/** Coffee cup with steam (frame A): 8x10 */
+export const COFFEE_CUP_SPRITE_A: SpriteData = (() => {
+  const W = '#ffffff'  // white (steam)
+  const B = '#6b4226'  // brown (coffee)
+  const G = '#d4d4d4'  // gray (cup)
+  const D = '#a0a0a0'  // dark gray (cup shadow)
+  return [
+    [_, _, W, _, _, W, _, _],  // steam
+    [_, W, _, _, W, _, _, _],  // steam
+    [_, _, _, W, _, _, _, _],  // steam
+    [_, G, G, G, G, G, _, _],  // cup rim
+    [_, G, B, B, B, G, G, _],  // coffee + handle
+    [_, G, B, B, B, G, G, _],  // coffee + handle
+    [_, G, B, B, B, G, _, _],  // coffee
+    [_, G, G, G, G, G, _, _],  // cup bottom
+    [_, _, D, D, D, _, _, _],  // saucer
+    [_, D, D, D, D, D, _, _],  // saucer base
+  ]
+})()
+
+/** Coffee cup with steam (frame B — shifted steam): 8x10 */
+export const COFFEE_CUP_SPRITE_B: SpriteData = (() => {
+  const W = '#ffffff'  // white (steam)
+  const B = '#6b4226'  // brown (coffee)
+  const G = '#d4d4d4'  // gray (cup)
+  const D = '#a0a0a0'  // dark gray (cup shadow)
+  return [
+    [_, W, _, _, W, _, _, _],  // steam (shifted)
+    [_, _, W, _, _, W, _, _],  // steam (shifted)
+    [_, _, _, _, W, _, _, _],  // steam (shifted)
+    [_, G, G, G, G, G, _, _],  // cup rim
+    [_, G, B, B, B, G, G, _],  // coffee + handle
+    [_, G, B, B, B, G, G, _],  // coffee + handle
+    [_, G, B, B, B, G, _, _],  // coffee
+    [_, G, G, G, G, G, _, _],  // cup bottom
+    [_, _, D, D, D, _, _, _],  // saucer
+    [_, D, D, D, D, D, _, _],  // saucer base
+  ]
+})()
+
 // ── Speech Bubble Sprites ───────────────────────────────────────
 
 /** Permission bubble: white square with "..." in amber, and a tail pointer (11x13) */

@@ -188,7 +188,7 @@ export function BottomToolbar({
         }
         title="Show team group lines and clusters"
       >
-        Teams
+        Show teams
       </button>
     </div>
 

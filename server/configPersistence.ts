@@ -31,6 +31,7 @@ export interface PixelAgentsConfig {
   externalAssetDirectories: string[];
   githubTasks: GithubTasksConfig;
   daemons: DaemonConfig[];
+  shareProxyUrl: string;  // e.g., "https://gridchins.ru/office" — public URL for share links
 }
 
 export interface GithubTaskStateConfig {
@@ -60,6 +61,7 @@ const DEFAULT_CONFIG: PixelAgentsConfig = {
   desktopNotifications: false,
   externalAssetDirectories: [],
   daemons: [],
+  shareProxyUrl: "",
   githubTasks: {
     enabled: true,
     maxIssues: 30,
@@ -135,6 +137,7 @@ export function loadConfig(): PixelAgentsConfig {
         ? parsed.externalAssetDirectories.filter((d): d is string => typeof d === "string")
         : [],
       daemons: Array.isArray((parsed as any).daemons) ? (parsed as any).daemons : [],
+      shareProxyUrl: typeof (parsed as any).shareProxyUrl === "string" ? (parsed as any).shareProxyUrl : "",
       githubTasks: normalizeGithubTasksConfig(parsed.githubTasks),
     };
     return cachedConfig;

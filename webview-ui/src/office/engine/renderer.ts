@@ -1,7 +1,7 @@
 import { TileType, TILE_SIZE, CharacterState } from '../types.js'
 import type { TileType as TileTypeVal, FurnitureInstance, Character, SpriteData, Seat, FloorColor } from '../types.js'
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js'
-import { getCharacterSprites, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE } from '../sprites/spriteData.js'
+import { getCharacterSprites, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE, COFFEE_CUP_SPRITE_A, COFFEE_CUP_SPRITE_B } from '../sprites/spriteData.js'
 import { getCharacterSprite } from './characters.js'
 import { renderMatrixEffect } from './matrixEffect.js'
 import { getColorizedFloorSprite, hasFloorSprites, WALL_COLOR } from '../floorTiles.js'
@@ -585,6 +585,33 @@ export function renderRotateButton(
   return { cx, cy, radius }
 }
 
+// ── Coffee cup overlay ─────────────────────────────────────────
+
+export function renderCoffeeCups(
+  ctx: CanvasRenderingContext2D,
+  characters: Character[],
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  // Animate steam: toggle sprite frame every 0.5s using wall-clock time
+  const steamFrame = Math.floor(Date.now() / 500) % 2 === 0
+  const cupSprite = steamFrame ? COFFEE_CUP_SPRITE_A : COFFEE_CUP_SPRITE_B
+
+  for (const ch of characters) {
+    if (ch.coffeeBreakTimer <= 0) continue
+    if (ch.matrixEffect) continue
+
+    const cached = getCachedSprite(cupSprite, zoom)
+
+    // Position the cup to the right and slightly above the character's anchor point
+    // Character anchor is at bottom-center (ch.x, ch.y), sprite drawn from top-left
+    const cupX = Math.round(offsetX + (ch.x + 6) * zoom)
+    const cupY = Math.round(offsetY + (ch.y - 18) * zoom)
+    ctx.drawImage(cached, cupX, cupY)
+  }
+}
+
 // ── Speech bubbles ──────────────────────────────────────────────
 
 export function renderBubbles(
@@ -807,44 +834,143 @@ function renderTeamLines(
   const charById = new Map<number, Character>()
   for (const ch of characters) charById.set(ch.id, ch)
 
+  // Find the team lead: walk up parentAgentId chain to the topmost ancestor
+  const findTeamLead = (id: number): number => {
+    const seen = new Set<number>()
+    let cur = id
+    while (true) {
+      seen.add(cur)
+      const ch = charById.get(cur)
+      if (!ch || ch.parentAgentId == null || seen.has(ch.parentAgentId)) return cur
+      cur = ch.parentAgentId
+    }
+  }
+
+  // Collect all descendants of a given root (including root itself)
+  const collectDescendants = (rootId: number): number[] => {
+    const result: number[] = []
+    const stack = [rootId]
+    while (stack.length > 0) {
+      const cur = stack.pop()!
+      result.push(cur)
+      const children = childMap.get(cur)
+      if (children) {
+        for (const childId of children) stack.push(childId)
+      }
+    }
+    return result
+  }
+
+  // Group all agents by team lead
+  const teamsByLead = new Map<number, number[]>()
+  const visitedLeads = new Set<number>()
+  for (const [parentId] of childMap) {
+    const leadId = findTeamLead(parentId)
+    if (visitedLeads.has(leadId)) continue
+    visitedLeads.add(leadId)
+    teamsByLead.set(leadId, collectDescendants(leadId))
+  }
+
   const teamColors = ['#5ac88c', '#3794ff', '#a78bfa', '#ff9f43', '#e55', '#fc0']
   let colorIdx = 0
-  const parentColorMap = new Map<number, string>()
+  const leadColorMap = new Map<number, string>()
 
   const charCenter = (ch: Character) => ({
     x: offsetX + ch.x * zoom + TILE_SIZE / 2 * zoom,
     y: offsetY + ch.y * zoom + TILE_SIZE / 2 * zoom,
   })
 
-  // Pass 1: Draw cluster areas (filled convex hulls at 20% opacity)
-  ctx.save()
-  for (const [parentId, children] of childMap) {
-    const parentCh = charById.get(parentId)
-    if (!parentCh || parentCh.matrixEffect) continue
+  // Check if points are collinear (all on the same line)
+  const areCollinear = (pts: Array<{ x: number; y: number }>): boolean => {
+    if (pts.length <= 2) return true
+    const [a, b] = pts
+    for (let i = 2; i < pts.length; i++) {
+      const cross = (b.x - a.x) * (pts[i].y - a.y) - (b.y - a.y) * (pts[i].x - a.x)
+      if (Math.abs(cross) > 0.5) return false
+    }
+    return true
+  }
 
-    if (!parentColorMap.has(parentId)) {
-      parentColorMap.set(parentId, teamColors[colorIdx % teamColors.length])
+  // Draw a capsule between points
+  const drawCapsule = (pts: Array<{ x: number; y: number }>, color: string, padding: number) => {
+    ctx.globalAlpha = 0.33
+    ctx.fillStyle = color
+    for (const p of pts) {
+      ctx.beginPath()
+      ctx.arc(Math.round(p.x), Math.round(p.y), padding, 0, Math.PI * 2)
+      ctx.fill()
+    }
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p1 = pts[i], p2 = pts[i + 1]
+      const dx = p2.x - p1.x, dy = p2.y - p1.y
+      const len = Math.sqrt(dx * dx + dy * dy) || 1
+      const nx = (-dy / len) * padding, ny = (dx / len) * padding
+      ctx.beginPath()
+      ctx.moveTo(Math.round(p1.x + nx), Math.round(p1.y + ny))
+      ctx.lineTo(Math.round(p2.x + nx), Math.round(p2.y + ny))
+      ctx.lineTo(Math.round(p2.x - nx), Math.round(p2.y - ny))
+      ctx.lineTo(Math.round(p1.x - nx), Math.round(p1.y - ny))
+      ctx.closePath()
+      ctx.fill()
+    }
+  }
+
+  // Pass 1: Draw cluster areas (filled convex hulls at 0.33 opacity)
+  ctx.save()
+  for (const [leadId, members] of teamsByLead) {
+    if (!leadColorMap.has(leadId)) {
+      leadColorMap.set(leadId, teamColors[colorIdx % teamColors.length])
       colorIdx++
     }
-    const color = parentColorMap.get(parentId)!
+    const color = leadColorMap.get(leadId)!
 
-    // Collect all team member positions (parent + children)
-    const points: Array<{ x: number; y: number }> = [charCenter(parentCh)]
-    for (const childId of children) {
-      const childCh = charById.get(childId)
-      if (!childCh || childCh.matrixEffect) continue
-      points.push(charCenter(childCh))
+    // Collect all team member positions
+    const points: Array<{ x: number; y: number }> = []
+    for (const memberId of members) {
+      const ch = charById.get(memberId)
+      if (!ch || ch.matrixEffect) continue
+      points.push(charCenter(ch))
     }
 
-    if (points.length < 2) continue
+    if (points.length === 0) continue
 
-    // Expand hull by padding for visual area
     const padding = 12 * zoom
+
+    if (points.length === 1) {
+      // Single agent — draw a circle highlight
+      ctx.globalAlpha = 0.33
+      ctx.fillStyle = color
+      ctx.beginPath()
+      ctx.arc(Math.round(points[0].x), Math.round(points[0].y), padding, 0, Math.PI * 2)
+      ctx.fill()
+      // Dashed border
+      ctx.globalAlpha = 0.3
+      ctx.strokeStyle = color
+      ctx.lineWidth = Math.max(1, Math.round(zoom * 0.5))
+      ctx.setLineDash([Math.round(3 * zoom), Math.round(3 * zoom)])
+      ctx.beginPath()
+      ctx.arc(Math.round(points[0].x), Math.round(points[0].y), padding, 0, Math.PI * 2)
+      ctx.stroke()
+      continue
+    }
+
+    // Check for collinear edge case — use capsule fallback
+    if (areCollinear(points)) {
+      const [a] = points
+      const sorted = [...points].sort((p1, p2) => {
+        const d1 = (p1.x - a.x) * (p1.x - a.x) + (p1.y - a.y) * (p1.y - a.y)
+        const d2 = (p2.x - a.x) * (p2.x - a.x) + (p2.y - a.y) * (p2.y - a.y)
+        return d1 - d2
+      })
+      drawCapsule(sorted, color, padding)
+      continue
+    }
+
     const hull = convexHull(points)
 
     if (hull.length >= 3) {
       // Draw filled convex hull
-      ctx.globalAlpha = 0.2
+      ctx.globalAlpha = 0.33
       ctx.fillStyle = color
       ctx.beginPath()
       // Expand hull outward by padding
@@ -879,49 +1005,31 @@ function renderTeamLines(
       }
       ctx.closePath()
       ctx.stroke()
-    } else if (points.length === 2) {
-      // Just 2 members — draw a capsule-like area
-      const p1 = points[0], p2 = points[1]
-      ctx.globalAlpha = 0.2
-      ctx.fillStyle = color
-      ctx.beginPath()
-      ctx.arc(Math.round(p1.x), Math.round(p1.y), padding, 0, Math.PI * 2)
-      ctx.fill()
-      ctx.beginPath()
-      ctx.arc(Math.round(p2.x), Math.round(p2.y), padding, 0, Math.PI * 2)
-      ctx.fill()
-      // Connecting rectangle
-      const dx = p2.x - p1.x, dy = p2.y - p1.y
-      const len = Math.sqrt(dx * dx + dy * dy) || 1
-      const nx = (-dy / len) * padding, ny = (dx / len) * padding
-      ctx.beginPath()
-      ctx.moveTo(Math.round(p1.x + nx), Math.round(p1.y + ny))
-      ctx.lineTo(Math.round(p2.x + nx), Math.round(p2.y + ny))
-      ctx.lineTo(Math.round(p2.x - nx), Math.round(p2.y - ny))
-      ctx.lineTo(Math.round(p1.x - nx), Math.round(p1.y - ny))
-      ctx.closePath()
-      ctx.fill()
+    } else {
+      // Hull degenerate — draw capsule fallback
+      drawCapsule(points, color, padding)
     }
   }
 
-  // Pass 2: Draw connecting lines (parent → children)
+  // Pass 2: Draw connecting lines (lead → all members)
   ctx.globalAlpha = 0.3
   ctx.lineWidth = Math.max(1, Math.round(zoom * 0.5))
-  for (const [parentId, children] of childMap) {
-    const parentCh = charById.get(parentId)
-    if (!parentCh || parentCh.matrixEffect) continue
-    const color = parentColorMap.get(parentId)!
+  for (const [leadId, members] of teamsByLead) {
+    const leadCh = charById.get(leadId)
+    if (!leadCh || leadCh.matrixEffect) continue
+    const color = leadColorMap.get(leadId)!
     ctx.strokeStyle = color
     ctx.setLineDash([Math.round(3 * zoom), Math.round(3 * zoom)])
 
-    const pc = charCenter(parentCh)
-    for (const childId of children) {
-      const childCh = charById.get(childId)
-      if (!childCh || childCh.matrixEffect) continue
-      const cc = charCenter(childCh)
+    const lc = charCenter(leadCh)
+    for (const memberId of members) {
+      if (memberId === leadId) continue
+      const memberCh = charById.get(memberId)
+      if (!memberCh || memberCh.matrixEffect) continue
+      const mc = charCenter(memberCh)
       ctx.beginPath()
-      ctx.moveTo(Math.round(pc.x), Math.round(pc.y))
-      ctx.lineTo(Math.round(cc.x), Math.round(cc.y))
+      ctx.moveTo(Math.round(lc.x), Math.round(lc.y))
+      ctx.lineTo(Math.round(mc.x), Math.round(mc.y))
       ctx.stroke()
     }
   }
@@ -979,6 +1087,9 @@ export function renderFrame(
   const selectedId = selection?.selectedAgentId ?? null
   const hoveredId = selection?.hoveredAgentId ?? null
   renderScene(ctx, allFurniture, characters, offsetX, offsetY, zoom, selectedId, hoveredId)
+
+  // Coffee cup overlay (above characters, below bubbles)
+  renderCoffeeCups(ctx, characters, offsetX, offsetY, zoom)
 
   // Team group lines (between characters and bubbles)
   if (showTeamLines) {
