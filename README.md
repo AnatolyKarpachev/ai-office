@@ -110,15 +110,54 @@ YouTube: <a href="https://www.youtube.com/watch?v=seJ8nwOdRYA" target="_blank">h
   <li>Координата появления агентов и точка ухода учитываются в layout и рендере.</li>
   <li>Подсветка координат, подсветка типов ячеек и подписи агентов.</li>
   <li>Умное добавление имени агента по специальности.</li>
-  <li>Если агент простаивает, он может уйти отдыхать на софу; есть pause/idle визуал.</li>
+  <li>Если агент простаивает, он может уйти отдыхать на софу или пить кофе у кулера (50/50); есть pause/idle визуал с анимацией пара.</li>
   <li>Soft zoom через touchpad/pinch и плавный pan по canvas.</li>
+  <li>Кнопка Fit — авто-масштаб офиса между сайдбарами.</li>
   <li>Базовая поддержка Codex-сессий и subagents уже есть, но это ещё early version.</li>
 </ul>
+
+<h2>New Features</h2>
+
+<h3>HUD — Метрики агентов / Agent Metrics Dashboard</h3>
+
+<p>Полноэкранная панель метрик: токены, стоимость, cache hit rate, context usage на каждого агента. Сортировка по любому столбцу. Предупреждения о bottleneck (низкий cache hit, высокий context fill).</p>
+
+<p>Full-screen metrics panel: tokens, cost estimates, cache hit rates, context usage per agent. Sort by any column. Bottleneck warnings for low cache hit and high context usage.</p>
+
+<h3>Визуализация команд / Team Visualization</h3>
+
+<p>Кнопка "Show teams" рисует полигоны (33% прозрачность) вокруг команд и пунктирные линии от лида ко всем участникам. Автоматически определяет иерархию через цепочку parentAgentId.</p>
+
+<p>"Show teams" button draws convex hull polygons (33% opacity) around teams and dashed lines from team lead to all members. Auto-detects hierarchy via parentAgentId chain.</p>
+
+<h3>Трансляция офиса / Share Office</h3>
+
+<p>Кнопка Share генерирует временную ссылку (10 или 60 минут) для друзей и коллег. Режим "только просмотр": без кнопок управления, без Tasks. Поддержка публичного URL через SSH tunnel + relay сервер. На мобильных устройствах показывает уведомление "отображение доступно только с desktop".</p>
+
+<p>Share button generates a temporary link (10 or 60 minutes) for friends and colleagues. Read-only spectator mode: no admin controls, no Tasks sidebar. Public URL support via SSH tunnel + relay server. Mobile devices see a "desktop only" notice.</p>
+
+<h3>Уведомления / Desktop Notifications</h3>
+
+<p>Браузерные уведомления при запросе разрешения, завершении задачи, появлении нового агента. Включается в Settings.</p>
+
+<p>Browser notifications on permission request, task completion, new agent spawn. Toggle in Settings.</p>
+
+<h3>Multi-Daemon (экспериментально / experimental)</h3>
+
+<p>Подключение к удалённым серверам pixel-agents. Единый офис с namespace агентов. Настраивается через <code>~/.pixel-agents/config.json</code>.</p>
+
+<p>Connect to remote pixel-agents servers. Unified office view with agent ID namespacing. Configured via <code>~/.pixel-agents/config.json</code>.</p>
+
+<h3>Кроссплатформенность / Cross-Platform</h3>
+
+<p>Работает на macOS, Linux, Windows. AppleScript заменён на кроссплатформенные утилиты.</p>
+
+<p>Works on macOS, Linux, Windows. Replaced AppleScript with platform-agnostic utilities.</p>
 
 <h2>Requirements</h2>
 
 <ul>
-  <li>macOS with <code>Claude CLI</code> or <code>Claude macOS app</code></li>
+  <li><code>Claude CLI</code> or <code>Claude macOS app</code> (macOS, Linux, Windows)</li>
   <li>Node.js <code>20.19+</code></li>
   <li><code>npm</code></li>
   <li>Optional: GitHub CLI <code>gh</code> for the TASKS sidebar</li>
@@ -126,21 +165,33 @@ YouTube: <a href="https://www.youtube.com/watch?v=seJ8nwOdRYA" target="_blank">h
 
 <h2>Getting Started</h2>
 
-<p>Быстрый старт одной командой из любого места:</p>
+<p>Одна команда — и офис запущен:</p>
+
+<p>One command — office is running:</p>
+
+<pre><code class="language-bash">npx office-for-claude-agents
+</code></pre>
+
+<p>Автоматически установит зависимости, соберёт проект и откроет браузер на <code>http://localhost:9876</code>.</p>
+
+<p>Automatically installs dependencies, builds the project, and opens the browser at <code>http://localhost:9876</code>.</p>
+
+<h3>Дополнительные команды / Additional commands</h3>
+
+<pre><code class="language-bash">npx office-for-claude-agents --daemon       # Фоновый режим / Background mode
+npx office-for-claude-agents status          # Статус сервера / Server status
+npx office-for-claude-agents stop            # Остановить / Stop server
+npx office-for-claude-agents --port 3456     # Кастомный порт / Custom port
+npx office-for-claude-agents --no-open       # Не открывать браузер / Skip browser
+</code></pre>
+
+<h3>Из исходников / From source</h3>
 
 <pre><code class="language-bash">git clone https://github.com/percheniy/office-for-claude-agents.git \
   &amp;&amp; cd office-for-claude-agents \
   &amp;&amp; npm install \
   &amp;&amp; npm start
 </code></pre>
-
-<p>Если репозиторий уже клонирован и вы находитесь в его корне:</p>
-
-<pre><code class="language-bash">npm install
-npm start
-</code></pre>
-
-<p><code>webview-ui</code> зависимости подтягиваются автоматически на <code>npm install</code>, а <code>npm start</code> теперь сам делает build перед запуском сервера.</p>
 
 <p>Откройте:</p>
 
@@ -264,7 +315,7 @@ npm start
   <li>TASKS sidebar depends on <code>gh</code> authentication if you want live GitHub issues.</li>
   <li>Pipeline progress is opt-in via config and is not inferred magically.</li>
   <li>Claude and Codex session formats may evolve; parser updates will be needed over time.</li>
-  <li>The app is currently macOS-first because layout import/export and some launch flows use AppleScript-based helpers.</li>
+  <li>Share links require an SSH tunnel to a public server for external access; tokens are stored in memory and reset on server restart.</li>
 </ul>
 
 <h2>Star History</h2>
