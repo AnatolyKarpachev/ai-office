@@ -5,7 +5,7 @@ function getWsBase(): string {
   // Strip /share/TOKEN from pathname to get base path
   const basePath = window.location.pathname
     .replace(/\/share\/[^/]+$/, "")
-    .replace(/\/$/, "");
+    .replace(/\/?$/, "/");  // ensure trailing slash for nginx location matching
   return `${proto}//${window.location.host}${basePath}`;
 }
 
