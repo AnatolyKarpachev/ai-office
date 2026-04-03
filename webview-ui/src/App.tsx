@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BottomToolbar } from './components/BottomToolbar.js'
 import { HudScreen } from './components/HudScreen.js'
 import { LeftSidebar } from './components/LeftSidebar.js'
@@ -288,6 +288,16 @@ function App() {
     }
     return false
   })()
+
+  // Auto-fit view on initial layout load
+  const didAutoFit = useRef(false)
+  useEffect(() => {
+    if (layoutReady && !didAutoFit.current) {
+      didAutoFit.current = true
+      // Delay one frame so canvas has rendered at full size
+      requestAnimationFrame(() => handleFitView())
+    }
+  }, [layoutReady, handleFitView])
 
   if (!layoutReady) {
     return (

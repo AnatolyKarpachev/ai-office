@@ -104,15 +104,25 @@ YouTube: <a href="https://www.youtube.com/watch?v=seJ8nwOdRYA" target="_blank">h
 
 <p>Full-screen metrics panel: tokens, cost estimates, cache hit rates, context usage per agent. Sort by any column. Bottleneck warnings for low cache hit and high context usage.</p>
 
+<h3>Idle activities: sofa, coffee, smoking</h3>
+
+<p align="left">
+  <img src="docs/images/smoking_agent.png" width="400" alt="Курящий агент" />
+</p>
+
+<p>Простаивающие агенты выбирают одну из трёх активностей (33% каждая): отдых на софе, кофе у кулера или перекур. Каждая активность со своим спрайтом и анимацией.</p>
+
+<p>Idle agents pick one of three activities (33% each): sofa rest, coffee at the cooler, or a smoke break. Each has its own sprite and animation.</p>
+
 <h3>Визуализация команд / Team Visualization</h3>
 
 <p align="left">
-  <img src="docs/images/team_clusters.png" width="560" alt="Team Clusters — подсветка команд полигонами" />
+  <img src="docs/images/team_clusters.png" width="560" alt="Team Clusters — подсветка команд тайлами" />
 </p>
 
-<p>Кнопка "Show teams" рисует полигоны (33% прозрачность) вокруг команд и пунктирные линии от лида ко всем участникам. Автоматически определяет иерархию через цепочку parentAgentId.</p>
+<p>Кнопка "Show teams" рисует тайловые области с заливкой и сплошной толстой границей по внешнему периметру кластера. Автоматически определяет иерархию через цепочку parentAgentId. Convex hull объединяет всех участников команды в одну область.</p>
 
-<p>"Show teams" button draws convex hull polygons (33% opacity) around teams and dashed lines from team lead to all members. Auto-detects hierarchy via parentAgentId chain.</p>
+<p>"Show teams" button draws tile-based cluster areas with solid thick perimeter borders. Auto-detects hierarchy via parentAgentId chain. Convex hull unifies all team members into a single connected region.</p>
 
 <h3>Трансляция офиса / Share Office</h3>
 
@@ -145,7 +155,7 @@ YouTube: <a href="https://www.youtube.com/watch?v=seJ8nwOdRYA" target="_blank">h
 <h2>Features</h2>
 
 <ul>
-  <li>Кресло босса: его может занять только основной LEAD/BOSS агент.</li>
+  <li>Кресло босса: его может занять только BOSS/MEGABOSS агент. Lead и остальные садятся на обычные места.</li>
   <li>Строгая иерархия: агент, который вызвал другого агента, выше в иерархии.</li>
   <li>Кластерное поведение: агенты собираются рядом и визуально тянутся к связанным участникам работы.</li>
   <li>Левый сайдбар с агентами, их ролями, токенами, контекстом и статусами.</li>
@@ -158,7 +168,7 @@ YouTube: <a href="https://www.youtube.com/watch?v=seJ8nwOdRYA" target="_blank">h
   <li>Координата появления агентов и точка ухода учитываются в layout и рендере.</li>
   <li>Подсветка координат, подсветка типов ячеек и подписи агентов.</li>
   <li>Умное добавление имени агента по специальности.</li>
-  <li>Если агент простаивает, он может уйти отдыхать на софу или пить кофе у кулера (50/50); есть pause/idle визуал с анимацией пара.</li>
+  <li>Если агент простаивает, он может уйти на софу, пить кофе или курить (33/33/33); каждая активность со своим спрайтом и анимацией.</li>
   <li>Soft zoom через touchpad/pinch и плавный pan по canvas.</li>
   <li>Кнопка Fit — авто-масштаб офиса между сайдбарами.</li>
   <li>Базовая поддержка Codex-сессий и subagents уже есть, но это ещё early version.</li>

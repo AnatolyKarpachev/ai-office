@@ -17,6 +17,9 @@ import {
   COFFEE_BREAK_CHANCE,
   COFFEE_BREAK_MIN_SEC,
   COFFEE_BREAK_MAX_SEC,
+  SMOKING_BREAK_CHANCE,
+  SMOKING_BREAK_MIN_SEC,
+  SMOKING_BREAK_MAX_SEC,
 } from '../../constants.js'
 
 /** Tools that show reading animation instead of typing */
@@ -87,6 +90,8 @@ export function createCharacter(
     loungeTargetSeatId: null,
     coffeeSpotTarget: null,
     coffeeBreakTimer: 0,
+    smokingSpotTarget: null,
+    smokingBreakTimer: 0,
     leavingOffice: false,
   }
 }
@@ -158,7 +163,7 @@ function findFreeLoungeSeat(
 }
 
 /** Find a free tile adjacent to a cooler/vending machine for a coffee break. */
-function findFreeCoffeeSpot(
+export function findFreeCoffeeSpot(
   placedFurniture: PlacedFurniture[] | undefined,
   ch: Character,
   allCharacters: Map<number, Character> | undefined,
@@ -223,6 +228,45 @@ function findFreeCoffeeSpot(
     }
   }
   return best
+}
+
+/** Find a free walkable tile near the character for a smoking break (no furniture needed). */
+export function findFreeSmokingSpot(
+  ch: Character,
+  allCharacters: Map<number, Character> | undefined,
+  tileMap: TileTypeVal[][],
+  blockedTiles: Set<string>,
+  walkableTiles: Array<{ col: number; row: number }>,
+): { col: number; row: number } | null {
+  if (walkableTiles.length === 0) return null
+
+  // Build occupied set
+  const occupied = new Set<string>()
+  if (allCharacters) {
+    for (const other of allCharacters.values()) {
+      if (other.id === ch.id) continue
+      occupied.add(`${other.tileCol},${other.tileRow}`)
+      if (other.smokingSpotTarget) occupied.add(`${other.smokingSpotTarget.col},${other.smokingSpotTarget.row}`)
+      if (other.coffeeSpotTarget) occupied.add(`${other.coffeeSpotTarget.col},${other.coffeeSpotTarget.row}`)
+    }
+  }
+
+  // Find walkable spots 3-8 tiles away (Manhattan) from current position
+  const candidates: Array<{ col: number; row: number; dist: number }> = []
+  for (const t of walkableTiles) {
+    const d = Math.abs(t.col - ch.tileCol) + Math.abs(t.row - ch.tileRow)
+    if (d < 3 || d > 8) continue
+    const key = `${t.col},${t.row}`
+    if (occupied.has(key)) continue
+    if (!isWalkable(t.col, t.row, tileMap, blockedTiles)) continue
+    candidates.push({ col: t.col, row: t.row, dist: d })
+  }
+  if (candidates.length === 0) return null
+
+  // Pick a random candidate from the closest third
+  candidates.sort((a, b) => a.dist - b.dist)
+  const pick = candidates[Math.floor(Math.random() * Math.min(candidates.length, Math.ceil(candidates.length / 3)))]
+  return { col: pick.col, row: pick.row }
 }
 
 export function updateCharacter(
@@ -290,8 +334,9 @@ export function updateCharacter(
             }
           }
         }
-        // Coffee break: 50% chance to go to coffee spot instead of sofa
-        if (Math.random() < COFFEE_BREAK_CHANCE) {
+        // Pick idle activity: 33% coffee, 33% smoking, 33% sofa
+        const activityRoll = Math.random()
+        if (activityRoll < COFFEE_BREAK_CHANCE) {
           const coffeeSpot = findFreeCoffeeSpot(placedFurniture, ch, allCharacters, tileMap, blockedTiles)
           if (coffeeSpot) {
             const coffeePath = findPath(ch.tileCol, ch.tileRow, coffeeSpot.col, coffeeSpot.row, tileMap, blockedTiles)
@@ -305,8 +350,22 @@ export function updateCharacter(
               break
             }
           }
+        } else if (activityRoll < COFFEE_BREAK_CHANCE + SMOKING_BREAK_CHANCE) {
+          const smokingSpot = findFreeSmokingSpot(ch, allCharacters, tileMap, blockedTiles, walkableTiles)
+          if (smokingSpot) {
+            const smokingPath = findPath(ch.tileCol, ch.tileRow, smokingSpot.col, smokingSpot.row, tileMap, blockedTiles)
+            if (smokingPath.length > 0) {
+              ch.path = smokingPath
+              ch.moveProgress = 0
+              ch.state = CharacterState.WALK
+              ch.frame = 0
+              ch.frameTimer = 0
+              ch.smokingSpotTarget = smokingSpot
+              break
+            }
+          }
         }
-        // Immediately try to find a free sofa
+        // Sofa (fallback or 33% roll)
         const loungeTarget = findFreeLoungeSeat(seats, ch, allCharacters, tileMap, blockedTiles)
         if (loungeTarget) {
           const path = findPath(ch.tileCol, ch.tileRow, loungeTarget.seatCol, loungeTarget.seatRow, tileMap, blockedTiles)
@@ -320,7 +379,7 @@ export function updateCharacter(
             break
           }
         }
-        // No sofa available — wander
+        // No activity available — wander
         ch.wanderTimer = WANDER_PAUSE_MIN_SEC
         ch.wanderCount = 0
         ch.wanderLimit = randomInt(WANDER_MOVES_BEFORE_REST_MIN, WANDER_MOVES_BEFORE_REST_MAX)
@@ -337,7 +396,12 @@ export function updateCharacter(
         ch.coffeeBreakTimer -= dt
         if (ch.coffeeBreakTimer > 0) break // still on break
         ch.coffeeBreakTimer = 0
-        // Coffee break over — continue to normal idle logic
+      }
+      // Tick smoking break timer (standing and smoking)
+      if (ch.smokingBreakTimer > 0) {
+        ch.smokingBreakTimer -= dt
+        if (ch.smokingBreakTimer > 0) break // still on break
+        ch.smokingBreakTimer = 0
       }
       // If leaving office, do nothing — just wait for deletion
       if (ch.leavingOffice) break
@@ -402,8 +466,9 @@ export function updateCharacter(
               }
             }
           }
-          // Coffee break: 50% chance to go to coffee spot instead of sofa
-          if (Math.random() < COFFEE_BREAK_CHANCE) {
+          // Pick idle activity: 33% coffee, 33% smoking, 33% sofa
+          const actRoll = Math.random()
+          if (actRoll < COFFEE_BREAK_CHANCE) {
             const coffeeSpot = findFreeCoffeeSpot(placedFurniture, ch, allCharacters, tileMap, blockedTiles)
             if (coffeeSpot) {
               const coffeePath = findPath(ch.tileCol, ch.tileRow, coffeeSpot.col, coffeeSpot.row, tileMap, blockedTiles)
@@ -414,6 +479,20 @@ export function updateCharacter(
                 ch.frame = 0
                 ch.frameTimer = 0
                 ch.coffeeSpotTarget = coffeeSpot
+                break
+              }
+            }
+          } else if (actRoll < COFFEE_BREAK_CHANCE + SMOKING_BREAK_CHANCE) {
+            const smokingSpot = findFreeSmokingSpot(ch, allCharacters, tileMap, blockedTiles, walkableTiles)
+            if (smokingSpot) {
+              const smokingPath = findPath(ch.tileCol, ch.tileRow, smokingSpot.col, smokingSpot.row, tileMap, blockedTiles)
+              if (smokingPath.length > 0) {
+                ch.path = smokingPath
+                ch.moveProgress = 0
+                ch.state = CharacterState.WALK
+                ch.frame = 0
+                ch.frameTimer = 0
+                ch.smokingSpotTarget = smokingSpot
                 break
               }
             }
@@ -553,6 +632,18 @@ export function updateCharacter(
               break
             }
             ch.coffeeSpotTarget = null // missed, fall through
+          }
+          // Arrived at smoking spot — stand and smoke
+          if (ch.smokingSpotTarget) {
+            if (ch.tileCol === ch.smokingSpotTarget.col && ch.tileRow === ch.smokingSpotTarget.row) {
+              ch.state = CharacterState.IDLE
+              ch.frame = 0
+              ch.frameTimer = 0
+              ch.smokingBreakTimer = randomRange(SMOKING_BREAK_MIN_SEC, SMOKING_BREAK_MAX_SEC)
+              ch.smokingSpotTarget = null
+              break
+            }
+            ch.smokingSpotTarget = null // missed, fall through
           }
           // Check if arrived at a lounge seat (sofa/bench) — sit and chill
           if (ch.loungeTargetSeatId) {

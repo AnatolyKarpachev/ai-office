@@ -274,43 +274,90 @@ export const LAMP_SPRITE: SpriteData = (() => {
 
 // ── Coffee Cup Sprites ─────────────────────────────────────────
 
-/** Coffee cup with steam (frame A): 8x10 */
+/** Coffee cup with hand and steam (frame A): 11x10 */
 export const COFFEE_CUP_SPRITE_A: SpriteData = (() => {
   const W = '#ffffff'  // white (steam)
   const B = '#6b4226'  // brown (coffee)
   const G = '#d4d4d4'  // gray (cup)
   const D = '#a0a0a0'  // dark gray (cup shadow)
+  const S = '#e8b88a'  // skin (hand)
+  const H = '#d4a075'  // skin shadow (fingers)
   return [
-    [_, _, W, _, _, W, _, _],  // steam
-    [_, W, _, _, W, _, _, _],  // steam
-    [_, _, _, W, _, _, _, _],  // steam
-    [_, G, G, G, G, G, _, _],  // cup rim
-    [_, G, B, B, B, G, G, _],  // coffee + handle
-    [_, G, B, B, B, G, G, _],  // coffee + handle
-    [_, G, B, B, B, G, _, _],  // coffee
-    [_, G, G, G, G, G, _, _],  // cup bottom
-    [_, _, D, D, D, _, _, _],  // saucer
-    [_, D, D, D, D, D, _, _],  // saucer base
+    [_, _, _, _, _, W, _, _, W, _, _],  // steam
+    [_, _, _, _, W, _, _, W, _, _, _],  // steam
+    [_, _, _, _, _, _, W, _, _, _, _],  // steam
+    [_, _, _, _, G, G, G, G, G, _, _],  // cup rim
+    [_, _, S, S, G, B, B, B, G, G, _],  // hand + cup + handle
+    [_, _, H, S, G, B, B, B, G, G, _],  // fingers + cup + handle
+    [_, _, _, H, G, B, B, B, G, _, _],  // thumb + coffee
+    [_, _, _, _, G, G, G, G, G, _, _],  // cup bottom
+    [_, _, _, _, _, D, D, D, _, _, _],  // saucer
+    [_, _, _, _, D, D, D, D, D, _, _],  // saucer base
   ]
 })()
 
-/** Coffee cup with steam (frame B — shifted steam): 8x10 */
+/** Coffee cup with hand and steam (frame B — shifted steam): 11x10 */
 export const COFFEE_CUP_SPRITE_B: SpriteData = (() => {
   const W = '#ffffff'  // white (steam)
   const B = '#6b4226'  // brown (coffee)
   const G = '#d4d4d4'  // gray (cup)
   const D = '#a0a0a0'  // dark gray (cup shadow)
+  const S = '#e8b88a'  // skin (hand)
+  const H = '#d4a075'  // skin shadow (fingers)
   return [
-    [_, W, _, _, W, _, _, _],  // steam (shifted)
-    [_, _, W, _, _, W, _, _],  // steam (shifted)
-    [_, _, _, _, W, _, _, _],  // steam (shifted)
-    [_, G, G, G, G, G, _, _],  // cup rim
-    [_, G, B, B, B, G, G, _],  // coffee + handle
-    [_, G, B, B, B, G, G, _],  // coffee + handle
-    [_, G, B, B, B, G, _, _],  // coffee
-    [_, G, G, G, G, G, _, _],  // cup bottom
-    [_, _, D, D, D, _, _, _],  // saucer
-    [_, D, D, D, D, D, _, _],  // saucer base
+    [_, _, _, _, W, _, _, W, _, _, _],  // steam (shifted)
+    [_, _, _, _, _, W, _, _, W, _, _],  // steam (shifted)
+    [_, _, _, _, _, _, _, W, _, _, _],  // steam (shifted)
+    [_, _, _, _, G, G, G, G, G, _, _],  // cup rim
+    [_, _, S, S, G, B, B, B, G, G, _],  // hand + cup + handle
+    [_, _, H, S, G, B, B, B, G, G, _],  // fingers + cup + handle
+    [_, _, _, H, G, B, B, B, G, _, _],  // thumb + coffee
+    [_, _, _, _, G, G, G, G, G, _, _],  // cup bottom
+    [_, _, _, _, _, D, D, D, _, _, _],  // saucer
+    [_, _, _, _, D, D, D, D, D, _, _],  // saucer base
+  ]
+})()
+
+// ── Smoking Sprites ────────────────────────────────────────────
+
+/** Smoking with hand (frame A): 10x9 — hand holding cigarette with smoke */
+export const SMOKING_SPRITE_A: SpriteData = (() => {
+  const W = '#c8c8c8'  // smoke (light gray)
+  const S = '#e8b88a'  // skin
+  const H = '#d4a075'  // skin shadow
+  const C = '#f0f0e0'  // cigarette (white)
+  const F = '#ff6633'  // ember (orange)
+  const A = '#888888'  // ash
+  return [
+    [_, _, _, _, _, _, _, W, _, _],  // smoke
+    [_, _, _, _, _, _, W, _, W, _],  // smoke
+    [_, _, _, _, _, _, _, W, _, _],  // smoke
+    [_, _, _, _, _, _, _, _, _, _],
+    [_, _, S, S, H, _, _, _, _, _],  // hand
+    [_, _, H, S, C, C, C, F, _, _],  // fingers + cigarette + ember
+    [_, _, _, H, _, A, _, _, _, _],  // thumb + ash falling
+    [_, _, _, _, _, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _],
+  ]
+})()
+
+/** Smoking with hand (frame B — shifted smoke): 10x9 */
+export const SMOKING_SPRITE_B: SpriteData = (() => {
+  const W = '#c8c8c8'  // smoke
+  const S = '#e8b88a'  // skin
+  const H = '#d4a075'  // skin shadow
+  const C = '#f0f0e0'  // cigarette
+  const F = '#ff6633'  // ember
+  return [
+    [_, _, _, _, _, _, W, _, W, _],  // smoke (shifted)
+    [_, _, _, _, _, _, _, W, _, _],  // smoke (shifted)
+    [_, _, _, _, _, _, W, _, _, _],  // smoke (shifted)
+    [_, _, _, _, _, _, _, _, _, _],
+    [_, _, S, S, H, _, _, _, _, _],  // hand
+    [_, _, H, S, C, C, C, F, _, _],  // fingers + cigarette + ember
+    [_, _, _, H, _, _, _, _, _, _],  // thumb
+    [_, _, _, _, _, _, _, _, _, _],
+    [_, _, _, _, _, _, _, _, _, _],
   ]
 })()
 

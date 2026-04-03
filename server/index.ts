@@ -82,7 +82,17 @@ function buildAgentRoleMessage(agent: TrackedAgent): ServerMessage {
     };
   }
   const isSubagent = !!agent.parentSessionId;
-  const { displayRole, colors } = resolveDisplayRole(agent.agentSetting, agent.agentDescription, isSubagent);
+  let { displayRole, colors } = resolveDisplayRole(agent.agentSetting, agent.agentDescription, isSubagent);
+  // Only one boss allowed — if another boss already exists, cap at "lead"
+  if (displayRole === "boss") {
+    for (const [, other] of agents) {
+      if (other.id !== agent.id && other.role === "boss") {
+        displayRole = "lead";
+        colors = getRoleColors("lead");
+        break;
+      }
+    }
+  }
   return {
     type: "agentRole",
     id: agent.id,
@@ -127,6 +137,55 @@ function onAgentStatsUpdate(agent: TrackedAgent): void {
   syncRoleAndBroadcast(agent);
   // Resolve team parent-child relationships
   resolveTeamParent(agent);
+  // Fallback: link orphan agents (no team, no parent) to nearest top-level session
+  resolveOrphanParent(agent);
+}
+
+/** Link orphan agents to nearest top-level session.
+ *  Two modes:
+ *  - Top-level agent: adopt existing orphaned subagents
+ *  - Subagent with dead parent: find a living top-level agent */
+function resolveOrphanParent(agent: TrackedAgent): void {
+  if (agent.teamName) return;
+
+  // If agent has a parent, check it's still alive
+  if (agent.parentAgentId !== undefined) {
+    const parentAlive = [...agents.values()].some(a => a.id === agent.parentAgentId);
+    if (parentAlive) return;
+    console.log(`[orphan] ${agent.projectName} (${agent.id}): parent ${agent.parentAgentId} gone, clearing`);
+    agent.parentAgentId = undefined;
+  }
+
+  // Top-level agent (no parentSessionId) → adopt orphaned subagents
+  if (!agent.parentSessionId) {
+    for (const [, other] of agents) {
+      if (other.id === agent.id || other.teamName || other.provider !== agent.provider) continue;
+      if (!other.parentSessionId) continue; // skip other top-level agents
+      // Check if this subagent has a dead/missing parent
+      if (other.parentAgentId !== undefined) {
+        const alive = [...agents.values()].some(a => a.id === other.parentAgentId);
+        if (alive) continue;
+        other.parentAgentId = undefined;
+      }
+      if (other.parentAgentId === undefined) {
+        other.parentAgentId = agent.id;
+        broadcast({ type: "agentCreated", id: other.id, folderName: other.projectName, parentAgentId: agent.id });
+        console.log(`[orphan] adopted ${other.projectName} (${other.id}) → parent ${agent.projectName} (${agent.id})`);
+      }
+    }
+    return;
+  }
+
+  // Subagent (has parentSessionId) with no live parent → find top-level agent
+  for (const [, other] of agents) {
+    if (other.id === agent.id || other.teamName || other.provider !== agent.provider) continue;
+    if (other.parentSessionId || other.parentAgentId !== undefined) continue;
+
+    agent.parentAgentId = other.id;
+    broadcast({ type: "agentCreated", id: agent.id, folderName: agent.projectName, parentAgentId: other.id });
+    console.log(`[orphan] ${agent.projectName} (${agent.id}) → parent ${other.projectName} (${other.id})`);
+    break;
+  }
 }
 
 /** Link teammate agents to their team lead, and team leads to their spawner */
@@ -829,13 +888,15 @@ wss.on("connection", (ws, req) => {
           }
         }
         const hierarchy = [
-          { name: "pipeDebate",    role: "boss",          parent: -1, model: "claude-opus-4-6",    tokens: [15000, 8000], useRootParent: true },
+          { name: "pipeDebate",    role: "lead",          parent: -1, model: "claude-opus-4-6",    tokens: [15000, 8000], useRootParent: true },
           { name: "advocate-cur",  role: "Code Reviewer", parent: 0,  model: "claude-opus-4-6",    tokens: [12000, 6000] },
           { name: "advocate-auto", role: "Explore",       parent: 0,  model: "claude-opus-4-6",    tokens: [9000, 4500] },
           { name: "judge",         role: "Plan",          parent: 0,  model: "claude-opus-4-6",    tokens: [18000, 9000] },
           { name: "codeExplorer",  role: "Explore",       parent: 1,  model: "claude-sonnet-4-6",  tokens: [4000, 2000] },
           { name: "testRunner",    role: "test-runner",   parent: 1,  model: "claude-sonnet-4-6",  tokens: [3000, 1500] },
-        ] as Array<{ name: string; role: string; parent: number; model: string; tokens: number[]; useRootParent?: boolean }>;
+          { name: "cofehleb",      role: "worker",        parent: 0,  model: "claude-opus-4-6",    tokens: [6000, 3000], coffee: true },
+          { name: "kurilshik",    role: "worker",        parent: 0,  model: "claude-opus-4-6",    tokens: [5000, 2500], smoke: true },
+        ] as Array<{ name: string; role: string; parent: number; model: string; tokens: number[]; useRootParent?: boolean; coffee?: boolean; smoke?: boolean }>;
 
         const ids = hierarchy.map(() => nextAgentId++);
         console.log(`[Server] Spawning ${ids.length} test agents (4-level hierarchy, staggered)`);
@@ -855,9 +916,16 @@ wss.on("connection", (ws, req) => {
               cacheHitRate: Math.floor(Math.random() * 40) + 10,
             });
             broadcast({ type: "agentRole", id, role: h.role, autoDetected: true, colors: getRoleColors(h.role) });
+            // Force coffee break after a short delay (agent needs to finish walking to seat first)
+            if (h.coffee || h.smoke) {
+              setTimeout(() => {
+                broadcast({ type: "agentStatus", id, status: "waiting" });
+                broadcast({ type: h.coffee ? "forceCoffee" : "forceSmoke", id });
+              }, 3000);
+            }
             testAgentIds.add(id);
             testAgentData.set(id, { folderName: h.name, role: h.role, parentAgentId: parentId, model: h.model });
-            console.log(`  Test agent ${id}: ${h.name} (${h.role})${parentId ? ` [sub of ${parentId}]` : ""}`);
+            console.log(`  Test agent ${id}: ${h.name} (${h.role})${parentId ? ` [sub of ${parentId}]` : ""}${h.coffee ? " ☕" : ""}${h.smoke ? " 🚬" : ""}`);
           }, i * 800);
         }
       } else if (msg.type === "addDaemon") {
@@ -1201,6 +1269,8 @@ function handleFileAdded(file: WatchedFile): void {
   agent.role = displayRole;
 
   agents.set(agent.key, agent);
+  // Resolve orphan parents (dead parent from previous session, or no parent at all)
+  resolveOrphanParent(agent);
   broadcast({
     type: "agentCreated",
     id: agent.id,

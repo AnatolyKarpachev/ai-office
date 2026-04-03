@@ -22,7 +22,7 @@ import {
   TEAM_MAX_DEPTH,
 } from '../../constants.js'
 import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture } from '../types.js'
-import { createCharacter, updateCharacter } from './characters.js'
+import { createCharacter, updateCharacter, findFreeCoffeeSpot, findFreeSmokingSpot } from './characters.js'
 import { matrixEffectSeeds } from './matrixEffect.js'
 import { isWalkable, getWalkableTiles, findPath, bfsDistanceMap } from '../layout/tileMap.js'
 import {
@@ -764,7 +764,7 @@ export class OfficeState {
       }
     }
 
-    if (!seatId && preferredSeatId && this.claimSeat(preferredSeatId)) {
+    if (!seatId && preferredSeatId && parentAgentId === undefined && this.claimSeat(preferredSeatId)) {
       seatId = preferredSeatId
     }
     if (!seatId && parentAgentId !== undefined) {
@@ -912,6 +912,91 @@ export class OfficeState {
       ch.frameTimer = 0
       if (!ch.isActive) {
         ch.seatTimer = INACTIVE_SEAT_TIMER_MIN_SEC + Math.random() * INACTIVE_SEAT_TIMER_RANGE_SEC
+      }
+    }
+  }
+
+  /** Reassign a child agent's seat to be near its parent (called on late parent resolution) */
+  reassignNearParent(agentId: number, parentAgentId: number): void {
+    const ch = this.characters.get(agentId)
+    if (!ch) return
+    const parentCh = this.characters.get(parentAgentId)
+    if (!parentCh) return
+
+    // Vacate current seat
+    if (ch.seatId) {
+      const old = this.seats.get(ch.seatId)
+      if (old) old.assigned = false
+      ch.seatId = null
+    }
+
+    // Find best seat near parent using cluster scoring
+    const newSeatId = this.findFreeSeatNear(parentAgentId, agentId) ?? this.findFreeSeat(agentId)
+    if (!newSeatId || !this.claimSeat(newSeatId)) return
+
+    ch.seatId = newSeatId
+    this.sendToSeat(agentId)
+  }
+
+  /** Post-load sweep: reassign child agents to seats nearer their parent's cluster.
+   *  Only moves an agent if a significantly better seat exists (>30% score improvement).
+   *  Called after initial load, after enforceRoleSeats(). */
+  enforceTeamClusters(): void {
+    const children: Array<{ id: number; parentAgentId: number; priority: number }> = []
+    for (const ch of this.characters.values()) {
+      if (ch.parentAgentId == null || ch.matrixEffect === 'despawn') continue
+      const info = this.getAgentPriority(ch.id)
+      children.push({ id: ch.id, parentAgentId: ch.parentAgentId, priority: info.priority })
+    }
+    children.sort((a, b) => a.priority - b.priority)
+
+    for (const { id, parentAgentId } of children) {
+      const ch = this.characters.get(id)
+      if (!ch || !ch.seatId) continue
+      const parentCh = this.characters.get(parentAgentId)
+      if (!parentCh) continue
+
+      // Score current seat
+      const currentSeat = this.seats.get(ch.seatId)
+      if (!currentSeat) continue
+      const { chainRoot } = this.getAgentPriority(parentAgentId)
+      const cluster = this.getClusterCentroid(chainRoot)
+      const teammates = cluster.members.map(m => ({ col: m.col, row: m.row }))
+      const parentSeat = parentCh.seatId ? this.seats.get(parentCh.seatId) : null
+      const parentCol = parentSeat ? parentSeat.seatCol : parentCh.tileCol
+      const parentRow = parentSeat ? parentSeat.seatRow : parentCh.tileRow
+      const priority = this.getAgentPriority(id).priority
+      const currentScore = this.scoreClusterSeat(
+        currentSeat, parentCol, parentRow, cluster.col, cluster.row, priority, teammates,
+      )
+
+      // Find best alternative seat
+      let bestUid: string | null = null
+      let bestScore = Infinity
+      for (const [uid, seat] of this.seats) {
+        if (uid === ch.seatId) continue
+        if (seat.assigned || seat.isLounge || this.isSeatClaimed(uid, id)) continue
+        if (!this.canSitInSeat(seat, id)) continue
+        const s = this.scoreClusterSeat(
+          seat, parentCol, parentRow, cluster.col, cluster.row, priority, teammates,
+        )
+        if (s < bestScore) { bestScore = s; bestUid = uid }
+      }
+
+      // Only move if improvement is significant (>30% better)
+      if (bestUid && bestScore < currentScore * 0.9) {
+        currentSeat.assigned = false
+        ch.seatId = null
+        if (this.claimSeat(bestUid)) {
+          ch.seatId = bestUid
+          // Snap to new seat (initial load — no walk animation)
+          const newSeat = this.seats.get(bestUid)!
+          ch.tileCol = newSeat.seatCol
+          ch.tileRow = newSeat.seatRow
+          ch.x = newSeat.seatCol * TILE_SIZE + TILE_SIZE / 2
+          ch.y = newSeat.seatRow * TILE_SIZE + TILE_SIZE / 2
+          ch.dir = newSeat.facingDir
+        }
       }
     }
   }
@@ -1326,6 +1411,44 @@ export class OfficeState {
     if (ch) {
       ch.bubbleType = 'waiting'
       ch.bubbleTimer = WAITING_BUBBLE_DURATION_SEC
+    }
+  }
+
+  /** Force an agent to go on a coffee break immediately */
+  forceCoffeeBreak(id: number): void {
+    const ch = this.characters.get(id)
+    if (!ch) return
+    const coffeeSpot = findFreeCoffeeSpot(
+      this.getLayout().furniture, ch, this.characters, this.tileMap, this.blockedTiles,
+    )
+    if (!coffeeSpot) return
+    const path = findPath(ch.tileCol, ch.tileRow, coffeeSpot.col, coffeeSpot.row, this.tileMap, this.blockedTiles)
+    if (path.length > 0) {
+      ch.path = path
+      ch.moveProgress = 0
+      ch.state = CharacterState.WALK
+      ch.frame = 0
+      ch.frameTimer = 0
+      ch.coffeeSpotTarget = coffeeSpot
+      ch.isActive = false
+    }
+  }
+
+  /** Force an agent to go on a smoking break immediately */
+  forceSmokingBreak(id: number): void {
+    const ch = this.characters.get(id)
+    if (!ch) return
+    const spot = findFreeSmokingSpot(ch, this.characters, this.tileMap, this.blockedTiles, this.walkableTiles)
+    if (!spot) return
+    const path = findPath(ch.tileCol, ch.tileRow, spot.col, spot.row, this.tileMap, this.blockedTiles)
+    if (path.length > 0) {
+      ch.path = path
+      ch.moveProgress = 0
+      ch.state = CharacterState.WALK
+      ch.frame = 0
+      ch.frameTimer = 0
+      ch.smokingSpotTarget = spot
+      ch.isActive = false
     }
   }
 

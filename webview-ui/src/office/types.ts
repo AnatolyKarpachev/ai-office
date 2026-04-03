@@ -224,6 +224,10 @@ export interface Character {
   coffeeSpotTarget?: { col: number; row: number } | null
   /** Remaining time for coffee break at the spot */
   coffeeBreakTimer: number
+  /** Target tile for smoking break */
+  smokingSpotTarget?: { col: number; row: number } | null
+  /** Remaining time for smoking break */
+  smokingBreakTimer: number
   /** Whether the character is walking toward the entrance to leave the office */
   leavingOffice: boolean
 }

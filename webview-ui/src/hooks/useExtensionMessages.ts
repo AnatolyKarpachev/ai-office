@@ -226,13 +226,29 @@ export function useExtensionMessages(
           // Default layout — snapshot whatever OfficeState built
           onLayoutLoaded?.(os.getLayout())
         }
+        // Topological sort: parents before children so findFreeSeatNear() finds parent character
+        const pendingIds = new Set(pendingAgents.map(p => p.id))
+        const sorted: typeof pendingAgents = []
+        const visited = new Set<number>()
+        const visit = (p: typeof pendingAgents[0]) => {
+          if (visited.has(p.id)) return
+          visited.add(p.id)
+          if (p.parentAgentId !== undefined && pendingIds.has(p.parentAgentId)) {
+            const parent = pendingAgents.find(q => q.id === p.parentAgentId)
+            if (parent) visit(parent)
+          }
+          sorted.push(p)
+        }
+        for (const p of pendingAgents) visit(p)
         // Existing agents restore instantly (they teleport to saved seats)
-        for (const p of pendingAgents) {
+        for (const p of sorted) {
           os.addAgent(p.id, p.palette, p.hueShift, p.seatId, true, p.folderName, p.parentAgentId)
         }
         pendingAgents = []
         // Force-sweep: ensure all boss/lead agents sit in role-restricted seats
         os.enforceRoleSeats()
+        // Cluster sweep: reassign children to seats nearer their parent
+        os.enforceTeamClusters()
         layoutReadyRef.current = true
         setLayoutReady(true)
         if (msg.wasReset) {
@@ -250,6 +266,9 @@ export function useExtensionMessages(
           // Update existing agent with new parent (team resolution)
           existing.parentAgentId = parentAgentId
           existing.isSubagent = true
+          // Reassign seat near the newly resolved parent
+          os.reassignNearParent(id, parentAgentId)
+          saveAgentSeats(os)
         } else if (!existing) {
           setAgents((prev) => (prev.includes(id) ? prev : [...prev, id]))
           setSelectedAgent(id)
@@ -401,6 +420,12 @@ export function useExtensionMessages(
         if (status === 'waiting') {
           os.showWaitingBubble(id)
         }
+      } else if (msg.type === 'forceCoffee') {
+        const id = msg.id as number
+        os.forceCoffeeBreak(id)
+      } else if (msg.type === 'forceSmoke') {
+        const id = msg.id as number
+        os.forceSmokingBreak(id)
       } else if (msg.type === 'agentToolPermission') {
         const id = msg.id as number
         setAgentTools((prev) => {

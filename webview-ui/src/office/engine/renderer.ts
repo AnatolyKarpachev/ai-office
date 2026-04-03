@@ -1,7 +1,7 @@
 import { TileType, TILE_SIZE, CharacterState } from '../types.js'
 import type { TileType as TileTypeVal, FurnitureInstance, Character, SpriteData, Seat, FloorColor } from '../types.js'
 import { getCachedSprite, getOutlineSprite } from '../sprites/spriteCache.js'
-import { getCharacterSprites, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE, COFFEE_CUP_SPRITE_A, COFFEE_CUP_SPRITE_B } from '../sprites/spriteData.js'
+import { getCharacterSprites, BUBBLE_PERMISSION_SPRITE, BUBBLE_WAITING_SPRITE, COFFEE_CUP_SPRITE_A, COFFEE_CUP_SPRITE_B, SMOKING_SPRITE_A, SMOKING_SPRITE_B } from '../sprites/spriteData.js'
 import { getCharacterSprite } from './characters.js'
 import { renderMatrixEffect } from './matrixEffect.js'
 import { getColorizedFloorSprite, hasFloorSprites, WALL_COLOR } from '../floorTiles.js'
@@ -604,11 +604,35 @@ export function renderCoffeeCups(
 
     const cached = getCachedSprite(cupSprite, zoom)
 
-    // Position the cup to the right and slightly above the character's anchor point
-    // Character anchor is at bottom-center (ch.x, ch.y), sprite drawn from top-left
-    const cupX = Math.round(offsetX + (ch.x + 6) * zoom)
+    // Position the cup so the hand connects to the character's body
+    // Character anchor is at bottom-center (ch.x, ch.y), sprite is 16x24
+    // Hand pixels start at column 2 of the 11-wide sprite, align to character's right side
+    const cupX = Math.round(offsetX + (ch.x + 3) * zoom)
     const cupY = Math.round(offsetY + (ch.y - 18) * zoom)
     ctx.drawImage(cached, cupX, cupY)
+  }
+}
+
+// ── Smoking overlay ───────────────────────────────────────────
+
+export function renderSmoking(
+  ctx: CanvasRenderingContext2D,
+  characters: Character[],
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  const smokeFrame = Math.floor(Date.now() / 600) % 2 === 0
+  const smokeSprite = smokeFrame ? SMOKING_SPRITE_A : SMOKING_SPRITE_B
+
+  for (const ch of characters) {
+    if (ch.smokingBreakTimer <= 0) continue
+    if (ch.matrixEffect) continue
+
+    const cached = getCachedSprite(smokeSprite, zoom)
+    const sx = Math.round(offsetX + (ch.x + 3) * zoom)
+    const sy = Math.round(offsetY + (ch.y - 16) * zoom)
+    ctx.drawImage(cached, sx, sy)
   }
 }
 
@@ -829,8 +853,6 @@ function renderTeamLines(
       childMap.set(ch.parentAgentId, siblings)
     }
   }
-  if (childMap.size === 0) return
-
   const charById = new Map<number, Character>()
   for (const ch of characters) charById.set(ch.id, ch)
 
@@ -872,6 +894,18 @@ function renderTeamLines(
     if (visitedLeads.has(leadId)) continue
     visitedLeads.add(leadId)
     teamsByLead.set(leadId, collectDescendants(leadId))
+  }
+
+  // Solo agents (no parent, no children) are their own team of one
+  const assignedIds = new Set<number>()
+  for (const members of teamsByLead.values()) {
+    for (const id of members) assignedIds.add(id)
+  }
+  for (const ch of characters) {
+    if (ch.matrixEffect || ch.leavingOffice) continue
+    if (!assignedIds.has(ch.id)) {
+      teamsByLead.set(ch.id, [ch.id])
+    }
   }
 
   const teamColors = ['#5ac88c', '#3794ff', '#a78bfa', '#ff9f43', '#e55', '#fc0']
@@ -918,8 +952,20 @@ function renderTeamLines(
     }
   }
 
-  // Pass 1: Draw cluster areas (filled convex hulls at 0.33 opacity)
+  // Pass 1: Draw cluster areas as tile-based squares with solid perimeter border
+  const ts = TILE_SIZE * zoom // tile size in screen pixels
   ctx.save()
+
+  // Helper: check if tile (col,row) is inside a convex hull of tile-coordinate points
+  const isInsideTileHull = (col: number, row: number, hull: Array<{ x: number; y: number }>): boolean => {
+    const px = col + 0.5, py = row + 0.5 // tile center
+    for (let i = 0; i < hull.length; i++) {
+      const a = hull[i], b = hull[(i + 1) % hull.length]
+      if ((b.x - a.x) * (py - a.y) - (b.y - a.y) * (px - a.x) < 0) return false
+    }
+    return true
+  }
+
   for (const [leadId, members] of teamsByLead) {
     if (!leadColorMap.has(leadId)) {
       leadColorMap.set(leadId, teamColors[colorIdx % teamColors.length])
@@ -927,114 +973,102 @@ function renderTeamLines(
     }
     const color = leadColorMap.get(leadId)!
 
-    // Collect all team member positions
-    const points: Array<{ x: number; y: number }> = []
+    // Collect member tile positions
+    const memberTiles: Array<{ col: number; row: number }> = []
     for (const memberId of members) {
       const ch = charById.get(memberId)
       if (!ch || ch.matrixEffect) continue
-      points.push(charCenter(ch))
+      memberTiles.push({ col: ch.tileCol, row: ch.tileRow })
     }
+    if (memberTiles.length === 0) continue
 
-    if (points.length === 0) continue
+    const PAD = 1 // tile padding around cluster
+    const tileSet = new Set<string>()
+    const tileList: Array<{ col: number; row: number }> = []
 
-    const padding = 12 * zoom
-
-    if (points.length === 1) {
-      // Single agent — draw a circle highlight
-      ctx.globalAlpha = 0.33
-      ctx.fillStyle = color
-      ctx.beginPath()
-      ctx.arc(Math.round(points[0].x), Math.round(points[0].y), padding, 0, Math.PI * 2)
-      ctx.fill()
-      // Dashed border
-      ctx.globalAlpha = 0.3
-      ctx.strokeStyle = color
-      ctx.lineWidth = Math.max(1, Math.round(zoom * 0.5))
-      ctx.setLineDash([Math.round(3 * zoom), Math.round(3 * zoom)])
-      ctx.beginPath()
-      ctx.arc(Math.round(points[0].x), Math.round(points[0].y), padding, 0, Math.PI * 2)
-      ctx.stroke()
-      continue
-    }
-
-    // Check for collinear edge case — use capsule fallback
-    if (areCollinear(points)) {
-      const [a] = points
-      const sorted = [...points].sort((p1, p2) => {
-        const d1 = (p1.x - a.x) * (p1.x - a.x) + (p1.y - a.y) * (p1.y - a.y)
-        const d2 = (p2.x - a.x) * (p2.x - a.x) + (p2.y - a.y) * (p2.y - a.y)
-        return d1 - d2
-      })
-      drawCapsule(sorted, color, padding)
-      continue
-    }
-
-    const hull = convexHull(points)
-
-    if (hull.length >= 3) {
-      // Draw filled convex hull
-      ctx.globalAlpha = 0.33
-      ctx.fillStyle = color
-      ctx.beginPath()
-      // Expand hull outward by padding
-      const cx = hull.reduce((s, p) => s + p.x, 0) / hull.length
-      const cy = hull.reduce((s, p) => s + p.y, 0) / hull.length
-      for (let i = 0; i < hull.length; i++) {
-        const dx = hull[i].x - cx
-        const dy = hull[i].y - cy
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1
-        const ex = hull[i].x + (dx / dist) * padding
-        const ey = hull[i].y + (dy / dist) * padding
-        if (i === 0) ctx.moveTo(Math.round(ex), Math.round(ey))
-        else ctx.lineTo(Math.round(ex), Math.round(ey))
+    if (memberTiles.length === 1) {
+      // Single agent — 3x3 square
+      const t = memberTiles[0]
+      for (let dc = -PAD; dc <= PAD; dc++) {
+        for (let dr = -PAD; dr <= PAD; dr++) {
+          const key = `${t.col + dc},${t.row + dr}`
+          if (!tileSet.has(key)) { tileSet.add(key); tileList.push({ col: t.col + dc, row: t.row + dr }) }
+        }
       }
-      ctx.closePath()
-      ctx.fill()
-
-      // Draw hull border (dashed)
-      ctx.globalAlpha = 0.3
-      ctx.strokeStyle = color
-      ctx.lineWidth = Math.max(1, Math.round(zoom * 0.5))
-      ctx.setLineDash([Math.round(3 * zoom), Math.round(3 * zoom)])
-      ctx.beginPath()
-      for (let i = 0; i < hull.length; i++) {
-        const dx = hull[i].x - cx
-        const dy = hull[i].y - cy
-        const dist = Math.sqrt(dx * dx + dy * dy) || 1
-        const ex = hull[i].x + (dx / dist) * padding
-        const ey = hull[i].y + (dy / dist) * padding
-        if (i === 0) ctx.moveTo(Math.round(ex), Math.round(ey))
-        else ctx.lineTo(Math.round(ex), Math.round(ey))
-      }
-      ctx.closePath()
-      ctx.stroke()
     } else {
-      // Hull degenerate — draw capsule fallback
-      drawCapsule(points, color, padding)
-    }
-  }
+      // Multiple agents — fill all tiles inside the convex hull of member positions (with padding)
+      // Expand member positions outward by PAD tiles for hull computation
+      const expandedPts = memberTiles.flatMap(t => {
+        const pts: Array<{ x: number; y: number }> = []
+        for (let dc = -PAD; dc <= PAD; dc++) {
+          for (let dr = -PAD; dr <= PAD; dr++) {
+            pts.push({ x: t.col + dc, y: t.row + dr })
+          }
+        }
+        return pts
+      })
+      const hull = convexHull(expandedPts)
 
-  // Pass 2: Draw connecting lines (lead → all members)
-  ctx.globalAlpha = 0.3
-  ctx.lineWidth = Math.max(1, Math.round(zoom * 0.5))
-  for (const [leadId, members] of teamsByLead) {
-    const leadCh = charById.get(leadId)
-    if (!leadCh || leadCh.matrixEffect) continue
-    const color = leadColorMap.get(leadId)!
+      // Compute bounding box of hull
+      let minC = Infinity, maxC = -Infinity, minR = Infinity, maxR = -Infinity
+      for (const p of hull) {
+        if (p.x < minC) minC = p.x; if (p.x > maxC) maxC = p.x
+        if (p.y < minR) minR = p.y; if (p.y > maxR) maxR = p.y
+      }
+      minC = Math.floor(minC); maxC = Math.ceil(maxC)
+      minR = Math.floor(minR); maxR = Math.ceil(maxR)
+
+      // Fill all tiles inside the hull
+      for (let c = minC; c <= maxC; c++) {
+        for (let r = minR; r <= maxR; r++) {
+          if (isInsideTileHull(c, r, hull)) {
+            const key = `${c},${r}`
+            if (!tileSet.has(key)) { tileSet.add(key); tileList.push({ col: c, row: r }) }
+          }
+        }
+      }
+    }
+
+    if (tileList.length === 0) continue
+
+    // Fill tiles with team color
+    ctx.globalAlpha = 0.18
+    ctx.fillStyle = color
+    for (const t of tileList) {
+      const sx = offsetX + t.col * ts
+      const sy = offsetY + t.row * ts
+      ctx.fillRect(Math.round(sx), Math.round(sy), Math.ceil(ts), Math.ceil(ts))
+    }
+
+    // Draw solid thick border on outer perimeter edges
+    ctx.globalAlpha = 1.0
     ctx.strokeStyle = color
-    ctx.setLineDash([Math.round(3 * zoom), Math.round(3 * zoom)])
-
-    const lc = charCenter(leadCh)
-    for (const memberId of members) {
-      if (memberId === leadId) continue
-      const memberCh = charById.get(memberId)
-      if (!memberCh || memberCh.matrixEffect) continue
-      const mc = charCenter(memberCh)
-      ctx.beginPath()
-      ctx.moveTo(Math.round(lc.x), Math.round(lc.y))
-      ctx.lineTo(Math.round(mc.x), Math.round(mc.y))
-      ctx.stroke()
+    ctx.lineWidth = Math.max(2, Math.round(zoom * 1.5))
+    ctx.setLineDash([])
+    ctx.beginPath()
+    for (const t of tileList) {
+      const sx = Math.round(offsetX + t.col * ts)
+      const sy = Math.round(offsetY + t.row * ts)
+      const w = Math.ceil(ts)
+      const h = Math.ceil(ts)
+      // Top edge — no neighbor above
+      if (!tileSet.has(`${t.col},${t.row - 1}`)) {
+        ctx.moveTo(sx, sy); ctx.lineTo(sx + w, sy)
+      }
+      // Bottom edge — no neighbor below
+      if (!tileSet.has(`${t.col},${t.row + 1}`)) {
+        ctx.moveTo(sx, sy + h); ctx.lineTo(sx + w, sy + h)
+      }
+      // Left edge — no neighbor left
+      if (!tileSet.has(`${t.col - 1},${t.row}`)) {
+        ctx.moveTo(sx, sy); ctx.lineTo(sx, sy + h)
+      }
+      // Right edge — no neighbor right
+      if (!tileSet.has(`${t.col + 1},${t.row}`)) {
+        ctx.moveTo(sx + w, sy); ctx.lineTo(sx + w, sy + h)
+      }
     }
+    ctx.stroke()
   }
 
   ctx.restore()
@@ -1091,8 +1125,9 @@ export function renderFrame(
   const hoveredId = selection?.hoveredAgentId ?? null
   renderScene(ctx, allFurniture, characters, offsetX, offsetY, zoom, selectedId, hoveredId)
 
-  // Coffee cup overlay (above characters, below bubbles)
+  // Coffee cup & smoking overlay (above characters, below bubbles)
   renderCoffeeCups(ctx, characters, offsetX, offsetY, zoom)
+  renderSmoking(ctx, characters, offsetX, offsetY, zoom)
 
   // Team group lines (between characters and bubbles)
   if (showTeamLines) {

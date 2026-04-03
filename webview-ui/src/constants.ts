@@ -18,9 +18,12 @@ export const WANDER_MOVES_BEFORE_REST_MAX = 6
 export const SEAT_REST_MIN_SEC = 120.0
 export const SEAT_REST_MAX_SEC = 240.0
 export const IDLE_SEAT_MAX_SEC = 10.0  // idle agents get up after this
-export const COFFEE_BREAK_CHANCE = 0.5
+export const COFFEE_BREAK_CHANCE = 1 / 3
+export const SMOKING_BREAK_CHANCE = 1 / 3
 export const COFFEE_BREAK_MIN_SEC = 30.0
 export const COFFEE_BREAK_MAX_SEC = 60.0
+export const SMOKING_BREAK_MIN_SEC = 20.0
+export const SMOKING_BREAK_MAX_SEC = 45.0
 
 // ── Matrix Effect ────────────────────────────────────────────
 export const MATRIX_EFFECT_DURATION_SEC = 0.3
@@ -127,8 +130,8 @@ export const PULSE_ANIMATION_DURATION_SEC = 1.5
 /** Centroid weights by priority level (index = priority 0-4, 0 unused) */
 export const TEAM_PRIORITY_WEIGHTS = [0, 4.0, 2.0, 1.0, 0.5]
 /** Bonus per nearby teammate (negative = attraction, lower score = better) */
-export const TEAM_SIBLING_BONUS = -0.3
-/** L1 radius for counting nearby teammates */
-export const TEAM_SIBLING_RADIUS = 2
+export const TEAM_SIBLING_BONUS = -3.0
+/** BFS radius for counting nearby teammates */
+export const TEAM_SIBLING_RADIUS = 5
 /** Max parent chain depth to prevent infinite loops */
 export const TEAM_MAX_DEPTH = 10

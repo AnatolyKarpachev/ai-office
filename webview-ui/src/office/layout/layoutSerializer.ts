@@ -178,7 +178,7 @@ export function getPlacementBlockedTiles(furniture: PlacedFurniture[], excludeUi
 
 /** Chair types reserved for specific roles. Key = furniture type, value = list of allowed roles. */
 const ROLE_RESTRICTED_CHAIRS: Record<string, string[]> = {
-  'MO_112': ['boss', 'lead', 'megaboss'],
+  'MO_112': ['boss', 'megaboss'],
 }
 
 /** Map chair orientation to character facing direction */
