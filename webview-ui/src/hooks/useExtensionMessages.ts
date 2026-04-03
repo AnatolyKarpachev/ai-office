@@ -189,6 +189,7 @@ export function useExtensionMessages(
   const [agentConversationState, setAgentConversationState] = useState<{ id: number; messages: ConversationMessage[] } | null>(null)
   const [pipelineIssues, setPipelineIssues] = useState<PipelineIssue[]>([])
   const [sendMessages, setSendMessages] = useState<Array<{ id: number; from: string; to: string; message: string; timestamp: number }>>([])
+  const [shareLink, setShareLink] = useState<{ url: string; expiresAt: number } | null>(null)
   const [serverMode, setServerMode] = useState<string>('...')
 
   const requestAgentDetails = useCallback((id: number) => {
@@ -614,6 +615,10 @@ export function useExtensionMessages(
       } else if (msg.type === 'pipelineIssues') {
         const issues = msg.issues as PipelineIssue[]
         setPipelineIssues(issues)
+      } else if (msg.type === 'shareLinkCreated') {
+        setShareLink({ url: msg.url as string, expiresAt: msg.expiresAt as number })
+      } else if (msg.type === 'shareLinkRevoked') {
+        setShareLink(null)
       } else if (msg.type === 'agentSendMessage') {
         setSendMessages(prev => [...prev, {
           id: msg.id as number,
@@ -651,5 +656,6 @@ export function useExtensionMessages(
     pipelineIssues,
     sendMessages,
     serverMode,
+    shareLink,
   }
 }

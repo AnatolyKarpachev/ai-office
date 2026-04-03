@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { SettingsModal } from './SettingsModal.js'
 import { vscode } from '../vscodeApi.js'
 
@@ -14,6 +14,7 @@ interface BottomToolbarProps {
   onFitView: () => void
   isHudOpen: boolean
   onToggleHud: () => void
+  shareLink: { url: string; expiresAt: number } | null
 }
 
 const panelStyle: React.CSSProperties = {
@@ -60,38 +61,21 @@ export function BottomToolbar({
   onFitView,
   isHudOpen,
   onToggleHud,
+  shareLink,
 }: BottomToolbarProps) {
   const [hovered, setHovered] = useState<string | null>(null)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isShareOpen, setIsShareOpen] = useState(false)
-  const [shareUrl, setShareUrl] = useState<string | null>(null)
-  const [shareExpiry, setShareExpiry] = useState<number>(0)
-  const [now, setNow] = useState(Date.now())
   const [copied, setCopied] = useState(false)
+  const [now, setNow] = useState(Date.now())
 
-  useEffect(() => {
-    const handler = (e: MessageEvent) => {
-      const msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data
-      if (msg.type === 'shareLinkCreated') {
-        setShareUrl(msg.url)
-        setShareExpiry(msg.expiresAt)
-      }
-      if (msg.type === 'shareLinkRevoked') {
-        setShareUrl(null)
-        setShareExpiry(0)
-      }
-    }
-    window.addEventListener('message', handler)
-    return () => window.removeEventListener('message', handler)
-  }, [])
+  // Tick countdown when share link is active
+  if (shareLink && Date.now() - now > 1000) {
+    setTimeout(() => setNow(Date.now()), 100)
+  }
 
-  useEffect(() => {
-    if (!shareUrl) return
-    const interval = setInterval(() => setNow(Date.now()), 1000)
-    return () => clearInterval(interval)
-  }, [shareUrl])
-
-  const remaining = Math.max(0, Math.ceil((shareExpiry - now) / 1000))
+  const shareUrl = shareLink?.url ?? null
+  const remaining = shareLink ? Math.max(0, Math.ceil((shareLink.expiresAt - now) / 1000)) : 0
   const shareMinutes = Math.floor(remaining / 60)
   const shareSeconds = remaining % 60
 
