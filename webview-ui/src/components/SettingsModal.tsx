@@ -9,8 +9,6 @@ interface SettingsModalProps {
   onImportLayout: () => void
   alwaysShowOverlay: boolean
   onToggleAlwaysShowOverlay: () => void
-  showTeamLines: boolean
-  onToggleShowTeamLines: () => void
 }
 
 const menuItemBase: React.CSSProperties = {
@@ -35,8 +33,6 @@ export function SettingsModal({
   onImportLayout,
   alwaysShowOverlay,
   onToggleAlwaysShowOverlay,
-  showTeamLines,
-  onToggleShowTeamLines,
 }: SettingsModalProps) {
   const [hovered, setHovered] = useState<string | null>(null)
   const [soundLocal, setSoundLocal] = useState(isSoundEnabled)
@@ -229,35 +225,6 @@ export function SettingsModal({
             }}
           >
             {alwaysShowOverlay ? 'X' : ''}
-          </span>
-        </button>
-        <button
-          onClick={onToggleShowTeamLines}
-          onMouseEnter={() => setHovered('team-lines')}
-          onMouseLeave={() => setHovered(null)}
-          style={{
-            ...menuItemBase,
-            background: hovered === 'team-lines' ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
-          }}
-        >
-          <span>Show Team Lines</span>
-          <span
-            style={{
-              width: 14,
-              height: 14,
-              border: '2px solid rgba(255, 255, 255, 0.5)',
-              borderRadius: 0,
-              background: showTeamLines ? 'rgba(90, 140, 255, 0.8)' : 'transparent',
-              flexShrink: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '12px',
-              lineHeight: 1,
-              color: '#fff',
-            }}
-          >
-            {showTeamLines ? 'X' : ''}
           </span>
         </button>
         <div

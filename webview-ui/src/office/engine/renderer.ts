@@ -764,6 +764,28 @@ export interface SelectionRenderState {
   characters: Map<number, Character>
 }
 
+/** Compute convex hull of 2D points (Andrew's monotone chain) */
+function convexHull(points: Array<{ x: number; y: number }>): Array<{ x: number; y: number }> {
+  if (points.length <= 1) return points
+  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y)
+  const cross = (o: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) =>
+    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
+  const lower: Array<{ x: number; y: number }> = []
+  for (const p of sorted) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop()
+    lower.push(p)
+  }
+  const upper: Array<{ x: number; y: number }> = []
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const p = sorted[i]
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop()
+    upper.push(p)
+  }
+  lower.pop()
+  upper.pop()
+  return lower.concat(upper)
+}
+
 function renderTeamLines(
   ctx: CanvasRenderingContext2D,
   characters: Character[],
@@ -785,14 +807,17 @@ function renderTeamLines(
   const charById = new Map<number, Character>()
   for (const ch of characters) charById.set(ch.id, ch)
 
-  ctx.save()
-  ctx.globalAlpha = 0.25
-  ctx.lineWidth = Math.max(1, Math.round(zoom * 0.5))
-
   const teamColors = ['#5ac88c', '#3794ff', '#a78bfa', '#ff9f43', '#e55', '#fc0']
   let colorIdx = 0
   const parentColorMap = new Map<number, string>()
 
+  const charCenter = (ch: Character) => ({
+    x: offsetX + ch.x * zoom + 8 * zoom,
+    y: offsetY + ch.y * zoom + 8 * zoom,
+  })
+
+  // Pass 1: Draw cluster areas (filled convex hulls at 20% opacity)
+  ctx.save()
   for (const [parentId, children] of childMap) {
     const parentCh = charById.get(parentId)
     if (!parentCh || parentCh.matrixEffect) continue
@@ -802,22 +827,101 @@ function renderTeamLines(
       colorIdx++
     }
     const color = parentColorMap.get(parentId)!
-    ctx.strokeStyle = color
-    ctx.setLineDash([Math.round(3 * zoom), Math.round(3 * zoom)])
 
+    // Collect all team member positions (parent + children)
+    const points: Array<{ x: number; y: number }> = [charCenter(parentCh)]
     for (const childId of children) {
       const childCh = charById.get(childId)
       if (!childCh || childCh.matrixEffect) continue
+      points.push(charCenter(childCh))
+    }
 
-      // Character center in canvas coordinates
-      const x1 = offsetX + parentCh.x * zoom + (8 * zoom)
-      const y1 = offsetY + parentCh.y * zoom + (8 * zoom)
-      const x2 = offsetX + childCh.x * zoom + (8 * zoom)
-      const y2 = offsetY + childCh.y * zoom + (8 * zoom)
+    if (points.length < 2) continue
 
+    // Expand hull by padding for visual area
+    const padding = 12 * zoom
+    const hull = convexHull(points)
+
+    if (hull.length >= 3) {
+      // Draw filled convex hull
+      ctx.globalAlpha = 0.2
+      ctx.fillStyle = color
       ctx.beginPath()
-      ctx.moveTo(Math.round(x1), Math.round(y1))
-      ctx.lineTo(Math.round(x2), Math.round(y2))
+      // Expand hull outward by padding
+      const cx = hull.reduce((s, p) => s + p.x, 0) / hull.length
+      const cy = hull.reduce((s, p) => s + p.y, 0) / hull.length
+      for (let i = 0; i < hull.length; i++) {
+        const dx = hull[i].x - cx
+        const dy = hull[i].y - cy
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1
+        const ex = hull[i].x + (dx / dist) * padding
+        const ey = hull[i].y + (dy / dist) * padding
+        if (i === 0) ctx.moveTo(Math.round(ex), Math.round(ey))
+        else ctx.lineTo(Math.round(ex), Math.round(ey))
+      }
+      ctx.closePath()
+      ctx.fill()
+
+      // Draw hull border (dashed)
+      ctx.globalAlpha = 0.3
+      ctx.strokeStyle = color
+      ctx.lineWidth = Math.max(1, Math.round(zoom * 0.5))
+      ctx.setLineDash([Math.round(3 * zoom), Math.round(3 * zoom)])
+      ctx.beginPath()
+      for (let i = 0; i < hull.length; i++) {
+        const dx = hull[i].x - cx
+        const dy = hull[i].y - cy
+        const dist = Math.sqrt(dx * dx + dy * dy) || 1
+        const ex = hull[i].x + (dx / dist) * padding
+        const ey = hull[i].y + (dy / dist) * padding
+        if (i === 0) ctx.moveTo(Math.round(ex), Math.round(ey))
+        else ctx.lineTo(Math.round(ex), Math.round(ey))
+      }
+      ctx.closePath()
+      ctx.stroke()
+    } else if (points.length === 2) {
+      // Just 2 members — draw a capsule-like area
+      const p1 = points[0], p2 = points[1]
+      ctx.globalAlpha = 0.2
+      ctx.fillStyle = color
+      ctx.beginPath()
+      ctx.arc(Math.round(p1.x), Math.round(p1.y), padding, 0, Math.PI * 2)
+      ctx.fill()
+      ctx.beginPath()
+      ctx.arc(Math.round(p2.x), Math.round(p2.y), padding, 0, Math.PI * 2)
+      ctx.fill()
+      // Connecting rectangle
+      const dx = p2.x - p1.x, dy = p2.y - p1.y
+      const len = Math.sqrt(dx * dx + dy * dy) || 1
+      const nx = (-dy / len) * padding, ny = (dx / len) * padding
+      ctx.beginPath()
+      ctx.moveTo(Math.round(p1.x + nx), Math.round(p1.y + ny))
+      ctx.lineTo(Math.round(p2.x + nx), Math.round(p2.y + ny))
+      ctx.lineTo(Math.round(p2.x - nx), Math.round(p2.y - ny))
+      ctx.lineTo(Math.round(p1.x - nx), Math.round(p1.y - ny))
+      ctx.closePath()
+      ctx.fill()
+    }
+  }
+
+  // Pass 2: Draw connecting lines (parent → children)
+  ctx.globalAlpha = 0.3
+  ctx.lineWidth = Math.max(1, Math.round(zoom * 0.5))
+  for (const [parentId, children] of childMap) {
+    const parentCh = charById.get(parentId)
+    if (!parentCh || parentCh.matrixEffect) continue
+    const color = parentColorMap.get(parentId)!
+    ctx.strokeStyle = color
+    ctx.setLineDash([Math.round(3 * zoom), Math.round(3 * zoom)])
+
+    const pc = charCenter(parentCh)
+    for (const childId of children) {
+      const childCh = charById.get(childId)
+      if (!childCh || childCh.matrixEffect) continue
+      const cc = charCenter(childCh)
+      ctx.beginPath()
+      ctx.moveTo(Math.round(pc.x), Math.round(pc.y))
+      ctx.lineTo(Math.round(cc.x), Math.round(cc.y))
       ctx.stroke()
     }
   }

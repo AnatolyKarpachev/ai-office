@@ -137,8 +137,6 @@ export function BottomToolbar({
           onImportLayout={onImportLayout}
           alwaysShowOverlay={alwaysShowOverlay}
           onToggleAlwaysShowOverlay={onToggleAlwaysShowOverlay}
-          showTeamLines={showTeamLines}
-          onToggleShowTeamLines={onToggleShowTeamLines}
         />
       </div>
       <button
@@ -289,6 +287,22 @@ export function BottomToolbar({
           </>
         )}
       </div>
+      <button
+        onClick={onToggleShowTeamLines}
+        onMouseEnter={() => setHovered('teams')}
+        onMouseLeave={() => setHovered(null)}
+        style={
+          showTeamLines
+            ? { ...btnActive }
+            : {
+                ...btnBase,
+                background: hovered === 'teams' ? 'var(--pixel-btn-hover-bg)' : btnBase.background,
+              }
+        }
+        title="Show team group lines and clusters"
+      >
+        Teams
+      </button>
     </div>
   )
 }
