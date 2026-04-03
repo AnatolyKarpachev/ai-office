@@ -4,7 +4,7 @@
  * See LICENSE-SERGEY-ADDITIONS and NOTICE.
  */
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import type { OfficeState } from '../office/engine/officeState.js'
 import type { AgentStats, AgentRoleInfo, GithubTasksConfig, SubagentCharacter, PipelineIssue } from '../hooks/useExtensionMessages.js'
 import type { ToolActivity } from '../office/types.js'
@@ -142,6 +142,35 @@ function getPipelineProgress(state: string): number {
   return Math.round((li / (linear.length - 1)) * 100)
 }
 
+type FilterKey = 'all' | 'att' | 'act' | 'idl' | 'don' | 'slp'
+
+function classifyAgent(
+  id: number,
+  agentTools: Record<number, ToolActivity[]>,
+  agentStatuses: Record<number, string>,
+  officeState: OfficeState,
+): 'att' | 'act' | 'idl' | 'don' | 'slp' {
+  const ch = officeState.characters.get(id)
+
+  // "att" — attention: permission needed
+  const tools = agentTools[id]
+  if (tools && tools.some((t) => t.permissionWait && !t.done)) return 'att'
+
+  // "don" — done: leaving office
+  if (ch?.leavingOffice) return 'don'
+
+  // "act" — active: has running tools
+  if (tools && tools.some((t) => !t.done)) return 'act'
+
+  // "slp" — sleeping: not active (on sofa, wandering)
+  if (ch && !ch.isActive) return 'slp'
+
+  // "idl" — idle: active but no tools
+  if (!tools || tools.length === 0 || tools.every((t) => t.done)) return 'idl'
+
+  return 'act'
+}
+
 interface LeftSidebarProps {
   agents: number[]
   agentTools: Record<number, ToolActivity[]>
@@ -214,6 +243,15 @@ export function LeftSidebar({
   const toggleCollapse = useCallback(() => setCollapsed((v) => !v), [])
   const toggleTasksCollapse = useCallback(() => setTasksCollapsed((v) => !v), [])
 
+  const [filter, setFilter] = useState<FilterKey>(() => {
+    return (localStorage.getItem('pixel-agents-filter') as FilterKey) || 'all'
+  })
+
+  const handleFilterChange = useCallback((f: FilterKey) => {
+    setFilter(f)
+    localStorage.setItem('pixel-agents-filter', f)
+  }, [])
+
   // Known subagent-type roles spawned by the Agent tool (not real user-facing agents)
   const SPAWNED_AGENT_ROLES = new Set([
     'explore', 'plan', 'claude-code-guide',
@@ -258,6 +296,19 @@ export function LeftSidebar({
   const totalSubagents = [...subsByParent.values()].reduce((sum, subs) => sum + subs.length, 0)
   const totalCount = mainAgents.length + totalSubagents
 
+  const filterCounts = useMemo(() => {
+    const counts: Record<FilterKey, number> = { all: mainAgents.length, att: 0, act: 0, idl: 0, don: 0, slp: 0 }
+    for (const id of mainAgents) {
+      const cat = classifyAgent(id, agentTools, agentStatuses, officeState)
+      counts[cat]++
+    }
+    return counts
+  }, [mainAgents, agentTools, agentStatuses, officeState])
+
+  const filteredAgents = filter === 'all'
+    ? mainAgents
+    : mainAgents.filter(id => classifyAgent(id, agentTools, agentStatuses, officeState) === filter)
+
   if (collapsed) {
     return (
       <div style={{ ...sidebarStyle, width: 36, alignItems: 'center', padding: '6px 0' }}>
@@ -296,14 +347,55 @@ export function LeftSidebar({
         <button onClick={toggleCollapse} style={toggleBtnStyle} title="Collapse sidebar">◀</button>
       </div>
 
+      {/* Filter tabs */}
+      <div style={{
+        display: 'flex',
+        gap: 1,
+        padding: '3px 4px',
+        flexShrink: 0,
+        borderBottom: '1px solid var(--pixel-border)',
+      }}>
+        {(['all', 'att', 'act', 'idl', 'don', 'slp'] as const).map(f => (
+          <button
+            key={f}
+            onClick={() => handleFilterChange(f)}
+            style={{
+              flex: 1,
+              padding: '2px 0',
+              fontSize: '14px',
+              fontWeight: filter === f ? 'bold' : 'normal',
+              textTransform: 'uppercase',
+              background: filter === f ? 'var(--pixel-active-bg)' : 'transparent',
+              color: filter === f ? 'var(--pixel-accent)' : 'rgba(255, 255, 255, 0.35)',
+              border: filter === f ? '1px solid var(--pixel-accent)' : '1px solid transparent',
+              borderRadius: 0,
+              cursor: 'pointer',
+              letterSpacing: '0.3px',
+              position: 'relative',
+            }}
+          >
+            {f}
+            {f !== 'all' && filterCounts[f] > 0 && (
+              <span style={{
+                fontSize: '10px',
+                opacity: 0.5,
+                marginLeft: 1,
+              }}>
+                {filterCounts[f]}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+
       {/* Agents list */}
       <div style={{ flex: '1 1 0', overflowY: 'auto', padding: '4px', minHeight: 0 }}>
-        {mainAgents.length === 0 ? (
+        {filteredAgents.length === 0 ? (
             <div style={{ padding: 16, textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '18px', fontStyle: 'italic' }}>
-              No agents active
+              {filter === 'all' ? 'No agents active' : 'No agents match filter'}
             </div>
           ) : (
-            mainAgents.map((id) => {
+            filteredAgents.map((id) => {
               const ch = officeState.characters.get(id)
               if (!ch) return null
               const stats = agentStats.get(id)

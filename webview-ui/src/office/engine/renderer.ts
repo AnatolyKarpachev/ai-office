@@ -764,6 +764,67 @@ export interface SelectionRenderState {
   characters: Map<number, Character>
 }
 
+function renderTeamLines(
+  ctx: CanvasRenderingContext2D,
+  characters: Character[],
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): void {
+  // Build parent -> children map
+  const childMap = new Map<number, number[]>()
+  for (const ch of characters) {
+    if (ch.parentAgentId != null && !ch.matrixEffect) {
+      const siblings = childMap.get(ch.parentAgentId) || []
+      siblings.push(ch.id)
+      childMap.set(ch.parentAgentId, siblings)
+    }
+  }
+  if (childMap.size === 0) return
+
+  const charById = new Map<number, Character>()
+  for (const ch of characters) charById.set(ch.id, ch)
+
+  ctx.save()
+  ctx.globalAlpha = 0.25
+  ctx.lineWidth = Math.max(1, Math.round(zoom * 0.5))
+
+  const teamColors = ['#5ac88c', '#3794ff', '#a78bfa', '#ff9f43', '#e55', '#fc0']
+  let colorIdx = 0
+  const parentColorMap = new Map<number, string>()
+
+  for (const [parentId, children] of childMap) {
+    const parentCh = charById.get(parentId)
+    if (!parentCh || parentCh.matrixEffect) continue
+
+    if (!parentColorMap.has(parentId)) {
+      parentColorMap.set(parentId, teamColors[colorIdx % teamColors.length])
+      colorIdx++
+    }
+    const color = parentColorMap.get(parentId)!
+    ctx.strokeStyle = color
+    ctx.setLineDash([Math.round(3 * zoom), Math.round(3 * zoom)])
+
+    for (const childId of children) {
+      const childCh = charById.get(childId)
+      if (!childCh || childCh.matrixEffect) continue
+
+      // Character center in canvas coordinates
+      const x1 = offsetX + parentCh.x * zoom + (8 * zoom)
+      const y1 = offsetY + parentCh.y * zoom + (8 * zoom)
+      const x2 = offsetX + childCh.x * zoom + (8 * zoom)
+      const y2 = offsetY + childCh.y * zoom + (8 * zoom)
+
+      ctx.beginPath()
+      ctx.moveTo(Math.round(x1), Math.round(y1))
+      ctx.lineTo(Math.round(x2), Math.round(y2))
+      ctx.stroke()
+    }
+  }
+
+  ctx.restore()
+}
+
 export function renderFrame(
   ctx: CanvasRenderingContext2D,
   canvasWidth: number,
@@ -779,6 +840,7 @@ export function renderFrame(
   tileColors?: Array<FloorColor | null>,
   layoutCols?: number,
   layoutRows?: number,
+  showTeamLines?: boolean,
 ): { offsetX: number; offsetY: number } {
   // Clear
   ctx.clearRect(0, 0, canvasWidth, canvasHeight)
@@ -813,6 +875,11 @@ export function renderFrame(
   const selectedId = selection?.selectedAgentId ?? null
   const hoveredId = selection?.hoveredAgentId ?? null
   renderScene(ctx, allFurniture, characters, offsetX, offsetY, zoom, selectedId, hoveredId)
+
+  // Team group lines (between characters and bubbles)
+  if (showTeamLines) {
+    renderTeamLines(ctx, characters, offsetX, offsetY, zoom)
+  }
 
   // Speech bubbles (always on top of characters)
   renderBubbles(ctx, characters, offsetX, offsetY, zoom)

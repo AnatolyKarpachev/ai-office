@@ -220,6 +220,10 @@ export interface Character {
   folderName?: string
   /** UID of lounge seat the idle character is walking toward */
   loungeTargetSeatId?: string | null
+  /** Target tile for coffee break (adjacent to cooler/vending) */
+  coffeeSpotTarget?: { col: number; row: number } | null
+  /** Remaining time for coffee break at the spot */
+  coffeeBreakTimer: number
   /** Whether the character is walking toward the entrance to leave the office */
   leavingOffice: boolean
 }

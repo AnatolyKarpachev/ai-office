@@ -1,7 +1,8 @@
 import { CharacterState, Direction, TILE_SIZE } from '../types.js'
-import type { Character, Seat, SpriteData, TileType as TileTypeVal } from '../types.js'
+import type { Character, Seat, SpriteData, TileType as TileTypeVal, PlacedFurniture } from '../types.js'
 import type { CharacterSprites } from '../sprites/spriteData.js'
-import { findPath, bfsDistanceMap } from '../layout/tileMap.js'
+import { findPath, bfsDistanceMap, isWalkable } from '../layout/tileMap.js'
+import { getCatalogEntry } from '../layout/furnitureCatalog.js'
 import {
   WALK_SPEED_PX_PER_SEC,
   WALK_FRAME_DURATION_SEC,
@@ -13,6 +14,9 @@ import {
   SEAT_REST_MIN_SEC,
   SEAT_REST_MAX_SEC,
   IDLE_SEAT_MAX_SEC,
+  COFFEE_BREAK_CHANCE,
+  COFFEE_BREAK_MIN_SEC,
+  COFFEE_BREAK_MAX_SEC,
 } from '../../constants.js'
 
 /** Tools that show reading animation instead of typing */
@@ -81,6 +85,8 @@ export function createCharacter(
     matrixEffectTimer: 0,
     matrixEffectSeeds: [],
     loungeTargetSeatId: null,
+    coffeeSpotTarget: null,
+    coffeeBreakTimer: 0,
     leavingOffice: false,
   }
 }
@@ -151,6 +157,74 @@ function findFreeLoungeSeat(
   return bestSeat
 }
 
+/** Find a free tile adjacent to a cooler/vending machine for a coffee break. */
+function findFreeCoffeeSpot(
+  placedFurniture: PlacedFurniture[] | undefined,
+  ch: Character,
+  allCharacters: Map<number, Character> | undefined,
+  tileMap: TileTypeVal[][],
+  blockedTiles: Set<string>,
+): { col: number; row: number } | null {
+  if (!placedFurniture || placedFurniture.length === 0) return null
+
+  // Build set of occupied / claimed coffee tiles
+  const occupied = new Set<string>()
+  if (allCharacters) {
+    for (const other of allCharacters.values()) {
+      if (other.id === ch.id) continue
+      occupied.add(`${other.tileCol},${other.tileRow}`)
+      if (other.coffeeSpotTarget) {
+        occupied.add(`${other.coffeeSpotTarget.col},${other.coffeeSpotTarget.row}`)
+      }
+    }
+  }
+
+  const coffeeTargets = new Set<string>()
+  const coffeeSpots: Array<{ col: number; row: number }> = []
+
+  for (const item of placedFurniture) {
+    const typeLower = (item.type || '').toLowerCase()
+    if (typeLower !== 'cooler' && !typeLower.includes('vending') && !typeLower.includes('fridge') && !typeLower.includes('coffee')) continue
+
+    const entry = getCatalogEntry(item.type)
+    const fw = entry?.footprintW ?? 1
+    const fh = entry?.footprintH ?? 1
+
+    // Check adjacent walkable tiles around the furniture footprint
+    for (let dr = -1; dr <= fh; dr++) {
+      for (let dc = -1; dc <= fw; dc++) {
+        if (dr >= 0 && dr < fh && dc >= 0 && dc < fw) continue // skip interior
+        const tc = item.col + dc
+        const tr = item.row + dr
+        if (tc < 0 || tr < 0) continue
+        if (tr >= tileMap.length || tc >= (tileMap[0]?.length || 0)) continue
+        const key = `${tc},${tr}`
+        if (occupied.has(key)) continue
+        if (coffeeTargets.has(key)) continue
+        if (isWalkable(tc, tr, tileMap, blockedTiles)) {
+          coffeeSpots.push({ col: tc, row: tr })
+          coffeeTargets.add(key)
+        }
+      }
+    }
+  }
+
+  if (coffeeSpots.length === 0) return null
+
+  // Pick nearest by BFS
+  const distMap = bfsDistanceMap(ch.tileCol, ch.tileRow, tileMap, blockedTiles)
+  let best: { col: number; row: number } | null = null
+  let bestDist = Infinity
+  for (const spot of coffeeSpots) {
+    const dist = distMap.get(`${spot.col},${spot.row}`) ?? Infinity
+    if (dist < bestDist) {
+      bestDist = dist
+      best = spot
+    }
+  }
+  return best
+}
+
 export function updateCharacter(
   ch: Character,
   dt: number,
@@ -159,6 +233,7 @@ export function updateCharacter(
   tileMap: TileTypeVal[][],
   blockedTiles: Set<string>,
   allCharacters?: Map<number, Character>,
+  placedFurniture?: PlacedFurniture[],
 ): void {
   ch.frameTimer += dt
 
@@ -215,6 +290,22 @@ export function updateCharacter(
             }
           }
         }
+        // Coffee break: 50% chance to go to coffee spot instead of sofa
+        if (Math.random() < COFFEE_BREAK_CHANCE) {
+          const coffeeSpot = findFreeCoffeeSpot(placedFurniture, ch, allCharacters, tileMap, blockedTiles)
+          if (coffeeSpot) {
+            const coffeePath = findPath(ch.tileCol, ch.tileRow, coffeeSpot.col, coffeeSpot.row, tileMap, blockedTiles)
+            if (coffeePath.length > 0) {
+              ch.path = coffeePath
+              ch.moveProgress = 0
+              ch.state = CharacterState.WALK
+              ch.frame = 0
+              ch.frameTimer = 0
+              ch.coffeeSpotTarget = coffeeSpot
+              break
+            }
+          }
+        }
         // Immediately try to find a free sofa
         const loungeTarget = findFreeLoungeSeat(seats, ch, allCharacters, tileMap, blockedTiles)
         if (loungeTarget) {
@@ -241,6 +332,13 @@ export function updateCharacter(
       // No idle animation — static pose
       ch.frame = 0
       if (ch.seatTimer < 0) ch.seatTimer = 0 // safety: clear negative values
+      // Tick coffee break timer (standing at coffee spot)
+      if (ch.coffeeBreakTimer > 0) {
+        ch.coffeeBreakTimer -= dt
+        if (ch.coffeeBreakTimer > 0) break // still on break
+        ch.coffeeBreakTimer = 0
+        // Coffee break over — continue to normal idle logic
+      }
       // If leaving office, do nothing — just wait for deletion
       if (ch.leavingOffice) break
       // If became active, pathfind to seat
@@ -300,6 +398,22 @@ export function updateCharacter(
                 ch.frameTimer = 0
                 ch.wanderCount++
                 ch.wanderTimer = randomRange(WANDER_PAUSE_MIN_SEC, WANDER_PAUSE_MAX_SEC)
+                break
+              }
+            }
+          }
+          // Coffee break: 50% chance to go to coffee spot instead of sofa
+          if (Math.random() < COFFEE_BREAK_CHANCE) {
+            const coffeeSpot = findFreeCoffeeSpot(placedFurniture, ch, allCharacters, tileMap, blockedTiles)
+            if (coffeeSpot) {
+              const coffeePath = findPath(ch.tileCol, ch.tileRow, coffeeSpot.col, coffeeSpot.row, tileMap, blockedTiles)
+              if (coffeePath.length > 0) {
+                ch.path = coffeePath
+                ch.moveProgress = 0
+                ch.state = CharacterState.WALK
+                ch.frame = 0
+                ch.frameTimer = 0
+                ch.coffeeSpotTarget = coffeeSpot
                 break
               }
             }
@@ -428,6 +542,18 @@ export function updateCharacter(
             }
           }
         } else {
+          // Arrived at coffee spot — stand and take a break
+          if (ch.coffeeSpotTarget) {
+            if (ch.tileCol === ch.coffeeSpotTarget.col && ch.tileRow === ch.coffeeSpotTarget.row) {
+              ch.state = CharacterState.IDLE
+              ch.frame = 0
+              ch.frameTimer = 0
+              ch.coffeeBreakTimer = randomRange(COFFEE_BREAK_MIN_SEC, COFFEE_BREAK_MAX_SEC)
+              ch.coffeeSpotTarget = null
+              break
+            }
+            ch.coffeeSpotTarget = null // missed, fall through
+          }
           // Check if arrived at a lounge seat (sofa/bench) — sit and chill
           if (ch.loungeTargetSeatId) {
             const loungeSeat = seats.get(ch.loungeTargetSeatId)

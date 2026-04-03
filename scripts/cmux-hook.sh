@@ -2,24 +2,21 @@
 # pixel-agents CMUX auto-launch hook
 # Called from Claude Code SessionStart hook
 
-# Change this to wherever you cloned pixel-agents
+# Change this to wherever you cloned/installed pixel-agents
 PIXEL_AGENTS_DIR="$HOME/pixel-agents"
-PORT=3456
-PID_FILE="$PIXEL_AGENTS_DIR/.server.pid"
+PID_FILE="$HOME/.pixel-agents/.server.pid"
+PORT="${PIXEL_AGENTS_PORT:-9876}"
 
-# Health check — catches hung processes and stale PIDs
-if curl -sf --connect-timeout 2 "http://localhost:$PORT/" >/dev/null 2>&1; then
-  exit 0
-fi
-
-# Server not healthy — kill any stale process
+# Check if server is already running via PID file
 if [ -f "$PID_FILE" ]; then
-  OLD_PID=$(cat "$PID_FILE")
-  kill "$OLD_PID" 2>/dev/null
+  PID=$(cat "$PID_FILE")
+  if kill -0 "$PID" 2>/dev/null; then
+    exit 0
+  fi
+  # Stale PID file — remove it
   rm -f "$PID_FILE"
 fi
 
-# Start server
+# Start server in daemon mode
 cd "$PIXEL_AGENTS_DIR"
-node dist/server.js > /tmp/pixel-agents.log 2>&1 &
-echo $! > "$PID_FILE"
+npx office-for-claude-agents start --daemon --no-open --port "$PORT"

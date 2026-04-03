@@ -29,9 +29,10 @@ interface OfficeCanvasProps {
   zoom: number
   onZoomChange: (zoom: number) => void
   panRef: React.MutableRefObject<{ x: number; y: number }>
+  showTeamLines?: boolean
 }
 
-export function OfficeCanvas({ officeState, onClick, onDoubleClick, isEditMode, editorState, onEditorSpawnAction, onEditorTileAction, onEditorEraseAction, onEditorSelectionChange, onDeleteSelected, onRotateSelected, onDragMove, editorTick: _editorTick, zoom, onZoomChange, panRef }: OfficeCanvasProps) {
+export function OfficeCanvas({ officeState, onClick, onDoubleClick, isEditMode, editorState, onEditorSpawnAction, onEditorTileAction, onEditorEraseAction, onEditorSelectionChange, onDeleteSelected, onRotateSelected, onDragMove, editorTick: _editorTick, zoom, onZoomChange, panRef, showTeamLines }: OfficeCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const offsetRef = useRef({ x: 0, y: 0 })
@@ -241,6 +242,7 @@ export function OfficeCanvas({ officeState, onClick, onDoubleClick, isEditMode, 
           officeState.getLayout().tileColors,
           officeState.getLayout().cols,
           officeState.getLayout().rows,
+          showTeamLines,
         )
         offsetRef.current = { x: offsetX, y: offsetY }
 

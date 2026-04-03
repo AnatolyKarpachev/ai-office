@@ -67,3 +67,27 @@ export function unlockAudio(): void {
     // ignore
   }
 }
+
+let desktopNotificationsEnabled = false
+
+export function setDesktopNotificationsEnabled(enabled: boolean): void {
+  desktopNotificationsEnabled = enabled
+  if (enabled && 'Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission()
+  }
+}
+
+export function isDesktopNotificationsEnabled(): boolean {
+  return desktopNotificationsEnabled
+}
+
+export function showDesktopNotification(title: string, body: string): void {
+  if (!desktopNotificationsEnabled) return
+  if (!('Notification' in window)) return
+  if (Notification.permission !== 'granted') return
+  // Don't spam when user is looking at the app
+  if (document.visibilityState === 'visible') return
+  try {
+    new Notification(title, { body, tag: `pixel-agents-${Date.now()}` })
+  } catch { /* ignore */ }
+}

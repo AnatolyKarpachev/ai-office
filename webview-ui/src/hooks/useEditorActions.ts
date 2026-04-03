@@ -10,7 +10,7 @@ import { isWalkable } from '../office/layout/tileMap.js'
 import { getCatalogEntry, getRotatedType, getToggledType } from '../office/layout/furnitureCatalog.js'
 import { defaultZoom } from '../office/toolUtils.js'
 import { vscode } from '../vscodeApi.js'
-import { LAYOUT_SAVE_DEBOUNCE_MS, ZOOM_MIN, ZOOM_MAX } from '../constants.js'
+import { LAYOUT_SAVE_DEBOUNCE_MS, TILE_SIZE, ZOOM_MIN, ZOOM_MAX } from '../constants.js'
 
 export interface EditorActions {
   isEditMode: boolean
@@ -44,6 +44,7 @@ export interface EditorActions {
   handleEditorEraseAction: (col: number, row: number) => void
   handleEditorSelectionChange: () => void
   handleDragMove: (uid: string, newCol: number, newRow: number) => void
+  handleFitView: (canvasWidth: number, canvasHeight: number) => void
 }
 
 export function useEditorActions(
@@ -545,6 +546,36 @@ export function useEditorActions(
     }
   }, [getOfficeState, editorState, applyEdit, maybeExpand])
 
+  const handleFitView = useCallback((canvasWidth: number, canvasHeight: number) => {
+    const os = getOfficeState()
+    const layout = os.getLayout()
+    if (!layout) return
+    const dpr = window.devicePixelRatio || 1
+    // Sidebar widths in CSS pixels
+    const leftSidebarPx = 300  // 280 width + 10 left + 10 gap
+    const rightSidebarPx = 340 // 320 width + 10 right + 10 gap
+    const bottomBarPx = 80     // toolbar height + margin
+    // Available space in device pixels
+    const availW = canvasWidth - (leftSidebarPx + rightSidebarPx) * dpr
+    const availH = canvasHeight - bottomBarPx * dpr
+    if (availW <= 0 || availH <= 0) return
+    // Map size in sprite pixels
+    const cols = layout.cols ?? (os.tileMap.length > 0 ? os.tileMap[0].length : 0)
+    const rows = layout.rows ?? os.tileMap.length
+    const mapW = cols * TILE_SIZE
+    const mapH = rows * TILE_SIZE
+    if (mapW <= 0 || mapH <= 0) return
+    // Compute zoom
+    const fitZoom = Math.min(availW / mapW, availH / mapH)
+    const clampedZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, fitZoom))
+    setZoom(clampedZoom)
+    // Pan to center between sidebars
+    const sidebarOffset = ((leftSidebarPx - rightSidebarPx) / 2) * dpr
+    panRef.current = { x: sidebarOffset, y: 0 }
+    // Break camera follow if active
+    os.cameraFollowId = null
+  }, [getOfficeState])
+
   const handleEditorEraseAction = useCallback((col: number, row: number) => {
     const os = getOfficeState()
     const layout = os.getLayout()
@@ -590,5 +621,6 @@ export function useEditorActions(
     handleEditorEraseAction,
     handleEditorSelectionChange,
     handleDragMove,
+    handleFitView,
   }
 }

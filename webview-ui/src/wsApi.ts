@@ -1,13 +1,20 @@
 // WebSocket API — replaces VS Code postMessage bridge
-const WS_URL = import.meta.env.DEV
+const WS_BASE = import.meta.env.DEV
   ? "ws://localhost:9876"
   : `ws://${window.location.host}`;
+
+function getShareToken(): string | null {
+  const match = window.location.pathname.match(/^\/share\/([a-f0-9]+)$/);
+  return match ? match[1] : null;
+}
 
 let ws: WebSocket | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function connectWebSocket(): void {
-  ws = new WebSocket(WS_URL);
+  const token = getShareToken();
+  const wsUrl = token ? `${WS_BASE}?share=${token}` : WS_BASE;
+  ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
     console.log("Connected to pixel-agents server");

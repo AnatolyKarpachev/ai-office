@@ -8,7 +8,7 @@ import { setFloorSprites } from '../office/floorTiles.js'
 import { setWallSprites } from '../office/wallTiles.js'
 import { setCharacterTemplates } from '../office/sprites/spriteData.js'
 import { vscode } from '../vscodeApi.js'
-import { playDoneSound, setSoundEnabled } from '../notificationSound.js'
+import { playDoneSound, setSoundEnabled, showDesktopNotification, setDesktopNotificationsEnabled } from '../notificationSound.js'
 
 export interface SubagentCharacter {
   id: number
@@ -256,6 +256,7 @@ export function useExtensionMessages(
           // Server-side stagger handles entrance animation timing
           os.addAgent(id, undefined, undefined, undefined, undefined, folderName, parentAgentId)
         }
+        showDesktopNotification('New agent joined', `${folderName || 'Agent'} entered the office`)
         saveAgentSeats(os)
       } else if (msg.type === 'agentRenamed') {
         const id = msg.id as number
@@ -375,6 +376,11 @@ export function useExtensionMessages(
         setSubagentCharacters((prev) => prev.filter((s) => s.parentAgentId !== id))
         os.setAgentTool(id, null)
         os.clearPermissionBubble(id)
+        {
+          const ch = os.characters.get(id)
+          const agentName = ch?.folderName || `agent-${id}`
+          showDesktopNotification(`${agentName} finished`, 'Turn completed.')
+        }
       } else if (msg.type === 'agentSelected') {
         const id = msg.id as number
         setSelectedAgent(id)
@@ -407,6 +413,11 @@ export function useExtensionMessages(
         os.showPermissionBubble(id)
         os.setAgentActive(id, false) // permission wait = idle, go rest
         playDoneSound()
+        {
+          const ch = os.characters.get(id)
+          const agentName = ch?.folderName || `agent-${id}`
+          showDesktopNotification(`${agentName} needs approval`, 'An agent is waiting for your permission.')
+        }
       } else if (msg.type === 'subagentToolPermission') {
         const id = msg.id as number
         const parentToolId = msg.parentToolId as string
@@ -511,6 +522,9 @@ export function useExtensionMessages(
       } else if (msg.type === 'settingsLoaded') {
         const soundOn = msg.soundEnabled as boolean
         setSoundEnabled(soundOn)
+        if (msg.desktopNotifications !== undefined) {
+          setDesktopNotificationsEnabled(msg.desktopNotifications as boolean)
+        }
         if (Array.isArray(msg.externalAssetDirectories)) {
           setExternalAssetDirectories(msg.externalAssetDirectories as string[])
         }

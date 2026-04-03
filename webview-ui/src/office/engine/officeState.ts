@@ -1396,12 +1396,12 @@ export class OfficeState {
         // Idle agents: unblock only desk tiles near their own seat so they can leave workspace,
         // but keep all other desks/tables blocked to prevent walking through them
         this.withOwnWorkspaceUnblocked(ch, () =>
-          updateCharacter(ch, dt, this.walkableTiles, this.seats, this.tileMap, this.blockedTiles, this.characters)
+          updateCharacter(ch, dt, this.walkableTiles, this.seats, this.tileMap, this.blockedTiles, this.characters, this.layout.furniture)
         )
       } else {
         // Active agents: normal furniture blocking, unblock own seat
         this.withOwnSeatUnblocked(ch, () =>
-          updateCharacter(ch, dt, this.walkableTiles, this.seats, this.tileMap, this.blockedTiles, this.characters)
+          updateCharacter(ch, dt, this.walkableTiles, this.seats, this.tileMap, this.blockedTiles, this.characters, this.layout.furniture)
         )
       }
       // Expose state for debugging

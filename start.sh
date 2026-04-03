@@ -14,7 +14,11 @@ trap cleanup SIGINT SIGTERM
 
 while true; do
   # Kill any stale process on the port
-  lsof -t -i :"$PORT" 2>/dev/null | xargs kill 2>/dev/null
+  if command -v lsof &> /dev/null; then
+    lsof -t -i :"$PORT" 2>/dev/null | xargs kill 2>/dev/null
+  elif command -v fuser &> /dev/null; then
+    fuser -k "$PORT"/tcp 2>/dev/null
+  fi
   sleep 1
 
   echo "[start.sh] Starting pixel-agents server on port $PORT..."

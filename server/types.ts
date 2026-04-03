@@ -101,7 +101,11 @@ export type ServerMessage =
   | { type: "pipelineIssues"; issues: Array<{ number: number; title: string; labels: string[]; state: string; pipelineState: string; repo: string; gates: Array<{ gate: number; status: string; comment: string; timestamp: string }> }> }
   | { type: "agentConversation"; id: number; messages: Array<{ role: string; text: string; timestamp: string; toolNames?: string[] }> }
   | { type: "agentConversationUpdate"; id: number; message: { role: string; text: string; timestamp: string; toolNames?: string[] } }
-  | { type: "agentSendMessage"; id: number; toolId: string; from: string; to: string; message: string };
+  | { type: "agentSendMessage"; id: number; toolId: string; from: string; to: string; message: string }
+  | { type: "shareLinkCreated"; token: string; url: string; expiresAt: number; durationMs: number }
+  | { type: "shareLinkRevoked"; token: string }
+  | { type: "activeShareLinks"; links: Array<{ token: string; expiresAt: number; durationMs: number }> }
+  | { type: "daemonStatus"; daemons: Array<{ name: string; url: string; connected: boolean; agentCount: number }> };
 
 // Messages sent from client to server
 export type ClientMessage =
@@ -111,12 +115,16 @@ export type ClientMessage =
   | { type: "saveAgentSeats"; seats: Record<number, { palette: number; hueShift: number; seatId: string | null }> }
   | { type: "saveSoundEnabled"; enabled: boolean }
   | { type: "openSessionsFolder" }
-  | { type: "exportLayout" }
-  | { type: "importLayout" }
   | { type: "addExternalAssetDirectory"; path: string }
   | { type: "removeExternalAssetDirectory"; path: string }
   | { type: "openClaude" }
   | { type: "openClaudeBypass" }
   | { type: "requestAgentDetails"; id: number }
   | { type: "requestAgentConversation"; id: number }
-  | { type: "setAgentRole"; id: number; role: string };
+  | { type: "setAgentRole"; id: number; role: string }
+  | { type: "createShareLink"; durationMs: number }
+  | { type: "revokeShareLink"; token: string }
+  | { type: "addDaemon"; url: string; name: string }
+  | { type: "removeDaemon"; url: string }
+  | { type: "toggleDaemon"; url: string; enabled: boolean }
+  | { type: "getDaemonStatus" };

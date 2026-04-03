@@ -8,6 +8,11 @@ interface BottomToolbarProps {
   onImportLayout: () => void
   alwaysShowOverlay: boolean
   onToggleAlwaysShowOverlay: () => void
+  showTeamLines: boolean
+  onToggleShowTeamLines: () => void
+  onFitView: () => void
+  isHudOpen: boolean
+  onToggleHud: () => void
 }
 
 const panelStyle: React.CSSProperties = {
@@ -49,6 +54,11 @@ export function BottomToolbar({
   onImportLayout,
   alwaysShowOverlay,
   onToggleAlwaysShowOverlay,
+  showTeamLines,
+  onToggleShowTeamLines,
+  onFitView,
+  isHudOpen,
+  onToggleHud,
 }: BottomToolbarProps) {
   const [hovered, setHovered] = useState<string | null>(null)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
@@ -95,8 +105,38 @@ export function BottomToolbar({
           onImportLayout={onImportLayout}
           alwaysShowOverlay={alwaysShowOverlay}
           onToggleAlwaysShowOverlay={onToggleAlwaysShowOverlay}
+          showTeamLines={showTeamLines}
+          onToggleShowTeamLines={onToggleShowTeamLines}
         />
       </div>
+      <button
+        onClick={onFitView}
+        onMouseEnter={() => setHovered('fit')}
+        onMouseLeave={() => setHovered(null)}
+        style={{
+          ...btnBase,
+          background: hovered === 'fit' ? 'var(--pixel-btn-hover-bg)' : btnBase.background,
+        }}
+        title="Fit office to view"
+      >
+        Fit
+      </button>
+      <button
+        onClick={onToggleHud}
+        onMouseEnter={() => setHovered('hud')}
+        onMouseLeave={() => setHovered(null)}
+        style={
+          isHudOpen
+            ? { ...btnActive }
+            : {
+                ...btnBase,
+                background: hovered === 'hud' ? 'var(--pixel-btn-hover-bg)' : btnBase.background,
+              }
+        }
+        title="Heads-Up Display"
+      >
+        HUD
+      </button>
     </div>
   )
 }

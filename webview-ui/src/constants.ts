@@ -18,6 +18,9 @@ export const WANDER_MOVES_BEFORE_REST_MAX = 6
 export const SEAT_REST_MIN_SEC = 120.0
 export const SEAT_REST_MAX_SEC = 240.0
 export const IDLE_SEAT_MAX_SEC = 10.0  // idle agents get up after this
+export const COFFEE_BREAK_CHANCE = 0.5
+export const COFFEE_BREAK_MIN_SEC = 30.0
+export const COFFEE_BREAK_MAX_SEC = 60.0
 
 // ── Matrix Effect ────────────────────────────────────────────
 export const MATRIX_EFFECT_DURATION_SEC = 0.3

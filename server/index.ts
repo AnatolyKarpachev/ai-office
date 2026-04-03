@@ -4,9 +4,9 @@ import { WebSocketServer, WebSocket } from "ws";
 import { join, dirname } from "path";
 import { homedir } from "os";
 import { fileURLToPath } from "url";
-import { existsSync, readFileSync, writeFileSync, mkdirSync, watch, statSync, renameSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, watch, statSync, renameSync, unlinkSync } from "fs";
 import type { FSWatcher } from "fs";
-import { spawn, execFileSync, execSync, type ChildProcess } from "child_process";
+import { spawn, execSync, type ChildProcess } from "child_process";
 import crypto from "crypto";
 import { JsonlWatcher } from "./watcher.js";
 import { CodexJsonlWatcher } from "./codexWatcher.js";
@@ -24,6 +24,8 @@ import { loadConfig, saveConfig, getConfig, type GithubTaskStateConfig } from ".
 import type { TrackedAgent, ServerMessage } from "./types.js";
 import { getRoleColors, resolveDerivedAgentName, resolveDisplayRole } from "./roleDetector.js";
 import type { AgentProvider, WatchedFile } from "./sourceTypes.js";
+import { openPath, findPidsOnPort } from "./platform.js";
+import { DaemonHub } from "./daemonHub.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || "9876", 10);
@@ -164,6 +166,45 @@ const testAgentData = new Map<number, { folderName: string; role: string; parent
 let lastActivityTime = Date.now();
 const spawnedClaudes = new Set<ChildProcess>();
 const codexSubagentHints = new Map<string, { nickname?: string; role?: string; parentSessionId: string }>();
+
+// ── Share token management ──────────────────────────────────────────────
+interface ShareToken {
+  token: string;
+  expiresAt: number;
+  createdAt: number;
+  durationMs: number;
+}
+const activeShareTokens = new Map<string, ShareToken>();
+
+function createShareToken(durationMs: number): ShareToken {
+  const token = crypto.randomBytes(16).toString("hex");
+  const share: ShareToken = {
+    token,
+    expiresAt: Date.now() + durationMs,
+    createdAt: Date.now(),
+    durationMs,
+  };
+  activeShareTokens.set(token, share);
+  return share;
+}
+
+function isShareTokenValid(token: string): boolean {
+  const share = activeShareTokens.get(token);
+  if (!share) return false;
+  if (Date.now() > share.expiresAt) {
+    activeShareTokens.delete(token);
+    return false;
+  }
+  return true;
+}
+
+// Cleanup expired tokens every 60s
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, share] of activeShareTokens) {
+    if (now > share.expiresAt) activeShareTokens.delete(token);
+  }
+}, 60_000);
 
 function getAgentKey(provider: AgentProvider, sessionId: string): string {
   return `${provider}:${sessionId}`;
@@ -339,76 +380,21 @@ function writeLayoutToFile(layout: Record<string, unknown>): void {
   }
 }
 
-function launchDetached(command: string, args: string[]): void {
-  const child = spawn(command, args, { detached: true, stdio: "ignore" });
-  child.unref();
-}
-
-function runAppleScript(script: string): string | null {
-  try {
-    const output = execFileSync("osascript", ["-e", script], { encoding: "utf-8" }).trim();
-    return output || null;
-  } catch {
-    return null;
-  }
-}
-
-function quoteAppleScriptString(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
 function openSessionsFolder(): void {
-  const paths = [CLAUDE_PROJECTS_DIR, CODEX_SESSIONS_DIR].filter((dir) => existsSync(dir));
-  if (paths.length === 0) {
-    launchDetached("open", [join(homedir(), ".claude")]);
+  const dirs = [CLAUDE_PROJECTS_DIR, CODEX_SESSIONS_DIR].filter((dir) => existsSync(dir));
+  if (dirs.length === 0) {
+    openPath(join(homedir(), ".claude"));
     return;
   }
-  for (const dir of paths) {
-    launchDetached("open", [dir]);
+  for (const dir of dirs) {
+    openPath(dir);
   }
-}
-
-function chooseExportPath(defaultName: string): string | null {
-  return runAppleScript(
-    `POSIX path of (choose file name with prompt "Export layout" default name "${quoteAppleScriptString(defaultName)}")`,
-  );
-}
-
-function chooseImportPath(): string | null {
-  return runAppleScript(
-    'POSIX path of (choose file with prompt "Import layout JSON")',
-  );
 }
 
 function isLayoutPayload(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== "object") return false;
   const layout = value as Record<string, unknown>;
   return layout.version === 1 && Array.isArray(layout.tiles) && Array.isArray(layout.furniture);
-}
-
-function exportLayoutToFile(): void {
-  const layout = currentLayout ?? defaultLayout;
-  if (!layout) return;
-  const targetPath = chooseExportPath("pixel-agents-layout.json");
-  if (!targetPath) return;
-  writeFileSync(targetPath, JSON.stringify(layout, null, 2), "utf-8");
-  launchDetached("open", ["-R", targetPath]);
-  console.log(`[Server] Exported layout to ${targetPath}`);
-}
-
-function importLayoutFromFile(): void {
-  const sourcePath = chooseImportPath();
-  if (!sourcePath) return;
-  const raw = readFileSync(sourcePath, "utf-8");
-  const parsed = JSON.parse(raw) as unknown;
-  if (!isLayoutPayload(parsed)) {
-    throw new Error("Selected file is not a valid layout");
-  }
-  currentLayout = parsed;
-  layoutWatcherOwnWrite = true;
-  writeLayoutToFile(parsed);
-  broadcast({ type: "layoutLoaded", layout: parsed, version: 1, wasReset: false });
-  console.log(`[Server] Imported layout from ${sourcePath}`);
 }
 
 function loadPersistedSeats(): Record<number, { palette: number; hueShift: number; seatId: string | null }> | null {
@@ -430,6 +416,16 @@ const persistedSeats = loadPersistedSeats();
 
 // Express app
 const app = express();
+// Share URL route — must be before static middleware
+app.get("/share/:token", (req, res) => {
+  const { token } = req.params;
+  if (!isShareTokenValid(token)) {
+    res.status(410).send("Share link expired or invalid");
+    return;
+  }
+  res.sendFile(join(__dirname, "public", "index.html"));
+});
+
 // Serve production build
 app.use(express.static(join(__dirname, "public"), {
   etag: false,
@@ -474,6 +470,7 @@ function sendInitialData(ws: WebSocket): void {
   ws.send(JSON.stringify({
     type: "settingsLoaded",
     soundEnabled: cfg.soundEnabled,
+    desktopNotifications: cfg.desktopNotifications,
     externalAssetDirectories: cfg.externalAssetDirectories,
     githubTasks: cfg.githubTasks,
     serverMode: isDev ? "dev" : "prod",
@@ -579,9 +576,24 @@ function sendInitialData(ws: WebSocket): void {
   }
 }
 
-wss.on("connection", (ws) => {
+wss.on("connection", (ws, req) => {
   (ws as unknown as Record<string, boolean>).__isAlive = true;
   ws.on("pong", () => { (ws as unknown as Record<string, boolean>).__isAlive = true; });
+
+  // Share token detection
+  const wsUrl = new URL(req.url || "/", `http://${req.headers.host}`);
+  const shareToken = wsUrl.searchParams.get("share");
+  let isReadOnly = false;
+  if (shareToken) {
+    if (!isShareTokenValid(shareToken)) {
+      ws.close(4001, "Share token expired");
+      return;
+    }
+    isReadOnly = true;
+  }
+  (ws as any).__readOnly = isReadOnly;
+  (ws as any).__host = req.headers.host;
+
   clients.add(ws);
 
   ws.on("message", (raw) => {
@@ -589,6 +601,11 @@ wss.on("connection", (ws) => {
       const msg = JSON.parse(raw.toString());
       if (msg.type !== "webviewReady" && msg.type !== "ready") {
         console.log(`[Server] WS msg: ${msg.type}`);
+      }
+      // Guard write operations for read-only share viewers
+      if ((ws as any).__readOnly) {
+        const allowedTypes = ["webviewReady", "ready", "requestAgentDetails", "requestAgentConversation"];
+        if (!allowedTypes.includes(msg.type)) return;
       }
       if (msg.type === "webviewReady" || msg.type === "ready") {
         sendInitialData(ws);
@@ -619,20 +636,13 @@ wss.on("connection", (ws) => {
         cfg.soundEnabled = !!msg.enabled;
         saveConfig(cfg);
         console.log(`[Server] Sound enabled: ${cfg.soundEnabled}`);
+      } else if (msg.type === "saveDesktopNotifications") {
+        const cfg = getConfig();
+        cfg.desktopNotifications = !!msg.enabled;
+        saveConfig(cfg);
+        console.log(`[Server] Desktop notifications: ${cfg.desktopNotifications}`);
       } else if (msg.type === "openSessionsFolder") {
         openSessionsFolder();
-      } else if (msg.type === "exportLayout") {
-        try {
-          exportLayoutToFile();
-        } catch (err) {
-          console.error(`[Server] Failed to export layout: ${err instanceof Error ? err.message : err}`);
-        }
-      } else if (msg.type === "importLayout") {
-        try {
-          importLayoutFromFile();
-        } catch (err) {
-          console.error(`[Server] Failed to import layout: ${err instanceof Error ? err.message : err}`);
-        }
       } else if (msg.type === "addExternalAssetDirectory") {
         const newPath = typeof msg.path === "string" ? msg.path.trim() : "";
         if (!newPath) return;
@@ -759,6 +769,24 @@ wss.on("connection", (ws) => {
           colors,
         });
         console.log(`[Server] Role override set: agent ${targetId} → "${newRole}"`);
+      } else if (msg.type === "createShareLink") {
+        if ((ws as any).__readOnly) return;
+        const host = (ws as any).__host || `localhost:${PORT}`;
+        const share = createShareToken(msg.durationMs as number);
+        const url = `http://${host}/share/${share.token}`;
+        ws.send(JSON.stringify({
+          type: "shareLinkCreated",
+          token: share.token,
+          url,
+          expiresAt: share.expiresAt,
+          durationMs: share.durationMs,
+        }));
+        console.log(`[Server] Share link created: ${url} (expires in ${share.durationMs / 60000}min)`);
+      } else if (msg.type === "revokeShareLink") {
+        if ((ws as any).__readOnly) return;
+        activeShareTokens.delete(msg.token as string);
+        ws.send(JSON.stringify({ type: "shareLinkRevoked", token: msg.token }));
+        console.log(`[Server] Share link revoked: ${msg.token}`);
       } else if (msg.type === "removeTestAgents") {
         // Remove all test agents
         const toRemove: number[] = [];
@@ -818,6 +846,35 @@ wss.on("connection", (ws) => {
             console.log(`  Test agent ${id}: ${h.name} (${h.role})${parentId ? ` [sub of ${parentId}]` : ""}`);
           }, i * 800);
         }
+      } else if (msg.type === "addDaemon") {
+        const cfg = getConfig();
+        if (!cfg.daemons.some((d: any) => d.url === msg.url)) {
+          cfg.daemons.push({ url: msg.url, name: msg.name, enabled: true });
+          saveConfig(cfg);
+          // Restart hub with updated config
+          daemonHub.stop();
+          daemonHub.start(cfg.daemons);
+        }
+        ws.send(JSON.stringify({ type: "daemonStatus", daemons: daemonHub.getConnections() }));
+      } else if (msg.type === "removeDaemon") {
+        const cfg = getConfig();
+        cfg.daemons = cfg.daemons.filter((d: any) => d.url !== msg.url);
+        saveConfig(cfg);
+        daemonHub.stop();
+        daemonHub.start(cfg.daemons);
+        ws.send(JSON.stringify({ type: "daemonStatus", daemons: daemonHub.getConnections() }));
+      } else if (msg.type === "toggleDaemon") {
+        const cfg = getConfig();
+        const daemon = cfg.daemons.find((d: any) => d.url === msg.url);
+        if (daemon) {
+          daemon.enabled = msg.enabled;
+          saveConfig(cfg);
+          daemonHub.stop();
+          daemonHub.start(cfg.daemons);
+        }
+        ws.send(JSON.stringify({ type: "daemonStatus", daemons: daemonHub.getConnections() }));
+      } else if (msg.type === "getDaemonStatus") {
+        ws.send(JSON.stringify({ type: "daemonStatus", daemons: daemonHub.getConnections() }));
       }
     } catch (err) {
       console.error(`[Server] WS message error:`, err instanceof Error ? err.message : err);
@@ -1358,10 +1415,35 @@ for (const watcher of watchers) {
   watcher.start();
 }
 
+// ── Daemon Hub (multi-server aggregation) ──────────────────────────────────
+const daemonHub = new DaemonHub();
+
+// Forward remote daemon messages to all local clients
+daemonHub.on("message", (msg) => {
+  broadcast(msg);
+});
+
+// Start daemon connections from config
+{
+  const daemonConfig = getConfig();
+  if (daemonConfig.daemons && daemonConfig.daemons.length > 0) {
+    daemonHub.start(daemonConfig.daemons);
+  }
+}
+
 function startServer(retries = 1): void {
   server.listen(PORT, () => {
     console.log(`Pixel Agents server running at http://localhost:${PORT}`);
     console.log(`Watching ~/.claude/projects and ~/.codex/sessions for active sessions...`);
+
+    // Write PID file for daemon mode
+    const pidDir = join(homedir(), ".pixel-agents");
+    const pidFile = join(pidDir, ".server.pid");
+    try {
+      mkdirSync(pidDir, { recursive: true });
+      writeFileSync(pidFile, String(process.pid));
+    } catch {}
+
     // Resolve all team parent-child relationships after initial load
     setTimeout(() => {
       for (const [, agent] of agents) {
@@ -1373,14 +1455,11 @@ function startServer(retries = 1): void {
   server.on("error", (err: NodeJS.ErrnoException) => {
     if (err.code === "EADDRINUSE" && retries > 0) {
       console.log(`[Server] Port ${PORT} in use, killing existing process and retrying...`);
-      try {
-        const pids = execSync(`lsof -t -i :${PORT} 2>/dev/null`, { encoding: "utf-8" }).trim();
-        if (pids) {
-          for (const pid of pids.split("\n")) {
-            try { process.kill(parseInt(pid), "SIGTERM"); } catch { /* already dead */ }
-          }
-        }
-      } catch { /* no process found */ }
+      const pids = findPidsOnPort(PORT);
+      for (const pid of pids) {
+        if (pid === process.pid) continue;
+        try { process.kill(pid, "SIGTERM"); } catch {}
+      }
       setTimeout(() => {
         server.close();
         const newServer = createServer(app);
@@ -1402,6 +1481,7 @@ startServer();
 function cleanupAll(): void {
   saveAgentState();
   cleanupSpawnedClaudes();
+  daemonHub.stop();
   for (const watcher of watchers) {
     watcher.stop();
   }
@@ -1425,6 +1505,8 @@ function cleanupAll(): void {
 // Graceful shutdown
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
+    // Remove PID file
+    try { unlinkSync(join(homedir(), ".pixel-agents", ".server.pid")); } catch {}
     cleanupAll();
     process.exit(0);
   });

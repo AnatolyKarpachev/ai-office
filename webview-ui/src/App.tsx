@@ -1,5 +1,6 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { BottomToolbar } from './components/BottomToolbar.js'
+import { HudScreen } from './components/HudScreen.js'
 import { LeftSidebar } from './components/LeftSidebar.js'
 import { RightSidebar } from './components/RightSidebar.js'
 import { ZoomControls } from './components/ZoomControls.js'
@@ -156,6 +157,20 @@ function App() {
   const showMigrationNotice = false
 
   const [alwaysShowOverlay, setAlwaysShowOverlay] = useState(false)
+  const [showTeamLines, setShowTeamLines] = useState(false)
+  const [isHudOpen, setIsHudOpen] = useState(false)
+
+  const hudAgentsMap = useMemo(() => {
+    const os = getOfficeState()
+    const map = new Map<number, { name: string; status: string }>()
+    for (const id of agents) {
+      const ch = os.characters.get(id)
+      const name = ch?.folderName || `agent-${id}`
+      const status = agentStatuses[id] ?? 'active'
+      map.set(id, { name, status })
+    }
+    return map
+  }, [agents, agentStatuses])
 
   const handleToggleAlwaysShowOverlay = useCallback(
     () => setAlwaysShowOverlay((prev) => !prev),
@@ -212,6 +227,12 @@ function App() {
     useCallback(() => setEditorTickForKeyboard((n) => n + 1), []),
     editor.handleToggleEditMode,
   )
+
+  const handleFitView = useCallback(() => {
+    const canvas = document.querySelector('canvas')
+    if (!canvas) return
+    editor.handleFitView(canvas.width, canvas.height)
+  }, [editor])
 
   const handleCloseAgent = useCallback((id: number) => {
     vscode.postMessage({ type: 'closeAgent', id })
@@ -276,6 +297,7 @@ function App() {
         zoom={editor.zoom}
         onZoomChange={editor.handleZoomChange}
         panRef={editor.panRef}
+        showTeamLines={showTeamLines}
       />
 
       <ZoomControls zoom={editor.zoom} onZoomChange={editor.handleZoomChange} />
@@ -330,6 +352,14 @@ function App() {
         }}
       />
 
+      <HudScreen
+        isOpen={isHudOpen}
+        onClose={() => setIsHudOpen(false)}
+        agents={hudAgentsMap}
+        agentStats={agentStats}
+        agentRoles={agentRoles}
+      />
+
       <BottomToolbar
         isEditMode={editor.isEditMode}
         onToggleEditMode={editor.handleToggleEditMode}
@@ -337,6 +367,11 @@ function App() {
         onImportLayout={handleImportLayout}
         alwaysShowOverlay={alwaysShowOverlay}
         onToggleAlwaysShowOverlay={handleToggleAlwaysShowOverlay}
+        showTeamLines={showTeamLines}
+        onToggleShowTeamLines={() => setShowTeamLines(v => !v)}
+        onFitView={handleFitView}
+        isHudOpen={isHudOpen}
+        onToggleHud={() => setIsHudOpen((v) => !v)}
       />
 
       {editor.isEditMode && editor.isDirty && (

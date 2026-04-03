@@ -19,10 +19,18 @@ import { join, dirname } from "path";
 const CONFIG_DIR = join(homedir(), ".pixel-agents");
 const CONFIG_FILE = join(CONFIG_DIR, "config.json");
 
+export interface DaemonConfig {
+  url: string;       // e.g., "ws://192.168.1.50:9876"
+  name: string;      // e.g., "Server 1"
+  enabled: boolean;
+}
+
 export interface PixelAgentsConfig {
   soundEnabled: boolean;
+  desktopNotifications: boolean;
   externalAssetDirectories: string[];
   githubTasks: GithubTasksConfig;
+  daemons: DaemonConfig[];
 }
 
 export interface GithubTaskStateConfig {
@@ -49,7 +57,9 @@ export interface GithubTasksConfig {
 
 const DEFAULT_CONFIG: PixelAgentsConfig = {
   soundEnabled: true,
+  desktopNotifications: false,
   externalAssetDirectories: [],
+  daemons: [],
   githubTasks: {
     enabled: true,
     maxIssues: 30,
@@ -120,9 +130,11 @@ export function loadConfig(): PixelAgentsConfig {
     const parsed = JSON.parse(raw) as Partial<PixelAgentsConfig>;
     cachedConfig = {
       soundEnabled: typeof parsed.soundEnabled === "boolean" ? parsed.soundEnabled : DEFAULT_CONFIG.soundEnabled,
+      desktopNotifications: typeof parsed.desktopNotifications === "boolean" ? parsed.desktopNotifications : DEFAULT_CONFIG.desktopNotifications,
       externalAssetDirectories: Array.isArray(parsed.externalAssetDirectories)
         ? parsed.externalAssetDirectories.filter((d): d is string => typeof d === "string")
         : [],
+      daemons: Array.isArray((parsed as any).daemons) ? (parsed as any).daemons : [],
       githubTasks: normalizeGithubTasksConfig(parsed.githubTasks),
     };
     return cachedConfig;
