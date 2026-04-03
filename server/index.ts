@@ -1446,7 +1446,7 @@ daemonHub.on("message", (msg) => {
 }
 
 function startServer(retries = 1): void {
-  server.listen(PORT, () => {
+  server.listen(PORT, "0.0.0.0", () => {
     console.log(`Pixel Agents server running at http://localhost:${PORT}`);
     console.log(`Watching ~/.claude/projects and ~/.codex/sessions for active sessions...`);
 
