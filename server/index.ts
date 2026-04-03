@@ -423,9 +423,17 @@ app.get("/share/:token", (req, res) => {
     res.status(410).send("Share link expired or invalid");
     return;
   }
-  // Inject <base href="/"> so assets resolve from root, not relative to /share/TOKEN/
+  // Inject <base href> so assets resolve correctly (e.g. /office/ when behind proxy)
+  const cfg = getConfig();
+  let basePath = "/";
+  if (cfg.shareProxyUrl) {
+    try {
+      const parsed = new URL(cfg.shareProxyUrl);
+      basePath = parsed.pathname.replace(/\/?$/, "/"); // ensure trailing slash
+    } catch { /* use default */ }
+  }
   const html = readFileSync(join(__dirname, "public", "index.html"), "utf-8");
-  const patched = html.replace("<head>", '<head><base href="/">');
+  const patched = html.replace("<head>", `<head><base href="${basePath}">`);
   res.type("html").send(patched);
 });
 

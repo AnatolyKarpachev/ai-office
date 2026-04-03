@@ -1,10 +1,18 @@
 // WebSocket API — replaces VS Code postMessage bridge
-const WS_BASE = import.meta.env.DEV
-  ? "ws://localhost:9876"
-  : `ws://${window.location.host}`;
+function getWsBase(): string {
+  if (import.meta.env.DEV) return "ws://localhost:9876";
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  // Strip /share/TOKEN from pathname to get base path
+  const basePath = window.location.pathname
+    .replace(/\/share\/[^/]+$/, "")
+    .replace(/\/$/, "");
+  return `${proto}//${window.location.host}${basePath}`;
+}
+
+const WS_BASE = getWsBase();
 
 function getShareToken(): string | null {
-  const match = window.location.pathname.match(/^\/share\/([a-f0-9]+)$/);
+  const match = window.location.pathname.match(/\/share\/([a-f0-9]+)$/);
   return match ? match[1] : null;
 }
 
