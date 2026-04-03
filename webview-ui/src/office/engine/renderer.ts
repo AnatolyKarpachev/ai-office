@@ -934,7 +934,7 @@ function renderTeamLines(
     }
   }
 
-  const teamColors = ['#5ac88c', '#3794ff', '#a78bfa', '#ff9f43', '#e55', '#fc0']
+  const teamColors = ['#e6194b', '#3cb44b', '#4363d8', '#f58231', '#911eb4', '#42d4f4', '#f032e6', '#bfef45', '#fabed4', '#dcbeff', '#9a6324', '#00b4d8']
   let colorIdx = 0
   const leadColorMap = new Map<number, string>()
 
@@ -1095,6 +1095,26 @@ function renderTeamLines(
       }
     }
     ctx.stroke()
+
+    // Draw cluster number in the center
+    let sumX = 0, sumY = 0
+    for (const t of tileList) {
+      sumX += offsetX + (t.col + 0.5) * ts
+      sumY += offsetY + (t.row + 0.5) * ts
+    }
+    const cx = sumX / tileList.length
+    const cy = sumY / tileList.length
+    const fontSize = Math.max(12, Math.round(ts * 1.2))
+    ctx.globalAlpha = 0.85
+    ctx.font = `bold ${fontSize}px monospace`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    // Dark outline for readability
+    ctx.strokeStyle = '#000'
+    ctx.lineWidth = Math.max(2, Math.round(zoom * 2))
+    ctx.strokeText(`${colorIdx}`, Math.round(cx), Math.round(cy))
+    ctx.fillStyle = color
+    ctx.fillText(`${colorIdx}`, Math.round(cx), Math.round(cy))
   }
 
   ctx.restore()
