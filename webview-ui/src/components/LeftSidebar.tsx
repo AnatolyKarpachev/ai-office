@@ -151,18 +151,21 @@ function classifyAgent(
   officeState: OfficeState,
 ): 'att' | 'act' | 'idl' | 'don' | 'slp' {
   const ch = officeState.characters.get(id)
-
-  // "att" — attention: permission needed
   const tools = agentTools[id]
-  if (tools && tools.some((t) => t.permissionWait && !t.done)) return 'att'
+  const status = agentStatuses[id] // 'active' | 'waiting' | undefined
 
-  // "don" — done: leaving office
+  // "att" — attention: permission needed (tool waiting or permission bubble)
+  if (tools && tools.some((t) => t.permissionWait && !t.done)) return 'att'
+  if (ch?.permissionBubble) return 'att'
+
+  // "don" — done: leaving office or session closed
   if (ch?.leavingOffice) return 'don'
 
-  // "act" — active: has running tools
+  // "act" — actively working: has running tools OR server says active
   if (tools && tools.some((t) => !t.done)) return 'act'
+  if (status === 'active') return 'act'
 
-  // "slp" — sleeping: not active (on sofa, wandering)
+  // "slp" — sleeping/resting: character not active (on sofa, wandering, disconnected)
   if (ch && !ch.isActive) return 'slp'
 
   // "idl" — idle: active but no tools
@@ -297,13 +300,14 @@ export function LeftSidebar({
   const totalCount = mainAgents.length + totalSubagents
 
   const filterCounts = useMemo(() => {
-    const counts: Record<FilterKey, number> = { all: mainAgents.length, att: 0, act: 0, idl: 0, don: 0, slp: 0 }
-    for (const id of mainAgents) {
+    // Count ALL agents (main + subagents) for status badges
+    const counts: Record<FilterKey, number> = { all: agents.length, att: 0, act: 0, idl: 0, don: 0, slp: 0 }
+    for (const id of agents) {
       const cat = classifyAgent(id, agentTools, agentStatuses, officeState)
       counts[cat]++
     }
     return counts
-  }, [mainAgents, agentTools, agentStatuses, officeState])
+  }, [agents, agentTools, agentStatuses, officeState])
 
   const filteredAgents = filter === 'all'
     ? mainAgents

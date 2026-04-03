@@ -96,6 +96,7 @@ export function BottomToolbar({
   const shareSeconds = remaining % 60
 
   return (
+    <>
     <div style={panelStyle}>
       <button
         onClick={onToggleEditMode}
@@ -113,32 +114,22 @@ export function BottomToolbar({
       >
         Layout
       </button>
-      <div style={{ position: 'relative' }}>
-        <button
-          onClick={() => setIsSettingsOpen((v) => !v)}
-          onMouseEnter={() => setHovered('settings')}
-          onMouseLeave={() => setHovered(null)}
-          style={
-            isSettingsOpen
-              ? { ...btnActive }
-              : {
-                  ...btnBase,
-                  background: hovered === 'settings' ? 'var(--pixel-btn-hover-bg)' : btnBase.background,
-                }
-          }
-          title="Settings"
-        >
-          Settings
-        </button>
-        <SettingsModal
-          isOpen={isSettingsOpen}
-          onClose={() => setIsSettingsOpen(false)}
-          onExportLayout={onExportLayout}
-          onImportLayout={onImportLayout}
-          alwaysShowOverlay={alwaysShowOverlay}
-          onToggleAlwaysShowOverlay={onToggleAlwaysShowOverlay}
-        />
-      </div>
+      <button
+        onClick={() => setIsSettingsOpen((v) => !v)}
+        onMouseEnter={() => setHovered('settings')}
+        onMouseLeave={() => setHovered(null)}
+        style={
+          isSettingsOpen
+            ? { ...btnActive }
+            : {
+                ...btnBase,
+                background: hovered === 'settings' ? 'var(--pixel-btn-hover-bg)' : btnBase.background,
+              }
+        }
+        title="Settings"
+      >
+        Settings
+      </button>
       <button
         onClick={onFitView}
         onMouseEnter={() => setHovered('fit')}
@@ -167,126 +158,22 @@ export function BottomToolbar({
       >
         HUD
       </button>
-      <div style={{ position: 'relative' }}>
-        <button
-          onClick={() => setIsShareOpen((v) => !v)}
-          onMouseEnter={() => setHovered('share')}
-          onMouseLeave={() => setHovered(null)}
-          style={
-            isShareOpen || shareUrl
-              ? { ...btnActive, color: shareUrl ? 'var(--pixel-green)' : 'var(--pixel-text)' }
-              : {
-                  ...btnBase,
-                  background: hovered === 'share' ? 'var(--pixel-btn-hover-bg)' : btnBase.background,
-                }
-          }
-          title="Share office with friends"
-        >
-          Share
-        </button>
-        {isShareOpen && (
-          <>
-            <div
-              onClick={() => setIsShareOpen(false)}
-              style={{ position: 'fixed', inset: 0, zIndex: 190 }}
-            />
-            <div style={{
-              position: 'absolute',
-              bottom: '100%',
-              left: 0,
-              marginBottom: 4,
-              zIndex: 191,
-              background: 'var(--pixel-bg)',
-              border: '2px solid var(--pixel-border)',
-              borderRadius: 0,
-              padding: '8px',
-              boxShadow: 'var(--pixel-shadow)',
-              minWidth: 260,
-            }}>
-              <div style={{ fontSize: '18px', color: 'rgba(255,255,255,0.5)', marginBottom: 6, fontWeight: 'bold' }}>
-                SHARE OFFICE
-              </div>
-              {shareUrl ? (
-                <div>
-                  <div style={{
-                    fontSize: '14px',
-                    color: 'var(--pixel-green)',
-                    wordBreak: 'break-all',
-                    marginBottom: 6,
-                    padding: '4px 6px',
-                    background: 'rgba(90, 200, 140, 0.08)',
-                    border: '1px solid rgba(90, 200, 140, 0.2)',
-                  }}>
-                    {shareUrl}
-                  </div>
-                  <div style={{ fontSize: '16px', color: 'rgba(255,255,255,0.6)', marginBottom: 6 }}>
-                    Expires in {shareMinutes}:{shareSeconds.toString().padStart(2, '0')}
-                  </div>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(shareUrl)
-                        setCopied(true)
-                        setTimeout(() => setCopied(false), 2000)
-                      }}
-                      style={{
-                        ...btnBase,
-                        fontSize: '16px',
-                        flex: 1,
-                        textAlign: 'center',
-                        background: copied ? 'rgba(90, 200, 140, 0.15)' : 'var(--pixel-btn-bg)',
-                        color: copied ? 'var(--pixel-green)' : 'var(--pixel-text)',
-                      }}
-                    >
-                      {copied ? 'Copied!' : 'Copy'}
-                    </button>
-                    <button
-                      onClick={() => {
-                        const token = shareUrl.split('/').pop()
-                        vscode.postMessage({ type: 'revokeShareLink', token })
-                      }}
-                      style={{ ...btnBase, fontSize: '16px', flex: 1, textAlign: 'center', color: '#e55' }}
-                    >
-                      Revoke
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', gap: 4 }}>
-                  <button
-                    onClick={() => vscode.postMessage({ type: 'createShareLink', durationMs: 600000 })}
-                    onMouseEnter={() => setHovered('share-10')}
-                    onMouseLeave={() => setHovered(null)}
-                    style={{
-                      ...btnBase,
-                      fontSize: '16px',
-                      flex: 1,
-                      textAlign: 'center',
-                      background: hovered === 'share-10' ? 'var(--pixel-btn-hover-bg)' : 'var(--pixel-btn-bg)',
-                    }}
-                  >
-                    10 min
-                  </button>
-                  <button
-                    onClick={() => vscode.postMessage({ type: 'createShareLink', durationMs: 3600000 })}
-                    onMouseEnter={() => setHovered('share-60')}
-                    onMouseLeave={() => setHovered(null)}
-                    style={{
-                      ...btnBase,
-                      fontSize: '16px',
-                      flex: 1,
-                      textAlign: 'center',
-                      background: hovered === 'share-60' ? 'var(--pixel-btn-hover-bg)' : 'var(--pixel-btn-bg)',
-                    }}
-                  >
-                    60 min
-                  </button>
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </div>
+      <button
+        onClick={() => setIsShareOpen((v) => !v)}
+        onMouseEnter={() => setHovered('share')}
+        onMouseLeave={() => setHovered(null)}
+        style={
+          isShareOpen || shareUrl
+            ? { ...btnActive, color: shareUrl ? 'var(--pixel-green)' : 'var(--pixel-text)' }
+            : {
+                ...btnBase,
+                background: hovered === 'share' ? 'var(--pixel-btn-hover-bg)' : btnBase.background,
+              }
+        }
+        title="Share office with friends"
+      >
+        Share
+      </button>
       <button
         onClick={onToggleShowTeamLines}
         onMouseEnter={() => setHovered('teams')}
@@ -304,5 +191,118 @@ export function BottomToolbar({
         Teams
       </button>
     </div>
+
+    {/* Modals rendered OUTSIDE toolbar to escape stacking context */}
+    <SettingsModal
+      isOpen={isSettingsOpen}
+      onClose={() => setIsSettingsOpen(false)}
+      onExportLayout={onExportLayout}
+      onImportLayout={onImportLayout}
+      alwaysShowOverlay={alwaysShowOverlay}
+      onToggleAlwaysShowOverlay={onToggleAlwaysShowOverlay}
+    />
+
+    {isShareOpen && (
+      <>
+        <div
+          onClick={() => setIsShareOpen(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 190 }}
+        />
+        <div style={{
+          position: 'fixed',
+          bottom: 60,
+          left: 10,
+          zIndex: 191,
+          background: 'var(--pixel-bg)',
+          border: '2px solid var(--pixel-border)',
+          borderRadius: 0,
+          padding: '8px',
+          boxShadow: 'var(--pixel-shadow)',
+          minWidth: 260,
+        }}>
+          <div style={{ fontSize: '18px', color: 'rgba(255,255,255,0.5)', marginBottom: 6, fontWeight: 'bold' }}>
+            SHARE OFFICE
+          </div>
+          {shareUrl ? (
+            <div>
+              <div style={{
+                fontSize: '14px',
+                color: 'var(--pixel-green)',
+                wordBreak: 'break-all',
+                marginBottom: 6,
+                padding: '4px 6px',
+                background: 'rgba(90, 200, 140, 0.08)',
+                border: '1px solid rgba(90, 200, 140, 0.2)',
+              }}>
+                {shareUrl}
+              </div>
+              <div style={{ fontSize: '16px', color: 'rgba(255,255,255,0.6)', marginBottom: 6 }}>
+                Expires in {shareMinutes}:{shareSeconds.toString().padStart(2, '0')}
+              </div>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(shareUrl)
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 2000)
+                  }}
+                  style={{
+                    ...btnBase,
+                    fontSize: '16px',
+                    flex: 1,
+                    textAlign: 'center',
+                    background: copied ? 'rgba(90, 200, 140, 0.15)' : 'var(--pixel-btn-bg)',
+                    color: copied ? 'var(--pixel-green)' : 'var(--pixel-text)',
+                  }}
+                >
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+                <button
+                  onClick={() => {
+                    const token = shareUrl.split('/').pop()
+                    vscode.postMessage({ type: 'revokeShareLink', token })
+                  }}
+                  style={{ ...btnBase, fontSize: '16px', flex: 1, textAlign: 'center', color: '#e55' }}
+                >
+                  Revoke
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button
+                onClick={() => vscode.postMessage({ type: 'createShareLink', durationMs: 600000 })}
+                onMouseEnter={() => setHovered('share-10')}
+                onMouseLeave={() => setHovered(null)}
+                style={{
+                  ...btnBase,
+                  fontSize: '16px',
+                  flex: 1,
+                  textAlign: 'center',
+                  background: hovered === 'share-10' ? 'var(--pixel-btn-hover-bg)' : 'var(--pixel-btn-bg)',
+                }}
+              >
+                10 min
+              </button>
+              <button
+                onClick={() => vscode.postMessage({ type: 'createShareLink', durationMs: 3600000 })}
+                onMouseEnter={() => setHovered('share-60')}
+                onMouseLeave={() => setHovered(null)}
+                style={{
+                  ...btnBase,
+                  fontSize: '16px',
+                  flex: 1,
+                  textAlign: 'center',
+                  background: hovered === 'share-60' ? 'var(--pixel-btn-hover-bg)' : 'var(--pixel-btn-bg)',
+                }}
+              >
+                60 min
+              </button>
+            </div>
+          )}
+        </div>
+      </>
+    )}
+    </>
   )
 }
