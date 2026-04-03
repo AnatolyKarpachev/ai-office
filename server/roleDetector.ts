@@ -26,6 +26,7 @@ const ROLE_COLOR_MAP: Record<string, RoleColors> = {
   "general-purpose":     { primary: "#aaaaaa", badge: "#444444" },
   "default":             { primary: "#8899aa", badge: "#3a4450" },
   "boss":                { primary: "#ff0000", badge: "#8b0000" },
+  "lead":                { primary: "#ff0000", badge: "#8b0000" },
   "slave":               { primary: "#888888", badge: "#333333" },
   "worker":              { primary: "#8899aa", badge: "#3a4450" },
 };
