@@ -162,10 +162,10 @@ export function ToolOverlay({
                 gap: 4,
                 marginBottom: 2,
                 padding: '2px 6px',
-                background: 'var(--pixel-bg)',
-                border: '2px solid var(--pixel-border)',
+                background: roleInfo?.role ? 'transparent' : 'var(--pixel-bg)',
+                border: roleInfo?.role ? 'none' : '2px solid var(--pixel-border)',
                 borderRadius: 0,
-                boxShadow: 'var(--pixel-shadow)',
+                boxShadow: roleInfo?.role ? 'none' : 'var(--pixel-shadow)',
                 whiteSpace: 'nowrap',
                 opacity: 0.9,
               }}
