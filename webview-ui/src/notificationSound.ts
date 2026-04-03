@@ -88,6 +88,6 @@ export function showDesktopNotification(title: string, body: string): void {
   // Don't spam when user is looking at the app
   if (document.visibilityState === 'visible') return
   try {
-    new Notification(title, { body, tag: `pixel-agents-${Date.now()}` })
+    new Notification(title, { body, tag: `pixel-agents-${title.replace(/\s+/g, '-').toLowerCase()}` })
   } catch { /* ignore */ }
 }

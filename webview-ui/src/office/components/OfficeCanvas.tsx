@@ -36,6 +36,8 @@ export function OfficeCanvas({ officeState, onClick, onDoubleClick, isEditMode, 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const offsetRef = useRef({ x: 0, y: 0 })
+  const showTeamLinesRef = useRef(showTeamLines)
+  showTeamLinesRef.current = showTeamLines
   // Middle-mouse pan state (imperative, no re-renders)
   const isPanningRef = useRef(false)
   const panStartRef = useRef({ mouseX: 0, mouseY: 0, panX: 0, panY: 0 })
@@ -242,7 +244,7 @@ export function OfficeCanvas({ officeState, onClick, onDoubleClick, isEditMode, 
           officeState.getLayout().tileColors,
           officeState.getLayout().cols,
           officeState.getLayout().rows,
-          showTeamLines,
+          showTeamLinesRef.current,
         )
         offsetRef.current = { x: offsetX, y: offsetY }
 
@@ -256,7 +258,7 @@ export function OfficeCanvas({ officeState, onClick, onDoubleClick, isEditMode, 
       stop()
       observer.disconnect()
     }
-  }, [officeState, resizeCanvas, isEditMode, editorState, _editorTick, zoom, panRef, showTeamLines])
+  }, [officeState, resizeCanvas, isEditMode, editorState, _editorTick, zoom, panRef])
 
   // Convert CSS mouse coords to world (sprite pixel) coords
   const screenToWorld = useCallback(

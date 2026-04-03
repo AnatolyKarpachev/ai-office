@@ -127,4 +127,5 @@ export type ClientMessage =
   | { type: "addDaemon"; url: string; name: string }
   | { type: "removeDaemon"; url: string }
   | { type: "toggleDaemon"; url: string; enabled: boolean }
-  | { type: "getDaemonStatus" };
+  | { type: "getDaemonStatus" }
+  | { type: "saveDesktopNotifications"; enabled: boolean };

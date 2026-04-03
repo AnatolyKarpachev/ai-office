@@ -156,7 +156,7 @@ function classifyAgent(
 
   // "att" — attention: permission needed (tool waiting or permission bubble)
   if (tools && tools.some((t) => t.permissionWait && !t.done)) return 'att'
-  if (ch?.permissionBubble) return 'att'
+  if (ch?.bubbleType === 'permission') return 'att'
 
   // "don" — done: leaving office or session closed
   if (ch?.leavingOffice) return 'don'

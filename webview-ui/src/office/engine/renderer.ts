@@ -812,8 +812,8 @@ function renderTeamLines(
   const parentColorMap = new Map<number, string>()
 
   const charCenter = (ch: Character) => ({
-    x: offsetX + ch.x * zoom + 8 * zoom,
-    y: offsetY + ch.y * zoom + 8 * zoom,
+    x: offsetX + ch.x * zoom + TILE_SIZE / 2 * zoom,
+    y: offsetY + ch.y * zoom + TILE_SIZE / 2 * zoom,
   })
 
   // Pass 1: Draw cluster areas (filled convex hulls at 20% opacity)
