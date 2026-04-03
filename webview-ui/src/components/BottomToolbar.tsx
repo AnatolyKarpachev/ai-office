@@ -74,8 +74,8 @@ export function BottomToolbar({
     setTimeout(() => setNow(Date.now()), 100)
   }
 
-  const shareUrl = shareLink?.url ?? null
   const remaining = shareLink ? Math.max(0, Math.ceil((shareLink.expiresAt - now) / 1000)) : 0
+  const shareUrl = (shareLink && remaining > 0) ? shareLink.url : null
   const shareMinutes = Math.floor(remaining / 60)
   const shareSeconds = remaining % 60
 
