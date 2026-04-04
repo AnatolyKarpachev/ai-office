@@ -62,6 +62,7 @@ export class JsonlWatcher extends EventEmitter {
   private files = new Map<string, WatchedFile>();
   private watcher: ReturnType<typeof watch> | null = null;
   private pollInterval: ReturnType<typeof setInterval> | null = null;
+  private pinnedPaths = new Set<string>();
 
   start(): void {
     this.scanForActiveFiles();
@@ -90,6 +91,7 @@ export class JsonlWatcher extends EventEmitter {
   stop(): void {
     this.watcher?.close();
     if (this.pollInterval) clearInterval(this.pollInterval);
+    this.pinnedPaths.clear();
   }
 
   private scanForActiveFiles(): void {
@@ -211,8 +213,8 @@ export class JsonlWatcher extends EventEmitter {
         if (stat.size > file.offset) {
           this.readNewLines(file);
         }
-        // Remove stale files
-        if (Date.now() - stat.mtimeMs > ACTIVE_THRESHOLD_MS) {
+        // Remove stale files (but not pinned ones — team members stay)
+        if (Date.now() - stat.mtimeMs > ACTIVE_THRESHOLD_MS && !this.pinnedPaths.has(path)) {
           this.files.delete(path);
           this.emit("fileRemoved", file);
         }
@@ -252,5 +254,26 @@ export class JsonlWatcher extends EventEmitter {
 
   getActiveFiles(): WatchedFile[] {
     return Array.from(this.files.values());
+  }
+
+  /** Pin a file to prevent stale removal (used for team members). */
+  pinFile(filePath: string): void {
+    this.pinnedPaths.add(filePath);
+  }
+
+  unpinFile(filePath: string): void {
+    this.pinnedPaths.delete(filePath);
+  }
+
+  /** Force-add a file even if stale. Returns true if the file was added. */
+  forceAdd(filePath: string): boolean {
+    if (this.files.has(filePath)) return false;
+    try {
+      statSync(filePath); // verify it exists
+      this.addFile(filePath);
+      return this.files.has(filePath);
+    } catch {
+      return false;
+    }
   }
 }

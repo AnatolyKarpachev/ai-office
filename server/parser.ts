@@ -465,6 +465,7 @@ function handleAssistantMessage(
             from: senderName,
             to: toAgent,
             message: truncated,
+            timestamp: Date.now(),
           });
         }
       }

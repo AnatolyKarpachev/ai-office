@@ -64,175 +64,116 @@ function getEntryIcon(type: ActivityEntry['type']): string {
   }
 }
 
-// ── ToolsView component ───────────────────────────────────────────────
+// ── MessagesView component ───────────────────────────────────────────
 
-interface ToolsViewEntry {
-  agentId: number
-  agentName: string
-  tools: ToolActivity[]
-  isSubagent?: boolean
-  subLabel?: string
+interface SendMessageEntry {
+  id: number
+  from: string
+  to: string
+  message: string
+  timestamp: number
 }
 
-function getAgentToolSummary(tools: ToolActivity[]): { active: number; permission: number; done: number } {
-  let active = 0, permission = 0, done = 0
-  for (const t of tools) {
-    if (t.permissionWait && !t.done) permission++
-    else if (t.done) done++
-    else active++
-  }
-  return { active, permission, done }
-}
+function MessagesView({ messages }: { messages: SendMessageEntry[] }) {
+  const [expandedKeys, setExpandedKeys] = useState<Set<string>>(new Set())
 
-function StatusBadge({ label, color }: { label: string; color: string }) {
-  return (
-    <span style={{
-      fontSize: '11px', padding: '0 4px', fontWeight: 'bold',
-      textTransform: 'uppercase', letterSpacing: '0.3px',
-      background: `${color}22`, color, border: `1px solid ${color}44`,
-      borderRadius: 0, whiteSpace: 'nowrap', lineHeight: '16px',
-    }}>
-      {label}
-    </span>
-  )
-}
-
-function ToolsView({ currentTools, agentRoles }: { currentTools: ToolsViewEntry[]; agentRoles: Map<number, AgentRoleInfo> }) {
-  const [expandedDone, setExpandedDone] = useState<Record<string, boolean>>({})
-
-  // Sort: permission first, then active, then idle
-  const sorted = useMemo(() => {
-    return [...currentTools].sort((a, b) => {
-      const sa = getAgentToolSummary(a.tools)
-      const sb = getAgentToolSummary(b.tools)
-      // Permission > active > done-only
-      const scoreA = sa.permission > 0 ? 3 : sa.active > 0 ? 2 : 1
-      const scoreB = sb.permission > 0 ? 3 : sb.active > 0 ? 2 : 1
-      return scoreB - scoreA
+  const toggle = useCallback((key: string) => {
+    setExpandedKeys(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
     })
-  }, [currentTools])
+  }, [])
 
-  if (sorted.length === 0) {
+  if (messages.length === 0) {
     return (
       <div style={{ padding: 16, textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '18px', fontStyle: 'italic' }}>
-        No active tools
+        No agent messages
       </div>
     )
   }
 
+  // Show newest first, max 100
+  const sorted = [...messages].slice(-100).reverse()
+
   return (
     <>
-      {sorted.map(({ agentId, agentName, tools, isSubagent, subLabel }, idx) => {
-        const roleInfo = !isSubagent ? agentRoles.get(agentId) : null
-        const summary = getAgentToolSummary(tools)
-        const key = `${agentId}-${subLabel || 'main'}-${idx}`
-        const isDoneExpanded = expandedDone[key] ?? false
-        const activeTools = tools.filter(t => !t.done)
-        const doneTools = tools.filter(t => t.done)
-
-        // Determine agent-level status
-        let agentStatus: 'permission' | 'active' | 'done' = 'done'
-        if (summary.permission > 0) agentStatus = 'permission'
-        else if (summary.active > 0) agentStatus = 'active'
-
-        const borderColor = agentStatus === 'permission'
-          ? 'var(--pixel-status-permission)'
-          : agentStatus === 'active'
-            ? 'rgba(90,140,255,0.4)'
-            : 'rgba(255,255,255,0.06)'
+      {sorted.map((msg, idx) => {
+        const key = `${msg.id}-${msg.timestamp}-${idx}`
+        const isExpanded = expandedKeys.has(key)
+        const lines = msg.message.split('\n')
+        const truncatedLines = lines.slice(0, 20)
+        const hasMore = lines.length > 20
 
         return (
           <div
             key={key}
+            onClick={() => toggle(key)}
             style={{
-              padding: '6px 8px', marginBottom: 4,
-              marginLeft: isSubagent ? 8 : 0,
-              background: 'rgba(255,255,255,0.02)',
-              border: `2px solid ${borderColor}`,
-              borderRadius: 0,
+              padding: '4px 6px',
+              marginBottom: 2,
+              background: 'rgba(0,100,30,0.2)',
+              borderLeft: '2px solid rgba(255,165,0,0.9)',
+              cursor: 'pointer',
+              transition: 'background 0.1s ease',
             }}
           >
-            {/* Agent header + status badge */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 4 }}>
-              {isSubagent ? (
-                <span style={{
-                  fontSize: '11px', padding: '0 4px', fontWeight: 'bold',
-                  textTransform: 'none', letterSpacing: '0.5px',
-                  background: 'rgba(120,160,255,0.15)', color: 'rgba(120,160,255,0.9)',
-                  border: '1px solid rgba(120,160,255,0.3)',
-                  borderRadius: 0, whiteSpace: 'nowrap', lineHeight: '16px',
-                }}>
-                  {subLabel || 'subtask'}
-                </span>
-              ) : (
-                <span style={{
-                  fontSize: '16px', fontWeight: 'bold',
-                  color: 'var(--pixel-text)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
-                }}>
-                  {agentName}
-                </span>
-              )}
-              {roleInfo?.role && <RoleBadge role={roleInfo.role} colors={roleInfo.colors} />}
-              {agentStatus === 'permission' && <StatusBadge label="WAITING" color="var(--pixel-status-permission)" />}
-              {agentStatus === 'active' && <StatusBadge label="IN PROGRESS" color="#5a8cff" />}
-              {agentStatus === 'done' && summary.done > 0 && <StatusBadge label="DONE" color="#5ac88c" />}
+            {/* Header: time + from → to */}
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)', fontFamily: 'monospace', flexShrink: 0 }}>
+                {isExpanded ? '▾' : '▸'}
+              </span>
+              <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.35)', fontFamily: 'monospace', flexShrink: 0 }}>
+                {formatTime(msg.timestamp)}
+              </span>
+              <span style={{
+                fontSize: '13px', padding: '0 4px', fontWeight: 'bold',
+                background: 'rgba(255,165,0,0.2)', color: '#ffb347',
+                border: '1px solid rgba(255,165,0,0.4)',
+                borderRadius: 2, whiteSpace: 'nowrap', lineHeight: '16px',
+                overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 80,
+              }}>
+                {msg.from}
+              </span>
+              <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>→</span>
+              <span style={{
+                fontSize: '13px', padding: '0 4px', fontWeight: 'bold',
+                background: 'rgba(90,200,140,0.2)', color: '#5ac88c',
+                border: '1px solid rgba(90,200,140,0.4)',
+                borderRadius: 2, whiteSpace: 'nowrap', lineHeight: '16px',
+                overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 80,
+              }}>
+                {msg.to}
+              </span>
             </div>
 
-            {/* Active / permission tools — always visible */}
-            {activeTools.map((tool) => (
-              <div key={tool.toolId} style={{
-                display: 'flex', alignItems: 'center', gap: 4,
-                padding: '2px 4px', marginBottom: 1,
+            {/* Collapsed: single line preview */}
+            {!isExpanded && (
+              <div style={{
+                fontSize: '13px', color: 'rgba(255,255,255,0.45)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                paddingLeft: 16, marginTop: 1,
               }}>
-                <span className={!tool.permissionWait ? 'pixel-agents-pulse' : undefined} style={{
-                  width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
-                  background: tool.permissionWait ? 'var(--pixel-status-permission)' : 'var(--pixel-status-active)',
-                }} />
-                <span style={{
-                  fontSize: '15px', flex: 1,
-                  color: tool.permissionWait ? 'var(--pixel-status-permission)' : 'rgba(255,255,255,0.8)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                  {tool.status}
-                </span>
-                {tool.permissionWait && (
-                  <span style={{ fontSize: '12px', color: 'var(--pixel-status-permission)', fontWeight: 'bold', flexShrink: 0 }}>
-                    APPROVE
-                  </span>
-                )}
+                {lines[0]}
               </div>
-            ))}
+            )}
 
-            {/* Done tools — collapsed summary, expandable */}
-            {doneTools.length > 0 && (
-              <div
-                onClick={() => setExpandedDone(prev => ({ ...prev, [key]: !isDoneExpanded }))}
-                style={{ cursor: 'pointer', marginTop: activeTools.length > 0 ? 3 : 0 }}
-              >
-                <div style={{
-                  display: 'flex', alignItems: 'center', gap: 4,
-                  padding: '2px 4px', color: 'rgba(255,255,255,0.35)',
-                  fontSize: '14px', fontFamily: 'monospace',
-                }}>
-                  <span style={{ flexShrink: 0 }}>{isDoneExpanded ? '▾' : '▸'}</span>
-                  <span style={{ flex: 1 }}>{doneTools.length} completed</span>
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--pixel-green)', flexShrink: 0, opacity: 0.5 }} />
-                </div>
-                {isDoneExpanded && doneTools.map((tool) => (
-                  <div key={tool.toolId} style={{
-                    display: 'flex', alignItems: 'center', gap: 4,
-                    padding: '1px 4px 1px 16px',
-                  }}>
-                    <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--pixel-green)', flexShrink: 0, opacity: 0.4 }} />
-                    <span style={{
-                      fontSize: '13px', color: 'rgba(255,255,255,0.3)',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
-                    }}>
-                      {tool.status}
-                    </span>
+            {/* Expanded: up to 20 lines */}
+            {isExpanded && (
+              <div style={{
+                fontSize: '13px', color: 'rgba(255,255,255,0.6)',
+                paddingLeft: 16, marginTop: 2,
+                lineHeight: '1.35',
+                wordBreak: 'break-word',
+                whiteSpace: 'pre-wrap',
+              }}>
+                {truncatedLines.join('\n')}
+                {hasMore && (
+                  <div style={{ color: 'rgba(255,255,255,0.3)', fontStyle: 'italic', marginTop: 2 }}>
+                    ...{lines.length - 20} more lines
                   </div>
-                ))}
+                )}
               </div>
             )}
           </div>
@@ -552,7 +493,7 @@ export function RightSidebar({
   sendMessages,
 }: RightSidebarProps) {
   const [collapsed, setCollapsed] = useState(false)
-  const [activeTab, setActiveTab] = useState<'activity' | 'tools' | 'chat'>('activity')
+  const [activeTab, setActiveTab] = useState<'activity' | 'messages' | 'chat'>('activity')
   const [entries, setEntries] = useState<ActivityEntry[]>([])
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -813,47 +754,16 @@ export function RightSidebar({
     )
   }
 
-  // Build current tools view (including subagent tools)
-  const currentTools: Array<{ agentId: number; agentName: string; tools: ToolActivity[]; isSubagent?: boolean; subLabel?: string }> = []
-  for (const id of agents) {
-    const ch = officeState.characters.get(id)
-    if (ch?.isSubagent) continue
-    const tools = agentTools[id]
-    if (tools && tools.length > 0) {
-      currentTools.push({
-        agentId: id,
-        agentName: ch?.folderName || `agent-${id}`,
-        tools,
-      })
-    }
-    // Add subagent tools under parent
-    const agentSubs = subagentTools[id]
-    if (agentSubs) {
-      for (const [parentToolId, subTools] of Object.entries(agentSubs)) {
-        if (subTools.length > 0) {
-          const subChar = subagentCharacters.find((s) => s.parentAgentId === id && s.parentToolId === parentToolId)
-          currentTools.push({
-            agentId: id,
-            agentName: `${ch?.folderName || `agent-${id}`} > ${subChar?.label || 'subtask'}`,
-            tools: subTools,
-            isSubagent: true,
-            subLabel: subChar?.label,
-          })
-        }
-      }
-    }
-  }
-
   return (
     <div style={{ ...sidebarStyle, width: 320 }}>
       {/* Header */}
       <div style={headerStyle}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ fontSize: '18px', color: 'var(--pixel-accent)', fontWeight: 'bold' }}>
-            {activeTab === 'activity' ? 'ACTIVITY' : activeTab === 'tools' ? 'TOOLS' : 'CHAT'}
+            {activeTab === 'activity' ? 'ACTIVITY' : activeTab === 'messages' ? 'MESSAGES' : 'CHAT'}
           </span>
           <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.4)' }}>
-            ({activeTab === 'activity' ? entries.length : activeTab === 'tools' ? currentTools.length : agentConversation?.messages.length ?? 0})
+            ({activeTab === 'activity' ? entries.length : activeTab === 'messages' ? sendMessages.length : agentConversation?.messages.length ?? 0})
           </span>
         </div>
         <button
@@ -882,14 +792,14 @@ export function RightSidebar({
           Events
         </button>
         <button
-          onClick={() => setActiveTab('tools')}
+          onClick={() => setActiveTab('messages')}
           style={{
             ...tabBtnBase,
-            color: activeTab === 'tools' ? 'var(--pixel-accent)' : tabBtnBase.color,
-            borderBottomColor: activeTab === 'tools' ? 'var(--pixel-accent)' : 'transparent',
+            color: activeTab === 'messages' ? '#ffb347' : tabBtnBase.color,
+            borderBottomColor: activeTab === 'messages' ? '#ffb347' : 'transparent',
           }}
         >
-          Tools
+          Messages
         </button>
         <button
           onClick={() => setActiveTab('chat')}
@@ -1053,11 +963,8 @@ export function RightSidebar({
             })
           )
         ) : (
-          /* Tools View — grouped by agent, active first, done collapsed */
-          <ToolsView
-            currentTools={currentTools}
-            agentRoles={agentRoles}
-          />
+          /* Messages View — agent-to-agent communication */
+          <MessagesView messages={sendMessages} />
         )}
       </div>
       )}

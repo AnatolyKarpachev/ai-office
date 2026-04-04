@@ -655,7 +655,7 @@ export function useExtensionMessages(
           from: msg.from as string,
           to: msg.to as string,
           message: msg.message as string,
-          timestamp: Date.now(),
+          timestamp: (msg.timestamp as number) || Date.now(),
         }].slice(-100))
       }
     }

@@ -302,6 +302,7 @@ export function processCodexTranscriptLine(
           from: agent.projectName,
           to,
           message,
+          timestamp: Date.now(),
         });
       }
 

@@ -4,7 +4,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { join, dirname } from "path";
 import { homedir } from "os";
 import { fileURLToPath } from "url";
-import { existsSync, readFileSync, writeFileSync, mkdirSync, watch, statSync, renameSync, unlinkSync } from "fs";
+import { existsSync, readFileSync, writeFileSync, mkdirSync, watch, statSync, renameSync, unlinkSync, readdirSync, openSync, readSync, closeSync } from "fs";
 import type { FSWatcher } from "fs";
 import { spawn, execSync, type ChildProcess } from "child_process";
 import crypto from "crypto";
@@ -33,7 +33,7 @@ const IDLE_SHUTDOWN_MS = 600_000; // 10 minutes
 
 // Accumulate SendMessage events so new clients see historical inter-agent communication
 const MAX_SEND_MESSAGES = 200;
-const recentSendMessages: Array<{ id: number; toolId: string; from: string; to: string; message: string }> = [];
+const recentSendMessages: Array<{ id: number; toolId: string; from: string; to: string; message: string; timestamp: number }> = [];
 
 // Context window limits by model for health bar calculation
 const MODEL_CONTEXT_LIMITS: Record<string, number> = {
@@ -195,9 +195,112 @@ function resolveOrphanParent(agent: TrackedAgent): void {
   }
 }
 
+// Track teams we already discovered to avoid repeated scans
+const discoveredTeams = new Set<string>();
+
+/** Tag an agent as team lead and broadcast updates */
+function tagAsTeamLead(lead: TrackedAgent, teamName: string): void {
+  if (lead.teamName === teamName && lead.isTeamLead) return;
+  lead.teamName = teamName;
+  lead.isTeamLead = true;
+  if (lead.nameSource === "fallback") {
+    const words = teamName.split(/[-_\s]+/).filter(Boolean).slice(0, 2);
+    lead.projectName = (words[0] + (words[1] ? words[1][0].toUpperCase() + words[1].slice(1) : "")).slice(0, 15);
+    lead.nameSource = "derived";
+    broadcast({ type: "agentRenamed", id: lead.id, folderName: lead.projectName });
+  }
+  broadcast(buildAgentRoleMessage(lead));
+  console.log(`[team] tagged ${lead.projectName} (${lead.id}) as lead of "${teamName}"`);
+}
+
+/** Discover and force-add all member JSONL files for a team.
+ *  Scans project directories for JSONL files matching teamName. */
+function discoverTeamMembers(teamName: string): void {
+  if (discoveredTeams.has(teamName)) return;
+  discoveredTeams.add(teamName);
+
+  try {
+    const teamConfigPath = join(homedir(), ".claude", "teams", teamName, "config.json");
+    if (!existsSync(teamConfigPath)) return;
+    const teamConfig = JSON.parse(readFileSync(teamConfigPath, "utf-8"));
+    const members = teamConfig.members as Array<Record<string, unknown>> | undefined;
+    if (!Array.isArray(members)) return;
+
+    // Collect member cwds to know which project dirs to scan
+    const cwds = new Set<string>();
+    for (const m of members) {
+      if (typeof m.cwd === "string") cwds.add(m.cwd);
+    }
+
+    // Also pin/add the lead session
+    const leadSessionId = teamConfig.leadSessionId as string | undefined;
+    if (leadSessionId) {
+      // Find the lead's JSONL file across all project dirs
+      const projectDirs = readdirSync(join(homedir(), ".claude", "projects"), { withFileTypes: true });
+      for (const dir of projectDirs) {
+        if (!dir.isDirectory()) continue;
+        const candidatePath = join(homedir(), ".claude", "projects", dir.name, leadSessionId + ".jsonl");
+        if (existsSync(candidatePath)) {
+          claudeWatcher.pinFile(candidatePath);
+          claudeWatcher.forceAdd(candidatePath);
+          console.log(`[team-discover] pinned lead ${leadSessionId.slice(0, 8)} from ${dir.name}`);
+          break;
+        }
+      }
+    }
+
+    // Scan project directories for JSONL files with matching teamName
+    const projectDirs = readdirSync(join(homedir(), ".claude", "projects"), { withFileTypes: true });
+    for (const dir of projectDirs) {
+      if (!dir.isDirectory()) continue;
+      const dirPath = join(homedir(), ".claude", "projects", dir.name);
+      let files: string[];
+      try {
+        files = readdirSync(dirPath).filter(f => f.endsWith(".jsonl"));
+      } catch { continue; }
+
+      for (const f of files) {
+        const filePath = join(dirPath, f);
+        // Quick check: does the file contain this teamName?
+        try {
+          const fd = openSync(filePath, "r");
+          // Read first 4KB to check for teamName (it appears early in JSONL)
+          const buf = Buffer.alloc(4096);
+          const bytesRead = readSync(fd, buf, 0, buf.length, 0);
+          closeSync(fd);
+          const snippet = buf.toString("utf-8", 0, bytesRead);
+          if (snippet.includes(`"${teamName}"`)) {
+            claudeWatcher.pinFile(filePath);
+            claudeWatcher.forceAdd(filePath);
+            console.log(`[team-discover] pinned member ${f.replace(".jsonl", "").slice(0, 8)} from ${dir.name}`);
+          }
+        } catch { /* skip unreadable */ }
+      }
+    }
+  } catch (err) {
+    console.warn(`[team-discover] failed for "${teamName}": ${err instanceof Error ? err.message : err}`);
+  }
+}
+
 /** Link teammate agents to their team lead, and team leads to their spawner */
 function resolveTeamParent(agent: TrackedAgent): void {
-  if (!agent.teamName || agent.parentAgentId !== undefined) return;
+  if (!agent.teamName) return;
+
+  // Check if existing parent is still alive
+  if (agent.parentAgentId !== undefined) {
+    const parentAlive = [...agents.values()].some(a => a.id === agent.parentAgentId);
+    if (parentAlive) {
+      // Parent alive — still trigger discovery for other team members
+      discoverTeamMembers(agent.teamName);
+      return;
+    }
+    // Parent is dead — clear and re-resolve
+    console.log(`[team] ${agent.projectName} (${agent.id}): parent ${agent.parentAgentId} gone, re-resolving`);
+    agent.parentAgentId = undefined;
+  }
+
+  // Trigger team discovery on first encounter
+  discoverTeamMembers(agent.teamName);
 
   if (agent.isTeamLead) {
     // Link team lead to the nearest MegaBoss/top-level session without a team
@@ -232,6 +335,8 @@ function resolveTeamParent(agent: TrackedAgent): void {
         for (const [, other] of agents) {
           if (other.sessionId === leadSessionId && other.id !== agent.id) {
             agent.parentAgentId = other.id;
+            // Tag the lead so future teammates find it directly
+            tagAsTeamLead(other, agent.teamName);
             broadcast({ type: "agentCreated", id: agent.id, folderName: agent.projectName, parentAgentId: other.id });
             console.log(`[team] ${agent.projectName} (${agent.id}) → parent ${other.projectName} (${other.id}) via config leadSessionId`);
             return;
@@ -1156,7 +1261,7 @@ const agentStateSaveTimer = setInterval(() => {
 
 function forwardServerMessage(msg: ServerMessage): void {
   if (msg.type === "agentSendMessage") {
-    recentSendMessages.push({ id: msg.id, toolId: msg.toolId, from: msg.from, to: msg.to, message: msg.message });
+    recentSendMessages.push({ id: msg.id, toolId: msg.toolId, from: msg.from, to: msg.to, message: msg.message, timestamp: msg.timestamp });
     if (recentSendMessages.length > MAX_SEND_MESSAGES) recentSendMessages.shift();
   }
   broadcast(msg);
@@ -1382,7 +1487,8 @@ function handleWatchedLine(file: WatchedFile, line: string): void {
   });
 }
 
-const watchers = [new JsonlWatcher(), new CodexJsonlWatcher()];
+const claudeWatcher = new JsonlWatcher();
+const watchers = [claudeWatcher, new CodexJsonlWatcher()];
 for (const watcher of watchers) {
   watcher.on("fileAdded", handleFileAdded);
   watcher.on("fileRemoved", handleFileRemoved);
