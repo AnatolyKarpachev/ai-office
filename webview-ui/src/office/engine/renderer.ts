@@ -340,11 +340,11 @@ export function renderTypesOverlay(
 
       let color: string | null = null
       if (seat && !seat.isLounge && walkable) {
-        color = 'rgba(255, 60, 60, 0.8)' // red — desk (work seat)
-      } else if (seat && seat.isLounge && walkable) {
-        color = 'rgba(60, 120, 255, 0.8)' // blue — lounge seat
+        color = 'rgba(255, 60, 60, 0.8)' // red — desk seat (walkable & sittable)
+      } else if (seat && seat.isLounge) {
+        color = 'rgba(60, 120, 255, 0.8)' // blue — lounge seat (sittable, not walk-through)
       } else if (seat && !walkable) {
-        color = 'rgba(180, 60, 255, 0.8)' // purple — seat but unreachable
+        color = 'rgba(180, 60, 255, 0.8)' // purple — desk seat but unreachable
       } else if (!walkable && !isWall) {
         color = 'rgba(255, 200, 0, 0.6)' // yellow — blocked (not wall)
       }

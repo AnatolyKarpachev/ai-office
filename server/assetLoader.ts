@@ -218,7 +218,7 @@ export function loadFurnitureAssets(assetsRoot: string): LoadedFurnitureAssets |
               height: manifest.height,
               footprintW: manifest.footprintW,
               footprintH: manifest.footprintH,
-              isDesk: manifest.category === "desks",
+              isDesk: manifest.isDesk ?? (manifest.category === "desks"),
               canPlaceOnWalls: manifest.canPlaceOnWalls,
               canPlaceOnSurfaces: manifest.canPlaceOnSurfaces,
               backgroundTiles: manifest.backgroundTiles,

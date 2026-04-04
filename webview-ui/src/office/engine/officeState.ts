@@ -31,7 +31,7 @@ import {
   layoutToFurnitureInstances,
   layoutToSeats,
   getBlockedTiles,
-  getIdleBlockedTiles,
+
   getSeatTiles,
 } from '../layout/layoutSerializer.js'
 import { getAnimationFrames, getCatalogEntry, getOnStateType } from '../layout/furnitureCatalog.js'
@@ -56,8 +56,6 @@ export class OfficeState {
   tileMap: TileTypeVal[][]
   seats: Map<string, Seat>
   blockedTiles: Set<string>
-  /** Empty blocked tiles for idle agents — they can walk through furniture */
-  idleBlockedTiles: Set<string> = new Set()
   furniture: FurnitureInstance[]
   walkableTiles: Array<{ col: number; row: number }>
   characters: Map<number, Character> = new Map()
@@ -84,11 +82,9 @@ export class OfficeState {
     this.applySeatFacingOverrides()
     const seatTiles = getSeatTiles(this.seats)
     this.blockedTiles = getBlockedTiles(this.layout.furniture, seatTiles)
-    this.idleBlockedTiles = getIdleBlockedTiles(this.layout.furniture, seatTiles)
     // Door bridge tiles must always be passable — unblock them globally
     for (const k of DOOR_BRIDGE_TILES) {
       this.blockedTiles.delete(k)
-      this.idleBlockedTiles.delete(k)
     }
     this.furniture = layoutToFurnitureInstances(this.layout.furniture)
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles)
@@ -114,11 +110,9 @@ export class OfficeState {
     this.applySeatFacingOverrides()
     const seatTiles = getSeatTiles(this.seats)
     this.blockedTiles = getBlockedTiles(layout.furniture, seatTiles)
-    this.idleBlockedTiles = getIdleBlockedTiles(layout.furniture, seatTiles)
     // Door bridge tiles must always be passable — unblock them globally
     for (const k of DOOR_BRIDGE_TILES) {
       this.blockedTiles.delete(k)
-      this.idleBlockedTiles.delete(k)
     }
     this.rebuildFurnitureInstances()
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles)

@@ -20,19 +20,36 @@ export function layoutToTileMap(layout: OfficeLayout): TileTypeVal[][] {
 export function layoutToFurnitureInstances(furniture: PlacedFurniture[]): FurnitureInstance[] {
   // Pre-compute desk tiles set (for chair z-sorting: detect "back to camera" seats)
   const deskTilesSet = new Set<string>()
-  // Pre-compute desk zY per tile so surface items can sort in front of desks
-  const deskZByTile = new Map<string, number>()
+
+  // Containment-based z-boost: track solid furniture per tile so items placed ON
+  // larger furniture automatically render in front of it.
+  const SURFACE_SKIP = new Set(['chairs', 'sofa', 'floor_decor'])
+  interface SolidRecord { uid: string; tileSet: Set<string>; area: number; zY: number }
+  const solidByTile = new Map<string, SolidRecord[]>()
   for (const item of furniture) {
     const entry = getCatalogEntry(item.type)
-    if (!entry || !entry.isDesk) continue
-    const deskZY = item.row * TILE_SIZE + entry.sprite.length
+    if (!entry) continue
+    if (entry.isDesk) {
+      for (let dr = 0; dr < entry.footprintH; dr++) {
+        for (let dc = 0; dc < entry.footprintW; dc++) {
+          deskTilesSet.add(`${item.col + dc},${item.row + dr}`)
+        }
+      }
+    }
+    if (SURFACE_SKIP.has(entry.category) || entry.canPlaceOnSurfaces) continue
+    const fzY = item.row * TILE_SIZE + entry.sprite.length
+    const area = entry.footprintW * entry.footprintH
+    const tileSet = new Set<string>()
     for (let dr = 0; dr < entry.footprintH; dr++) {
       for (let dc = 0; dc < entry.footprintW; dc++) {
-        const key = `${item.col + dc},${item.row + dr}`
-        deskTilesSet.add(key)
-        const prev = deskZByTile.get(key)
-        if (prev === undefined || deskZY > prev) deskZByTile.set(key, deskZY)
+        tileSet.add(`${item.col + dc},${item.row + dr}`)
       }
+    }
+    const rec: SolidRecord = { uid: item.uid, tileSet, area, zY: fzY }
+    for (const key of tileSet) {
+      let list = solidByTile.get(key)
+      if (!list) { list = []; solidByTile.set(key, list) }
+      list.push(rec)
     }
   }
 
@@ -80,14 +97,43 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[]): Furnit
       }
     }
 
-    // Surface items render in front of the desk they sit on
-    if (entry.canPlaceOnSurfaces) {
+    // Containment-based surface z-boost: if this item's entire footprint is inside
+    // a single strictly-larger furniture piece, render it in front of that furniture.
+    // Works for any item (plants, electronics, etc.) without requiring canPlaceOnSurfaces.
+    if (!SURFACE_SKIP.has(entry.category)) {
+      const itemArea = entry.footprintW * entry.footprintH
+      const itemTiles: string[] = []
       for (let dr = 0; dr < entry.footprintH; dr++) {
         for (let dc = 0; dc < entry.footprintW; dc++) {
-          const deskZ = deskZByTile.get(`${item.col + dc},${item.row + dr}`)
-          if (deskZ !== undefined && deskZ + 0.5 > zY) zY = deskZ + 0.5
+          itemTiles.push(`${item.col + dc},${item.row + dr}`)
         }
       }
+      // Collect unique overlapping furniture (by uid)
+      const seen = new Set<string>()
+      const candidates: SolidRecord[] = []
+      for (const tk of itemTiles) {
+        const recs = solidByTile.get(tk)
+        if (!recs) continue
+        for (const r of recs) {
+          if (r.uid === item.uid || seen.has(r.uid)) continue
+          seen.add(r.uid)
+          candidates.push(r)
+        }
+      }
+      // Find a strictly larger furniture piece that contains ALL item tiles
+      let bestZ = -1
+      for (const c of candidates) {
+        if (c.area <= itemArea) continue
+        if (itemTiles.every(t => c.tileSet.has(t)) && c.zY > bestZ) bestZ = c.zY
+      }
+      if (bestZ >= 0 && bestZ + 0.5 > zY) zY = bestZ + 0.5
+    }
+
+    // Wall decorations (not doors) render in front of the wall they're attached to
+    if (entry.canPlaceOnWalls && !item.type.includes('DOOR')) {
+      const wallRow = item.row + entry.footprintH - 1
+      const wallZY = (wallRow + 1) * TILE_SIZE
+      if (wallZY + 0.5 > zY) zY = wallZY + 0.5
     }
 
     // Colorize sprite if this furniture has a color override
@@ -116,38 +162,14 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[]): Furnit
 export function getBlockedTiles(furniture: PlacedFurniture[], excludeTiles?: Set<string>): Set<string> {
   const tiles = new Set<string>()
   // Categories that don't block walking
-  const WALKABLE_CATEGORIES = new Set(['chairs', 'sofa', 'floor_decor'])
+  const WALKABLE_CATEGORIES = new Set(['chairs', 'floor_decor'])
   for (const item of furniture) {
     const entry = getCatalogEntry(item.type)
     if (!entry) continue
     if (WALKABLE_CATEGORIES.has(entry.category)) continue // walkable furniture never blocks
     const bgRows = entry.backgroundTiles || 0
     for (let dr = 0; dr < entry.footprintH; dr++) {
-      if (dr < bgRows) continue // skip background rows — characters can walk through
-      for (let dc = 0; dc < entry.footprintW; dc++) {
-        const key = `${item.col + dc},${item.row + dr}`
-        if (excludeTiles && excludeTiles.has(key)) continue
-        tiles.add(key)
-      }
-    }
-  }
-  return tiles
-}
-
-/** Get blocked tiles for idle agents: same as getBlockedTiles but desk furniture is walkable.
- *  This allows idle agents to leave their workspace (walk through desk) to reach sofas/corridors,
- *  while still respecting walls, large decorations, and other non-desk obstacles. */
-export function getIdleBlockedTiles(furniture: PlacedFurniture[], excludeTiles?: Set<string>): Set<string> {
-  const tiles = new Set<string>()
-  const WALKABLE_CATEGORIES = new Set(['chairs', 'sofa', 'floor_decor'])
-  for (const item of furniture) {
-    const entry = getCatalogEntry(item.type)
-    if (!entry) continue
-    if (WALKABLE_CATEGORIES.has(entry.category)) continue
-    if (entry.isDesk) continue // idle agents can walk through desks to leave their workspace
-    const bgRows = entry.backgroundTiles || 0
-    for (let dr = 0; dr < entry.footprintH; dr++) {
-      if (dr < bgRows) continue
+      if (dr < bgRows) continue // skip background rows — characters can walk behind tall furniture
       for (let dc = 0; dc < entry.footprintW; dc++) {
         const key = `${item.col + dc},${item.row + dr}`
         if (excludeTiles && excludeTiles.has(key)) continue
@@ -299,11 +321,14 @@ export function layoutToSeats(furniture: PlacedFurniture[]): Map<string, Seat> {
   return seats
 }
 
-/** Get the set of tiles occupied by seats (so they can be excluded from blocked tiles) */
+/** Get tiles occupied by desk seats (excluded from blocked tiles).
+ *  Lounge seats are NOT excluded — they block walk-through but allow sitting as destination. */
 export function getSeatTiles(seats: Map<string, Seat>): Set<string> {
   const tiles = new Set<string>()
   for (const seat of seats.values()) {
-    tiles.add(`${seat.seatCol},${seat.seatRow}`)
+    if (!seat.isLounge) {
+      tiles.add(`${seat.seatCol},${seat.seatRow}`)
+    }
   }
   return tiles
 }

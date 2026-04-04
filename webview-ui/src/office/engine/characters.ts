@@ -138,11 +138,8 @@ function findFreeLoungeSeat(
     }
   }
 
-  // Use BFS walking distance if tile map available, otherwise fall back to Manhattan
-  const distMap = tileMap && blockedTiles
-    ? bfsDistanceMap(ch.tileCol, ch.tileRow, tileMap, blockedTiles)
-    : null
-
+  // Lounge seat tiles are blocked (can't walk through), so BFS won't reach them.
+  // Use Manhattan distance as heuristic; actual reachability verified by findPath later.
   let bestSeat: Seat | null = null
   let bestDist = Infinity
   for (const seat of seats.values()) {
@@ -151,9 +148,7 @@ function findFreeLoungeSeat(
     if (claimedSeats.has(seat.uid)) continue
     if (ch.tileCol === seat.seatCol && ch.tileRow === seat.seatRow) continue
     if (occupied.has(`${seat.seatCol},${seat.seatRow}`)) continue
-    const dist = distMap
-      ? (distMap.get(`${seat.seatCol},${seat.seatRow}`) ?? Infinity)
-      : Math.abs(seat.seatCol - ch.tileCol) + Math.abs(seat.seatRow - ch.tileRow)
+    const dist = Math.abs(seat.seatCol - ch.tileCol) + Math.abs(seat.seatRow - ch.tileRow)
     if (dist < bestDist) {
       bestDist = dist
       bestSeat = seat
@@ -499,7 +494,12 @@ export function updateCharacter(
           }
           const loungeTarget = findFreeLoungeSeat(seats, ch, allCharacters, tileMap, blockedTiles)
           if (loungeTarget) {
+            // Temporarily unblock lounge seat tile so BFS can reach it as destination
+            const loungeKey = `${loungeTarget.seatCol},${loungeTarget.seatRow}`
+            const wasBlocked = blockedTiles.has(loungeKey)
+            blockedTiles.delete(loungeKey)
             const path = findPath(ch.tileCol, ch.tileRow, loungeTarget.seatCol, loungeTarget.seatRow, tileMap, blockedTiles)
+            if (wasBlocked) blockedTiles.add(loungeKey)
             if (path.length > 0) {
               ch.path = path
               ch.moveProgress = 0
