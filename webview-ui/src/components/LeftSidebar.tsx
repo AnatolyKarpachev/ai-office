@@ -216,24 +216,9 @@ export function LeftSidebar({
   const toggleCollapse = useCallback(() => setCollapsed((v) => !v), [])
   const toggleTasksCollapse = useCallback(() => setTasksCollapsed((v) => !v), [])
 
-  // Known subagent-type roles spawned by the Agent tool (not real user-facing agents)
-  const SPAWNED_AGENT_ROLES = new Set([
-    'explore', 'plan', 'claude-code-guide',
-    'researcher', 'reviewer', 'auditor', 'builder', 'fixer',
-    'tester', 'merger', 'writer', 'devops', 'planner',
-    'refactorer', 'closer', 'supervisor',
-    'discovery-helper',
-  ])
-
   const mainAgents = agents.filter((id) => {
     const ch = officeState.characters.get(id)
     if (!ch || ch.isSubagent) return false
-    // Also hide agents with subagent-type roles (spawned via Agent tool as top-level sessions)
-    const roleInfo = agentRoles.get(id)
-    if (roleInfo?.role) {
-      const roleLower = roleInfo.role.toLowerCase()
-      if (SPAWNED_AGENT_ROLES.has(roleLower)) return false
-    }
     return true
   })
 

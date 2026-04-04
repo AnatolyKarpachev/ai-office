@@ -269,6 +269,11 @@ export function useExtensionMessages(
           // Reassign seat near the newly resolved parent
           os.reassignNearParent(id, parentAgentId)
           saveAgentSeats(os)
+        } else if (existing && (existing.leavingOffice || existing.matrixEffect === 'despawn')) {
+          // Agent reconnecting while mid-despawn — revive in place
+          os.reviveAgent(id, folderName, parentAgentId)
+          setAgents((prev) => (prev.includes(id) ? prev : [...prev, id]))
+          setSelectedAgent(id)
         } else if (!existing) {
           setAgents((prev) => (prev.includes(id) ? prev : [...prev, id]))
           setSelectedAgent(id)

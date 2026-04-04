@@ -852,6 +852,59 @@ export class OfficeState {
     this.characters.set(id, ch)
   }
 
+  /** Revive a character that is mid-despawn (reconnecting agent with same ID) */
+  reviveAgent(id: number, folderName?: string, parentAgentId?: number): void {
+    const ch = this.characters.get(id)
+    if (!ch) return
+
+    // Cancel despawn animation
+    ch.leavingOffice = false
+    ch.matrixEffect = null
+    ch.matrixEffectTimer = 0
+    ch.matrixEffectSeeds = []
+    ch.path = []
+    ch.moveProgress = 0
+
+    // Restore activity state
+    ch.isActive = true
+    ch.bubbleType = null
+    ch.bubbleTimer = 0
+    ch.bubbleText = ''
+    ch.loungeTargetSeatId = null
+    ch.coffeeSpotTarget = null
+    ch.coffeeBreakTimer = 0
+    ch.smokingSpotTarget = null
+    ch.smokingBreakTimer = 0
+
+    // Update metadata
+    if (folderName) ch.folderName = folderName
+    if (parentAgentId !== undefined) {
+      ch.parentAgentId = parentAgentId
+      ch.isSubagent = true
+    }
+
+    // Re-claim seat (was freed by removeAgent)
+    let seatId: string | null = null
+    if (parentAgentId !== undefined) {
+      seatId = this.findFreeSeatNear(parentAgentId, id)
+    }
+    if (!seatId) {
+      seatId = this.findFreeSeat(id)
+    }
+    if (seatId && !this.seats.get(seatId)?.assigned) {
+      if (!this.claimSeat(seatId)) seatId = null
+    }
+    ch.seatId = seatId
+
+    // Navigate to seat or idle
+    if (seatId) {
+      this.sendToSeat(id)
+    } else {
+      ch.state = CharacterState.IDLE
+      ch.wanderTimer = 0
+    }
+  }
+
   removeAgent(id: number): void {
     const ch = this.characters.get(id)
     if (!ch) return

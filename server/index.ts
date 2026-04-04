@@ -69,6 +69,13 @@ function buildAgentStatsMessage(agent: TrackedAgent): ServerMessage {
 
 // ── Role helpers ─────────────────────────────────────────────────────────
 // Role = agentSetting from Claude Code JSONL, enhanced with description fallback
+function getAgentRoleInputs(agent: TrackedAgent): { description: string | undefined; isSubagent: boolean } {
+  const isSubagent = !!agent.parentSessionId || !!(agent.teamName && !agent.isTeamLead);
+  // For team members without agentDescription, use projectName (e.g. "coach", "planner") as description
+  const description = agent.agentDescription || (agent.teamName && !agent.isTeamLead ? agent.projectName : undefined);
+  return { description, isSubagent };
+}
+
 function buildAgentRoleMessage(agent: TrackedAgent): ServerMessage {
   // Check for persistent role override first
   const override = roleOverrides[agent.id];
@@ -81,8 +88,8 @@ function buildAgentRoleMessage(agent: TrackedAgent): ServerMessage {
       colors: override.colors,
     };
   }
-  const isSubagent = !!agent.parentSessionId;
-  let { displayRole, colors } = resolveDisplayRole(agent.agentSetting, agent.agentDescription, isSubagent);
+  const { description, isSubagent } = getAgentRoleInputs(agent);
+  let { displayRole, colors } = resolveDisplayRole(agent.agentSetting, description, isSubagent);
   // Only one boss allowed — if another boss already exists, cap at "lead"
   if (displayRole === "boss") {
     for (const [, other] of agents) {
@@ -105,8 +112,8 @@ function buildAgentRoleMessage(agent: TrackedAgent): ServerMessage {
 function syncRoleAndBroadcast(agent: TrackedAgent): void {
   // Don't override manually set roles
   if (roleOverrides[agent.id]) return;
-  const isSubagent = !!agent.parentSessionId;
-  const { displayRole } = resolveDisplayRole(agent.agentSetting, agent.agentDescription, isSubagent);
+  const { description, isSubagent } = getAgentRoleInputs(agent);
+  const { displayRole } = resolveDisplayRole(agent.agentSetting, description, isSubagent);
   if (displayRole !== agent.role) {
     agent.role = displayRole;
     broadcast(buildAgentRoleMessage(agent));
@@ -510,6 +517,11 @@ const server = createServer(app);
 
 // WebSocket
 const wss = new WebSocketServer({ server });
+
+// Prevent unhandled WSS errors from crashing the process
+wss.on("error", (err) => {
+  console.error(`[Server] WebSocket server error: ${err.message}`);
+});
 
 // Ping/pong heartbeat — keeps clients Set accurate for shutdown guard
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -1264,8 +1276,8 @@ function handleFileAdded(file: WatchedFile): void {
 
   syncAgentNameAndBroadcast(agent);
 
-  const isSubagent = !!agent.parentSessionId;
-  const { displayRole } = resolveDisplayRole(agent.agentSetting, agent.agentDescription, isSubagent);
+  const { description: roleDesc, isSubagent } = getAgentRoleInputs(agent);
+  const { displayRole } = resolveDisplayRole(agent.agentSetting, roleDesc, isSubagent);
   agent.role = displayRole;
 
   agents.set(agent.key, agent);
@@ -1516,13 +1528,30 @@ daemonHub.on("message", (msg) => {
 }
 
 function startServer(retries = 1): void {
+  // Mutual exclusion: if another instance is already running, exit cleanly
+  const pidDir = join(homedir(), ".pixel-agents");
+  const pidFile = join(pidDir, ".server.pid");
+  try {
+    const existingPid = parseInt(readFileSync(pidFile, "utf-8").trim(), 10);
+    if (existingPid && existingPid !== process.pid) {
+      try {
+        process.kill(existingPid, 0); // test if alive (signal 0)
+        console.log(`[Server] Another instance already running (PID ${existingPid}). Exiting.`);
+        process.exit(0); // exit 0 so launchd SuccessfulExit:false won't restart
+      } catch {
+        // PID is stale, remove it and continue
+        try { unlinkSync(pidFile); } catch {}
+      }
+    }
+  } catch {
+    // No PID file or unreadable — proceed normally
+  }
+
   server.listen(PORT, "0.0.0.0", () => {
     console.log(`Pixel Agents server running at http://localhost:${PORT}`);
     console.log(`Watching ~/.claude/projects and ~/.codex/sessions for active sessions...`);
 
     // Write PID file for daemon mode
-    const pidDir = join(homedir(), ".pixel-agents");
-    const pidFile = join(pidDir, ".server.pid");
     try {
       mkdirSync(pidDir, { recursive: true });
       writeFileSync(pidFile, String(process.pid));
@@ -1536,7 +1565,8 @@ function startServer(retries = 1): void {
       saveAgentState();
     }, 2000);
   });
-  server.on("error", (err: NodeJS.ErrnoException) => {
+  // Use .once() to prevent error handler accumulation on retry
+  server.once("error", (err: NodeJS.ErrnoException) => {
     if (err.code === "EADDRINUSE" && retries > 0) {
       console.log(`[Server] Port ${PORT} in use, killing existing process and retrying...`);
       setTimeout(() => {

@@ -980,9 +980,13 @@ export function RightSidebar({
                       color: 'rgba(255,255,255,0.55)',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 3,
+                      WebkitBoxOrient: 'vertical',
                       paddingLeft: 2,
                       marginTop: 1,
+                      lineHeight: '1.3',
+                      wordBreak: 'break-word',
                     }}>
                       {entry.text}
                     </div>

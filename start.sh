@@ -1,34 +1,10 @@
 #!/bin/bash
-# Auto-restart wrapper for pixel-agents server
-# Keeps the server running on port 9876, restarts on crash
+# DEPRECATED: Server is managed by LaunchAgent (com.pixel-agents.server)
+# This script no longer starts a competing instance.
 
-PORT=9876
-cd "$(dirname "$0")"
-
-cleanup() {
-  echo "[start.sh] Shutting down..."
-  kill "$SERVER_PID" 2>/dev/null
-  exit 0
-}
-trap cleanup SIGINT SIGTERM
-
-while true; do
-  # Kill any stale process on the port
-  if command -v lsof &> /dev/null; then
-    lsof -t -i :"$PORT" 2>/dev/null | xargs kill 2>/dev/null
-  elif command -v fuser &> /dev/null; then
-    fuser -k "$PORT"/tcp 2>/dev/null
-  fi
-  sleep 1
-
-  echo "[start.sh] Starting pixel-agents server on port $PORT..."
-  node dist/server.js &
-  SERVER_PID=$!
-
-  # Wait for server process to exit
-  wait "$SERVER_PID"
-  EXIT_CODE=$?
-
-  echo "[start.sh] Server exited (code $EXIT_CODE). Restarting in 2s..."
-  sleep 2
-done
+echo "[start.sh] Server is managed by LaunchAgent."
+echo "  Status:  launchctl list com.pixel-agents.server"
+echo "  Restart: launchctl kickstart -k gui/$(id -u)/com.pixel-agents.server"
+echo "  Logs:    ~/.pixel-agents/server.log"
+echo "  Errors:  ~/.pixel-agents/server.err"
+exit 0

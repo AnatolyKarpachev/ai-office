@@ -162,10 +162,10 @@ export function ToolOverlay({
                 gap: 4,
                 marginBottom: 2,
                 padding: '2px 6px',
-                background: roleInfo?.role ? 'transparent' : 'var(--pixel-bg)',
-                border: roleInfo?.role ? 'none' : '2px solid var(--pixel-border)',
+                background: (roleInfo?.role && !['boss', 'lead'].includes(roleInfo.role.toLowerCase())) ? 'transparent' : 'var(--pixel-bg)',
+                border: (roleInfo?.role && !['boss', 'lead'].includes(roleInfo.role.toLowerCase())) ? 'none' : '2px solid var(--pixel-border)',
                 borderRadius: 0,
-                boxShadow: roleInfo?.role ? 'none' : 'var(--pixel-shadow)',
+                boxShadow: (roleInfo?.role && !['boss', 'lead'].includes(roleInfo.role.toLowerCase())) ? 'none' : 'var(--pixel-shadow)',
                 whiteSpace: 'nowrap',
                 opacity: 0.9,
               }}
@@ -221,9 +221,9 @@ export function ToolOverlay({
                   </span>
                 </>
               ) : (
-                /* Main agent: show role badge only for non-boss; show name + badge for boss */
+                /* Main agent: show name for boss/lead; show role badge for all */
                 <>
-                  {(!roleInfo?.role || roleInfo.role.toLowerCase() === 'boss') && (
+                  {(!roleInfo?.role || ['boss', 'lead'].includes(roleInfo.role.toLowerCase())) && (
                     <span
                       style={{
                         fontSize: '18px',
@@ -236,9 +236,9 @@ export function ToolOverlay({
                   {roleInfo && roleInfo.role && (
                     <span
                       style={{
-                        fontSize: roleInfo.role.toLowerCase() === 'boss' ? '11px' : '14px',
+                        fontSize: ['boss', 'lead'].includes(roleInfo.role.toLowerCase()) ? '11px' : '14px',
                         lineHeight: 1,
-                        padding: roleInfo.role.toLowerCase() === 'boss' ? '1px 4px' : '2px 6px',
+                        padding: ['boss', 'lead'].includes(roleInfo.role.toLowerCase()) ? '1px 4px' : '2px 6px',
                         background: roleInfo.colors.badge,
                         color: roleInfo.colors.primary,
                         border: `1px solid ${roleInfo.colors.primary}`,
