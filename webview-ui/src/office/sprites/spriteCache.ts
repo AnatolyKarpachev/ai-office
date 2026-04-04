@@ -58,8 +58,8 @@ export function getCachedSprite(sprite: SpriteData, zoom: number): HTMLCanvasEle
   const rows = sprite.length
   const cols = sprite[0].length
   const canvas = document.createElement('canvas')
-  canvas.width = cols * zoom
-  canvas.height = rows * zoom
+  canvas.width = Math.ceil(cols * zoom)
+  canvas.height = Math.ceil(rows * zoom)
   const ctx = canvas.getContext('2d')!
   ctx.imageSmoothingEnabled = false
 
@@ -68,7 +68,12 @@ export function getCachedSprite(sprite: SpriteData, zoom: number): HTMLCanvasEle
       const color = sprite[r][c]
       if (color === '') continue
       ctx.fillStyle = color
-      ctx.fillRect(c * zoom, r * zoom, zoom, zoom)
+      // Snap to integer pixel boundaries to prevent sub-pixel anti-aliasing
+      const px = Math.round(c * zoom)
+      const py = Math.round(r * zoom)
+      const pw = Math.round((c + 1) * zoom) - px
+      const ph = Math.round((r + 1) * zoom) - py
+      ctx.fillRect(px, py, pw, ph)
     }
   }
 
