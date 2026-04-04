@@ -424,6 +424,7 @@ export function LeftSidebar({
                                     const ssTotalTokens = ssStats ? ssStats.totalInputTokens + ssStats.totalOutputTokens : 0
                                     const ssContextTokens = ssStats?.currentContextTokens ?? ssTotalTokens
                                     const ssContextLimit = ssStats?.currentContextLimit ?? (ssStats ? getContextLimit(ssStats.model) : 0)
+                                    const deepSubs = subsByParent.get(ss.id) || []
                                     return (
                                       <div key={ss.id} style={{ padding: '2px 4px', fontSize: '12px' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -434,6 +435,34 @@ export function LeftSidebar({
                                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
                                             <TokenBar totalTokens={ssTotalTokens} usageTokens={ssContextTokens} contextLimit={ssContextLimit} model={ssStats.model} turnCount={ssStats.turnCount} visible={true} />
                                             <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.2)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{formatNumber(ssContextTokens)} tok</span>
+                                          </div>
+                                        )}
+                                        {/* Level 4+: deeper subagents */}
+                                        {deepSubs.length > 0 && (
+                                          <div style={{ marginLeft: 10, borderLeft: '2px solid rgba(255,255,255,0.03)', paddingLeft: 4, marginTop: 2 }}>
+                                            {deepSubs.map((ds) => {
+                                              const dsCh = officeState.characters.get(ds.id)
+                                              const dsRole = agentRoles.get(ds.id)
+                                              const dsName = dsCh?.folderName || ds.label || `sub-${ds.id}`
+                                              const dsStats = agentStats.get(ds.id)
+                                              const dsTotalTokens = dsStats ? dsStats.totalInputTokens + dsStats.totalOutputTokens : 0
+                                              const dsContextTokens = dsStats?.currentContextTokens ?? dsTotalTokens
+                                              const dsContextLimit = dsStats?.currentContextLimit ?? (dsStats ? getContextLimit(dsStats.model) : 0)
+                                              return (
+                                                <div key={ds.id} style={{ padding: '2px 4px', fontSize: '11px' }}>
+                                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                    <span style={{ color: 'rgba(255,255,255,0.3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{dsName}</span>
+                                                    {dsRole?.role && <span style={{ marginLeft: 'auto' }}><RoleBadge role={dsRole.role} colors={dsRole.colors} /></span>}
+                                                  </div>
+                                                  {dsStats && dsTotalTokens > 0 && (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
+                                                      <TokenBar totalTokens={dsTotalTokens} usageTokens={dsContextTokens} contextLimit={dsContextLimit} model={dsStats.model} turnCount={dsStats.turnCount} visible={true} />
+                                                      <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.2)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{formatNumber(dsContextTokens)} tok</span>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              )
+                                            })}
                                           </div>
                                         )}
                                       </div>

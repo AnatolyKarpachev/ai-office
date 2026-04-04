@@ -365,7 +365,9 @@ export function getCatalogByCategory(category: FurnitureCategory): CatalogEntryW
   const plantsTail = plantsItems.slice(-3)
 
   if (category === 'desks' && items.length > 4) {
-    return [...items.slice(0, 2), ...items.slice(-2)]
+    // Show only original desk/table items, not MO_ series
+    const originals = items.filter((e) => !e.type.startsWith('MO_'))
+    return originals.length > 0 ? originals : items.slice(0, 4)
   }
 
   if (category === 'storage' && items.length > 10) {
