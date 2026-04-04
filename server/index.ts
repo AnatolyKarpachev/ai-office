@@ -30,6 +30,7 @@ import { DaemonHub } from "./daemonHub.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || "9876", 10);
 const IDLE_SHUTDOWN_MS = 600_000; // 10 minutes
+const SUBAGENT_AUTO_SUSPEND_MS = 600_000; // 10 minutes — auto-close idle subagents
 
 // Accumulate SendMessage events so new clients see historical inter-agent communication
 const MAX_SEND_MESSAGES = 200;
@@ -1267,6 +1268,30 @@ const agentStateSaveTimer = setInterval(() => {
   saveAgentState();
 }, AGENT_STATE_SAVE_INTERVAL_MS);
 
+// Auto-suspend idle subagents after SUBAGENT_AUTO_SUSPEND_MS
+const subagentSuspendTimer = setInterval(() => {
+  const now = Date.now();
+  for (const [key, agent] of agents) {
+    // Only target subagents (have parentSessionId) that are not team leads
+    if (!agent.parentSessionId || agent.isTeamLead) continue;
+    // Must be in waiting/idle state
+    if (agent.activity !== "waiting" && agent.activity !== "idle") continue;
+    // Check idle duration
+    if (now - agent.lastActivityTime >= SUBAGENT_AUTO_SUSPEND_MS) {
+      console.log(`[auto-suspend] Closing idle subagent ${agent.id} (${agent.projectName}) — idle ${Math.round((now - agent.lastActivityTime) / 60000)}m`);
+      agents.delete(key);
+      cleanupAgentParserState(agent.id);
+      broadcast({ type: "agentClosed", id: agent.id });
+      // Clean up stale SendMessage events
+      for (let i = recentSendMessages.length - 1; i >= 0; i--) {
+        if (recentSendMessages[i].id === agent.id) recentSendMessages.splice(i, 1);
+      }
+      // Unpin from watcher if pinned
+      claudeWatcher.unpinFile(agent.jsonlFile);
+    }
+  }
+}, 60_000); // sweep every 60s
+
 function forwardServerMessage(msg: ServerMessage): void {
   if (msg.type === "agentSendMessage") {
     recentSendMessages.push({ id: msg.id, toolId: msg.toolId, from: msg.from, to: msg.to, message: msg.message, timestamp: msg.timestamp });
@@ -1749,6 +1774,7 @@ function cleanupAll(): void {
   layoutFsWatcher = null;
   clearInterval(layoutPollTimer);
   clearInterval(agentStateSaveTimer);
+  clearInterval(subagentSuspendTimer);
   clearInterval(pipelineIssuesPollTimer);
   server.close();
 }
