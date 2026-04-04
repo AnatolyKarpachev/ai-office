@@ -149,6 +149,7 @@ interface LeftSidebarProps {
   githubTasks: GithubTasksConfig
   agentStats: Map<number, AgentStats>
   agentRoles: Map<number, AgentRoleInfo>
+  agentTeamInfo: Map<number, { teamName?: string; isTeamLead?: boolean }>
   subagentCharacters: SubagentCharacter[]
   subagentTools: Record<number, Record<string, ToolActivity[]>>
   officeState: OfficeState
@@ -202,6 +203,7 @@ export function LeftSidebar({
   githubTasks,
   agentStats,
   agentRoles,
+  agentTeamInfo,
   subagentCharacters,
   subagentTools,
   officeState,
@@ -216,10 +218,20 @@ export function LeftSidebar({
   const toggleCollapse = useCallback(() => setCollapsed((v) => !v), [])
   const toggleTasksCollapse = useCallback(() => setTasksCollapsed((v) => !v), [])
 
+  // Build set of all live agent IDs (have a character on the map)
+  const liveIds = new Set<number>()
+  for (const id of agents) {
+    if (officeState.characters.get(id)) liveIds.add(id)
+  }
+
+  // Root agents = non-subagent OR orphan (subagent whose parent is gone)
   const mainAgents = agents.filter((id) => {
     const ch = officeState.characters.get(id)
-    if (!ch || ch.isSubagent) return false
-    return true
+    if (!ch) return false
+    if (!ch.isSubagent) return true
+    // Orphan: parent no longer exists → promote to root
+    if (!ch.parentAgentId || !liveIds.has(ch.parentAgentId)) return true
+    return false
   })
 
   const subsByParent = new Map<number, SubagentCharacter[]>()
@@ -379,13 +391,20 @@ export function LeftSidebar({
                               <span style={{ marginLeft: 'auto' }}>
                                 {subRole?.role
                                   ? <RoleBadge role={subRole.role} colors={subRole.colors} />
-                                  : <span style={{
-                                      fontSize: '11px', padding: '0 4px', fontWeight: 'bold',
-                                      textTransform: 'none', letterSpacing: '0.5px',
-                                      background: 'rgba(120,160,255,0.15)', color: 'rgba(120,160,255,0.9)',
-                                      border: '1px solid rgba(120,160,255,0.3)',
-                                      borderRadius: 0, whiteSpace: 'nowrap', lineHeight: '16px',
-                                    }}>{sub.label || 'subtask'}</span>}
+                                  : (() => {
+                                      const ti = agentTeamInfo.get(sub.id)
+                                      const badgeLabel = ti?.isTeamLead ? 'lead' : ti?.teamName ? 'teammate' : (sub.label || 'subtask')
+                                      const badgeBg = ti?.isTeamLead ? 'rgba(255,200,60,0.15)' : ti?.teamName ? 'rgba(90,200,140,0.15)' : 'rgba(120,160,255,0.15)'
+                                      const badgeColor = ti?.isTeamLead ? 'rgba(255,200,60,0.9)' : ti?.teamName ? 'rgba(90,200,140,0.9)' : 'rgba(120,160,255,0.9)'
+                                      const badgeBorder = ti?.isTeamLead ? 'rgba(255,200,60,0.3)' : ti?.teamName ? 'rgba(90,200,140,0.3)' : 'rgba(120,160,255,0.3)'
+                                      return <span style={{
+                                        fontSize: '11px', padding: '0 4px', fontWeight: 'bold',
+                                        textTransform: 'none', letterSpacing: '0.5px',
+                                        background: badgeBg, color: badgeColor,
+                                        border: `1px solid ${badgeBorder}`,
+                                        borderRadius: 0, whiteSpace: 'nowrap', lineHeight: '16px',
+                                      }}>{badgeLabel}</span>
+                                    })()}
                               </span>
                             </div>
                             <div style={{ fontSize: '14px', color: subHasPermission ? 'var(--pixel-status-permission)' : subIsActive ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subActivity}</div>

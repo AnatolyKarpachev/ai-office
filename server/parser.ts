@@ -472,11 +472,14 @@ function handleAssistantMessage(
         // Detect scratchboard writes via Bash tool
         if (toolName === "Bash" && typeof input.command === "string" && input.command.includes("scratchboard.py write")) {
           const cmd = input.command as string;
-          const agentMatch = cmd.match(/--agent\s+["']([^"']+)["']/);
-          const contentMatch = cmd.match(/--content\s+["']([^"']+)["']/);
-          if (contentMatch) {
-            const fromAgent = agentMatch?.[1] || agent.role || agent.agentSetting || "unknown";
-            const content = contentMatch[1];
+          // Match both quoted and unquoted args
+          const agentMatch = cmd.match(/--agent\s+(?:"([^"]+)"|'([^']+)'|(\S+))/);
+          const contentMatch = cmd.match(/--content\s+(?:"([^"]+)"|'([^']+)'|(\S+))/);
+          const agentName = agentMatch?.[1] || agentMatch?.[2] || agentMatch?.[3];
+          const contentText = contentMatch?.[1] || contentMatch?.[2] || contentMatch?.[3];
+          if (contentText) {
+            const fromAgent = agentName || agent.role || agent.agentSetting || "unknown";
+            const content = contentText;
             const senderName = agent.role || agent.agentSetting || agent.projectName;
             emit({
               type: "agentSendMessage",

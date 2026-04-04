@@ -139,7 +139,7 @@ function App() {
 
   const isEditDirty = useCallback(() => editor.isEditMode && editor.isDirty, [editor.isEditMode, editor.isDirty])
 
-  const { agents, selectedAgent, agentTools, agentStatuses, subagentTools, subagentCharacters, layoutReady, layoutWasReset, loadedAssets, githubTasks, agentStats, agentRoles, agentDetails, requestAgentDetails, agentConversation, requestAgentConversation, pipelineIssues, sendMessages, serverMode, shareLink } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty)
+  const { agents, selectedAgent, agentTools, agentStatuses, subagentTools, subagentCharacters, layoutReady, layoutWasReset, loadedAssets, githubTasks, agentStats, agentRoles, agentTeamInfo, agentDetails, requestAgentDetails, agentConversation, requestAgentConversation, pipelineIssues, sendMessages, serverMode, shareLink } = useExtensionMessages(getOfficeState, editor.setLastSavedLayout, isEditDirty)
 
   // Deep inspection panel state
   const [inspectedAgentId, setInspectedAgentId] = useState<number | null>(null)
@@ -348,6 +348,7 @@ function App() {
           agentStatuses={agentStatuses}
           agentStats={agentStats}
           agentRoles={agentRoles}
+          agentTeamInfo={agentTeamInfo}
           subagentCharacters={subagentCharacters}
           subagentTools={subagentTools}
           officeState={officeState}

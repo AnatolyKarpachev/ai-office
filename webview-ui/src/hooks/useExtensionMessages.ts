@@ -147,6 +147,7 @@ export interface ExtensionMessageState {
   requestAgentConversation: (id: number) => void
   pipelineIssues: PipelineIssue[]
   sendMessages: Array<{ id: number; from: string; to: string; message: string; timestamp: number }>
+  agentTeamInfo: Map<number, { teamName?: string; isTeamLead?: boolean }>
 }
 
 function saveAgentSeats(os: OfficeState): void {
@@ -185,6 +186,7 @@ export function useExtensionMessages(
   })
   const [agentStatsMap, setAgentStatsMap] = useState<Map<number, AgentStats>>(new Map())
   const [agentRolesMap, setAgentRolesMap] = useState<Map<number, AgentRoleInfo>>(new Map())
+  const [agentTeamInfoMap, setAgentTeamInfoMap] = useState<Map<number, { teamName?: string; isTeamLead?: boolean }>>(new Map())
   const [agentDetailsState, setAgentDetailsState] = useState<AgentDetails | null>(null)
   const [agentConversationState, setAgentConversationState] = useState<{ id: number; messages: ConversationMessage[] } | null>(null)
   const [pipelineIssues, setPipelineIssues] = useState<PipelineIssue[]>([])
@@ -261,6 +263,16 @@ export function useExtensionMessages(
         const id = msg.id as number
         const folderName = msg.folderName as string | undefined
         const parentAgentId = msg.parentAgentId as number | undefined
+        const teamName = msg.teamName as string | undefined
+        const isTeamLead = msg.isTeamLead as boolean | undefined
+        // Store team info
+        if (teamName || isTeamLead) {
+          setAgentTeamInfoMap((prev) => {
+            const next = new Map(prev)
+            next.set(id, { teamName, isTeamLead })
+            return next
+          })
+        }
         const existing = os.characters.get(id)
         if (existing && parentAgentId && !existing.parentAgentId) {
           // Update existing agent with new parent (team resolution)
@@ -327,12 +339,32 @@ export function useExtensionMessages(
           next.delete(id)
           return next
         })
+        setAgentTeamInfoMap((prev) => {
+          if (!prev.has(id)) return prev
+          const next = new Map(prev)
+          next.delete(id)
+          return next
+        })
         os.removeAgent(id)
       } else if (msg.type === 'existingAgents') {
         const incoming = msg.agents as number[]
         const meta = (msg.agentMeta || {}) as Record<number, { palette?: number; hueShift?: number; seatId?: string }>
         const folderNames = (msg.folderNames || {}) as Record<number, string>
         const parentAgentIds = (msg.parentAgentIds || {}) as Record<number, number>
+        const incomingTeamNames = (msg.teamNames || {}) as Record<number, string>
+        const incomingIsTeamLeads = (msg.isTeamLeads || {}) as Record<number, boolean>
+        // Store team info for all existing agents
+        setAgentTeamInfoMap((prev) => {
+          let changed = false
+          const next = new Map(prev)
+          for (const id of incoming) {
+            if (incomingTeamNames[id] || incomingIsTeamLeads[id]) {
+              next.set(id, { teamName: incomingTeamNames[id], isTeamLead: incomingIsTeamLeads[id] })
+              changed = true
+            }
+          }
+          return changed ? next : prev
+        })
         // Buffer agents — they'll be added in layoutLoaded after seats are built
         for (const id of incoming) {
           const m = meta[id]
@@ -679,6 +711,7 @@ export function useExtensionMessages(
     githubTasks,
     agentStats: agentStatsMap,
     agentRoles: agentRolesMap,
+    agentTeamInfo: agentTeamInfoMap,
     agentDetails: agentDetailsState,
     requestAgentDetails,
     agentConversation: agentConversationState,

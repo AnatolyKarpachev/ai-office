@@ -733,10 +733,18 @@ function sendInitialData(ws: WebSocket, isReadOnly = false): void {
   const folderNames: Record<number, string> = {};
   const agentMeta: Record<number, { palette?: number; hueShift?: number; seatId?: string }> = {};
   const parentAgentIds: Record<number, number> = {};
+  const teamNames: Record<number, string> = {};
+  const isTeamLeads: Record<number, boolean> = {};
   for (const a of agentList) {
     folderNames[a.id] = a.projectName;
     if (a.parentAgentId !== undefined) {
       parentAgentIds[a.id] = a.parentAgentId;
+    }
+    if (a.teamName) {
+      teamNames[a.id] = a.teamName;
+    }
+    if (a.isTeamLead) {
+      isTeamLeads[a.id] = true;
     }
     if (persistedSeats?.[a.id]) {
       const s = persistedSeats[a.id];
@@ -749,7 +757,7 @@ function sendInitialData(ws: WebSocket, isReadOnly = false): void {
       }
     }
   }
-  ws.send(JSON.stringify({ type: "existingAgents", agents: agentIds, folderNames, agentMeta, parentAgentIds }));
+  ws.send(JSON.stringify({ type: "existingAgents", agents: agentIds, folderNames, agentMeta, parentAgentIds, teamNames, isTeamLeads }));
 
   // Send agentStats for each active agent
   for (const a of agentList) {
@@ -1274,6 +1282,8 @@ function rebuildAgentPlacement(agent: TrackedAgent): void {
     id: agent.id,
     folderName: agent.projectName,
     parentAgentId: agent.parentAgentId,
+    teamName: agent.teamName,
+    isTeamLead: agent.isTeamLead,
   });
   broadcast(buildAgentRoleMessage(agent));
   if (agent.model || agent.turnCount > 0) {
@@ -1426,6 +1436,8 @@ function handleFileAdded(file: WatchedFile): void {
     id: agent.id,
     folderName: agent.projectName,
     parentAgentId: agent.parentAgentId,
+    teamName: agent.teamName,
+    isTeamLead: agent.isTeamLead,
   });
   broadcast(buildAgentRoleMessage(agent));
 
