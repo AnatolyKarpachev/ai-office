@@ -478,7 +478,6 @@ function handleAssistantMessage(
           const agentName = agentMatch?.[1] || agentMatch?.[2] || agentMatch?.[3];
           const contentText = contentMatch?.[1] || contentMatch?.[2] || contentMatch?.[3];
           if (contentText) {
-            const fromAgent = agentName || agent.role || agent.agentSetting || "unknown";
             const content = contentText;
             const senderName = agent.role || agent.agentSetting || agent.projectName;
             emit({
