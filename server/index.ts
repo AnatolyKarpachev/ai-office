@@ -1269,11 +1269,13 @@ const agentStateSaveTimer = setInterval(() => {
 }, AGENT_STATE_SAVE_INTERVAL_MS);
 
 // Auto-suspend idle subagents after SUBAGENT_AUTO_SUSPEND_MS
+// Subagent = any agent that has a parent (parentSessionId OR parentAgentId) and is NOT a team lead
 const subagentSuspendTimer = setInterval(() => {
   const now = Date.now();
   for (const [key, agent] of agents) {
-    // Only target subagents (have parentSessionId) that are not team leads
-    if (!agent.parentSessionId || agent.isTeamLead) continue;
+    // Must have a parent — either from file path (parentSessionId) or from state (parentAgentId)
+    const isSubagent = !!(agent.parentSessionId || agent.parentAgentId);
+    if (!isSubagent || agent.isTeamLead) continue;
     // Must be in waiting/idle state
     if (agent.activity !== "waiting" && agent.activity !== "idle") continue;
     // Check idle duration
@@ -1286,8 +1288,8 @@ const subagentSuspendTimer = setInterval(() => {
       for (let i = recentSendMessages.length - 1; i >= 0; i--) {
         if (recentSendMessages[i].id === agent.id) recentSendMessages.splice(i, 1);
       }
-      // Unpin from watcher if pinned
-      claudeWatcher.unpinFile(agent.jsonlFile);
+      // Suspend in watcher — unpins AND blocks re-add until real new writes
+      claudeWatcher.suspendFile(agent.jsonlFile);
     }
   }
 }, 60_000); // sweep every 60s

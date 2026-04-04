@@ -63,6 +63,7 @@ export class JsonlWatcher extends EventEmitter {
   private watcher: ReturnType<typeof watch> | null = null;
   private pollInterval: ReturnType<typeof setInterval> | null = null;
   private pinnedPaths = new Set<string>();
+  private suspendedPaths = new Set<string>(); // auto-suspended files — blocked from re-add
 
   start(): void {
     this.scanForActiveFiles();
@@ -81,6 +82,10 @@ export class JsonlWatcher extends EventEmitter {
     // Re-add previously dropped files when they get new writes
     this.watcher.on("change", (filePath: string) => {
       if (filePath.endsWith(".jsonl") && !this.files.has(filePath)) {
+        // Unsuspend on real new activity (file is being written to again)
+        if (this.suspendedPaths.has(filePath)) {
+          this.suspendedPaths.delete(filePath);
+        }
         this.addFile(filePath);
       }
     });
@@ -146,6 +151,7 @@ export class JsonlWatcher extends EventEmitter {
 
   private addFile(filePath: string): void {
     if (this.files.has(filePath)) return;
+    if (this.suspendedPaths.has(filePath)) return; // blocked by auto-suspend
 
     const sessionId = basename(filePath, ".jsonl");
     const parentDir = dirname(filePath);
@@ -263,6 +269,17 @@ export class JsonlWatcher extends EventEmitter {
 
   unpinFile(filePath: string): void {
     this.pinnedPaths.delete(filePath);
+  }
+
+  /** Mark a file as suspended — blocks re-add until unsuspended or new writes arrive. */
+  suspendFile(filePath: string): void {
+    this.suspendedPaths.add(filePath);
+    this.pinnedPaths.delete(filePath);
+    this.files.delete(filePath);
+  }
+
+  unsuspendFile(filePath: string): void {
+    this.suspendedPaths.delete(filePath);
   }
 
   /** Force-add a file even if stale. Returns true if the file was added. */
