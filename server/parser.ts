@@ -468,6 +468,27 @@ function handleAssistantMessage(
             timestamp: Date.now(),
           });
         }
+
+        // Detect scratchboard writes via Bash tool
+        if (toolName === "Bash" && typeof input.command === "string" && input.command.includes("scratchboard.py write")) {
+          const cmd = input.command as string;
+          const agentMatch = cmd.match(/--agent\s+["']([^"']+)["']/);
+          const contentMatch = cmd.match(/--content\s+["']([^"']+)["']/);
+          if (contentMatch) {
+            const fromAgent = agentMatch?.[1] || agent.role || agent.agentSetting || "unknown";
+            const content = contentMatch[1];
+            const senderName = agent.role || agent.agentSetting || agent.projectName;
+            emit({
+              type: "agentSendMessage",
+              id: agent.id,
+              toolId,
+              from: senderName,
+              to: "scratchboard",
+              message: "\uD83D\uDCCB " + (content.length > 200 ? content.slice(0, 200) + "\u2026" : content),
+              timestamp: Date.now(),
+            });
+          }
+        }
       }
     }
     if (hasNonExemptTool) {

@@ -113,8 +113,8 @@ function MessagesView({ messages }: { messages: SendMessageEntry[] }) {
             style={{
               padding: '4px 6px',
               marginBottom: 2,
-              background: 'rgba(0,100,30,0.2)',
-              borderLeft: '2px solid rgba(255,165,0,0.9)',
+              background: msg.to === 'scratchboard' ? 'rgba(0,50,150,0.2)' : 'rgba(0,100,30,0.2)',
+              borderLeft: `2px solid ${msg.to === 'scratchboard' ? 'rgba(0,150,255,0.9)' : 'rgba(255,165,0,0.9)'}`,
               cursor: 'pointer',
               transition: 'background 0.1s ease',
             }}
