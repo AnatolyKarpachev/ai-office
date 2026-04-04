@@ -218,7 +218,40 @@ function resolveTeamParent(agent: TrackedAgent): void {
       agent.parentAgentId = other.id;
       broadcast({ type: "agentCreated", id: agent.id, folderName: agent.projectName, parentAgentId: other.id });
       console.log(`[team] ${agent.projectName} (${agent.id}) → parent ${other.projectName} (${other.id}) via team "${agent.teamName}"`);
-      break;
+      return;
+    }
+  }
+
+  // Fallback 1: teamName in JSONL may differ from config name — check ~/.claude/teams/{teamName}/config.json
+  try {
+    const teamConfigPath = join(homedir(), ".claude", "teams", agent.teamName, "config.json");
+    if (existsSync(teamConfigPath)) {
+      const teamConfig = JSON.parse(readFileSync(teamConfigPath, "utf-8"));
+      const leadSessionId = teamConfig.leadSessionId as string | undefined;
+      if (leadSessionId) {
+        for (const [, other] of agents) {
+          if (other.sessionId === leadSessionId && other.id !== agent.id) {
+            agent.parentAgentId = other.id;
+            broadcast({ type: "agentCreated", id: agent.id, folderName: agent.projectName, parentAgentId: other.id });
+            console.log(`[team] ${agent.projectName} (${agent.id}) → parent ${other.projectName} (${other.id}) via config leadSessionId`);
+            return;
+          }
+        }
+      }
+    }
+  } catch {
+    // Config read failed — skip fallback
+  }
+
+  // Fallback 2: match by gitBranch — all teammates share the same branch
+  if (agent.gitBranch) {
+    for (const [, other] of agents) {
+      if (other.isTeamLead && other.gitBranch === agent.gitBranch && other.id !== agent.id && other.provider === agent.provider) {
+        agent.parentAgentId = other.id;
+        broadcast({ type: "agentCreated", id: agent.id, folderName: agent.projectName, parentAgentId: other.id });
+        console.log(`[team] ${agent.projectName} (${agent.id}) → parent ${other.projectName} (${other.id}) via shared branch "${agent.gitBranch}"`);
+        return;
+      }
     }
   }
 }
