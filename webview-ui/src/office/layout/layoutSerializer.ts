@@ -169,7 +169,7 @@ export function getBlockedTiles(furniture: PlacedFurniture[], excludeTiles?: Set
     if (WALKABLE_CATEGORIES.has(entry.category)) continue // walkable furniture never blocks
     const bgRows = entry.backgroundTiles || 0
     for (let dr = 0; dr < entry.footprintH; dr++) {
-      if (dr < bgRows) continue // skip background rows — characters can walk behind tall furniture
+      if (dr < bgRows && entry.category !== 'desks') continue // skip background rows — but desks block bg rows too
       for (let dc = 0; dc < entry.footprintW; dc++) {
         const key = `${item.col + dc},${item.row + dr}`
         if (excludeTiles && excludeTiles.has(key)) continue

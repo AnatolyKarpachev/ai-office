@@ -237,9 +237,7 @@ export class OfficeState {
           if (!entry || !entry.isDesk) continue
           if (deskTileCol >= item.col && deskTileCol < item.col + entry.footprintW &&
               deskTileRow >= item.row && deskTileRow < item.row + entry.footprintH) {
-            const bgRows = entry.backgroundTiles || 0
             for (let r = 0; r < entry.footprintH; r++) {
-              if (r < bgRows) continue
               for (let c = 0; c < entry.footprintW; c++) {
                 const key = `${item.col + c},${item.row + r}`
                 if (this.blockedTiles.has(key)) {
