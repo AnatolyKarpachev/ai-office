@@ -1141,15 +1141,7 @@ export class OfficeState {
         if (s < bestScore) { bestScore = s; bestSeatId = uid }
       }
     }
-    // Priority 3: allow lounge seats
-    if (!bestSeatId) {
-      bestScore = Infinity
-      for (const [uid, seat] of this.seats) {
-        if (seat.assigned || this.isSeatClaimed(uid)) continue
-        const s = clusterScore(seat)
-        if (s < bestScore) { bestScore = s; bestSeatId = uid }
-      }
-    }
+    // Lounge seats (sofas, benches) are NEVER assigned as workstations — same rule as findFreeSeat
 
     let ch: Character
     if (bestSeatId && this.claimSeat(bestSeatId)) {
