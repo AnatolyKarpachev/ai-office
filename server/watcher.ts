@@ -6,8 +6,8 @@ import { EventEmitter } from "events";
 import type { WatchedFile } from "./sourceTypes.js";
 
 const CLAUDE_PROJECTS_DIR = join(homedir(), ".claude", "projects");
-const ACTIVE_THRESHOLD_MS = 300_000; // 5 minutes — dead sessions drop quickly, re-added on new writes
-const POLL_INTERVAL_MS = 1000;
+const ACTIVE_THRESHOLD_MS = 1_800_000; // 30 minutes — sessions survive long builds and user idle
+const POLL_INTERVAL_MS = 3000; // 3 seconds — reduces I/O pressure from statSync on tracked files
 
 const MAX_PROJECT_NAME_LENGTH = 15;
 
@@ -71,6 +71,18 @@ export class JsonlWatcher extends EventEmitter {
     this.watcher = watch(CLAUDE_PROJECTS_DIR, {
       ignoreInitial: true,
       depth: 5, // Need depth 5 to catch subagent files: projectDir/sessionId/subagents/agent.jsonl
+      ignored: (path: string) => {
+        // Always allow directories (needed for traversal)
+        if (path === CLAUDE_PROJECTS_DIR) return false;
+        const s = statSync(path, { throwIfNoEntry: false });
+        if (!s) return true;
+        if (s.isDirectory()) return false;
+        // Only watch .jsonl files modified within ACTIVE_THRESHOLD
+        if (!path.endsWith(".jsonl")) return true;
+        return Date.now() - s.mtimeMs > ACTIVE_THRESHOLD_MS;
+      },
+      usePolling: false,
+      awaitWriteFinish: false,
     });
 
     this.watcher.on("add", (filePath: string) => {

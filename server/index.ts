@@ -6,7 +6,10 @@ import { homedir } from "os";
 import { fileURLToPath } from "url";
 import { existsSync, readFileSync, writeFileSync, mkdirSync, watch, statSync, renameSync, unlinkSync, readdirSync, openSync, readSync, closeSync } from "fs";
 import type { FSWatcher } from "fs";
-import { spawn, execSync, type ChildProcess } from "child_process";
+import { spawn, execSync, execFile, type ChildProcess } from "child_process";
+import { promisify } from "util";
+
+const execFileAsync = promisify(execFile);
 import crypto from "crypto";
 import { JsonlWatcher } from "./watcher.js";
 import { CodexJsonlWatcher } from "./codexWatcher.js";
@@ -1567,122 +1570,146 @@ function resolvePipelineState(labelNames: string[], states: GithubTaskStateConfi
   return "";
 }
 
-function fetchPipelineIssues(): void {
-  const cfg = getConfig();
-  const githubTasks = cfg.githubTasks;
+let pipelineFetchRunning = false;
 
-  if (!githubTasks.enabled || !isGitHubCliAvailable()) {
-    if (cachedPipelineIssues.length > 0) {
-      cachedPipelineIssues = [];
-      broadcast({ type: "pipelineIssues", issues: [] } as any);
+async function ghExec(args: string[], options?: { cwd?: string; timeout?: number }): Promise<string> {
+  const { stdout } = await execFileAsync("gh", args, {
+    encoding: "utf-8",
+    timeout: options?.timeout ?? 10_000,
+    cwd: options?.cwd,
+    env: { ...process.env, GH_NO_UPDATE_NOTIFIER: "1" },
+  });
+  return stdout.trim();
+}
+
+async function fetchPipelineIssues(): Promise<void> {
+  if (pipelineFetchRunning) return; // prevent overlapping runs
+  pipelineFetchRunning = true;
+
+  try {
+    const cfg = getConfig();
+    const githubTasks = cfg.githubTasks;
+
+    if (!githubTasks.enabled || !isGitHubCliAvailable()) {
+      if (cachedPipelineIssues.length > 0) {
+        cachedPipelineIssues = [];
+        broadcast({ type: "pipelineIssues", issues: [] } as any);
+      }
+      return;
     }
-    return;
-  }
 
-  // Get unique repo names from active agents' project directories
-  const repoSet = new Set<string>();
-  for (const agent of agents.values()) {
-    // Try to detect GitHub repo from the project directory
-    try {
-      const result = execSync(
-        `cd "${agent.projectDir}" && gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null`,
-        { encoding: "utf-8", timeout: 10000 }
-      ).trim();
-      if (result) repoSet.add(result);
-    } catch { /* not a git repo or gh not available */ }
-  }
-  // Fallback: if no repos detected, try common repos from config
-  if (repoSet.size === 0) {
-    // Try to detect from home directory git repos
-    try {
-      const result = execSync(
-        `gh repo list --json nameWithOwner -q '.[].nameWithOwner' --limit 10 2>/dev/null`,
-        { encoding: "utf-8", timeout: 15000 }
-      ).trim();
-      if (result) {
-        for (const r of result.split("\n").filter(Boolean)) repoSet.add(r);
-      }
-    } catch { /* gh not available */ }
-  }
-
-  const allIssues: typeof cachedPipelineIssues = [];
-  const pipelineEnabled = githubTasks.pipeline.enabled;
-  for (const repo of repoSet) {
-    try {
-      const raw = execSync(
-        `gh issue list -R "${repo}" --state open --limit ${githubTasks.maxIssues} --json number,title,labels,state,body 2>/dev/null`,
-        { encoding: "utf-8", timeout: 15000 }
-      );
-      const issues = JSON.parse(raw) as Array<{ number: number; title: string; labels: Array<{ name: string }>; state: string; body: string }>;
-      for (const issue of issues) {
-        const labelNames = issue.labels.map((l) => l.name);
-        const pipelineState = pipelineEnabled
-          ? resolvePipelineState(labelNames, githubTasks.pipeline.states)
-          : "";
-        allIssues.push({
-          number: issue.number,
-          title: issue.title,
-          labels: labelNames,
-          state: issue.state,
-          pipelineState,
-          repo: repo.split("/").pop() || repo,
-          gates: [],
-        });
-      }
-    } catch {
-      // Public default should degrade quietly when gh auth or repo access is unavailable.
-    }
-  }
-
-  // Parse gate comments for in-progress issues
-  if (pipelineEnabled && githubTasks.pipeline.gates.length > 0) {
-    for (const issue of allIssues) {
-      if (issue.pipelineState !== "in_progress") continue;
-      const cacheKey = `${issue.repo}/${issue.number}`;
-      const cached = gateCache.get(cacheKey);
-      if (cached && Date.now() - cached.ts < 30_000) {
-        issue.gates = cached.gates;
-        continue;
-      }
-      // Find full repo name (owner/repo) from repoSet
-      const fullRepo = Array.from(repoSet).find(r => r.endsWith(`/${issue.repo}`)) || issue.repo;
+    // Get unique repo names from active agents' project directories (parallel)
+    const repoSet = new Set<string>();
+    const repoDetectPromises = Array.from(agents.values()).map(async (agent) => {
       try {
-        const raw = execSync(
-          `gh api repos/${fullRepo}/issues/${issue.number}/comments --jq '[.[] | select(.body | test("^\\\\[gate ")) | {body: .body, ts: .created_at}]'`,
-          { encoding: "utf-8", timeout: 10_000 }
+        const result = await ghExec(
+          ["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
+          { cwd: agent.projectDir, timeout: 10_000 },
         );
-        const parsed = JSON.parse(raw) as Array<{ body: string; ts: string }>;
-        const gates: GateStatus[] = [];
-        for (const c of parsed) {
-          const m = c.body.match(GATE_COMMENT_RE);
-          if (m) {
-            gates.push({ gate: parseInt(m[1], 10), status: m[2], comment: m[3].trim(), timestamp: c.ts });
-          }
+        if (result) repoSet.add(result);
+      } catch { /* not a git repo or gh not available */ }
+    });
+    await Promise.all(repoDetectPromises);
+
+    // Fallback: if no repos detected, try listing user repos
+    if (repoSet.size === 0) {
+      try {
+        const result = await ghExec(
+          ["repo", "list", "--json", "nameWithOwner", "-q", ".[].nameWithOwner", "--limit", "10"],
+          { timeout: 15_000 },
+        );
+        if (result) {
+          for (const r of result.split("\n").filter(Boolean)) repoSet.add(r);
         }
-        issue.gates = gates;
-        gateCache.set(cacheKey, { ts: Date.now(), gates });
+      } catch { /* gh not available */ }
+    }
+
+    const allIssues: typeof cachedPipelineIssues = [];
+    const pipelineEnabled = githubTasks.pipeline.enabled;
+
+    // Fetch issues from all repos in parallel
+    const issuePromises = Array.from(repoSet).map(async (repo) => {
+      try {
+        const raw = await ghExec(
+          ["issue", "list", "-R", repo, "--state", "open", "--limit", String(githubTasks.maxIssues), "--json", "number,title,labels,state,body"],
+          { timeout: 15_000 },
+        );
+        const issues = JSON.parse(raw) as Array<{ number: number; title: string; labels: Array<{ name: string }>; state: string; body: string }>;
+        for (const issue of issues) {
+          const labelNames = issue.labels.map((l) => l.name);
+          const pipelineState = pipelineEnabled
+            ? resolvePipelineState(labelNames, githubTasks.pipeline.states)
+            : "";
+          allIssues.push({
+            number: issue.number,
+            title: issue.title,
+            labels: labelNames,
+            state: issue.state,
+            pipelineState,
+            repo: repo.split("/").pop() || repo,
+            gates: [],
+          });
+        }
       } catch {
-        /* ignore */
+        // Degrade quietly when gh auth or repo access is unavailable.
+      }
+    });
+    await Promise.all(issuePromises);
+
+    // Parse gate comments for in-progress issues (parallel)
+    if (pipelineEnabled && githubTasks.pipeline.gates.length > 0) {
+      const gatePromises = allIssues
+        .filter((issue) => issue.pipelineState === "in_progress")
+        .map(async (issue) => {
+          const cacheKey = `${issue.repo}/${issue.number}`;
+          const cached = gateCache.get(cacheKey);
+          if (cached && Date.now() - cached.ts < 30_000) {
+            issue.gates = cached.gates;
+            return;
+          }
+          const fullRepo = Array.from(repoSet).find((r) => r.endsWith(`/${issue.repo}`)) || issue.repo;
+          try {
+            const raw = await ghExec(
+              ["api", `repos/${fullRepo}/issues/${issue.number}/comments`, "--jq", '[.[] | select(.body | test("^\\\\[gate ")) | {body: .body, ts: .created_at}]'],
+              { timeout: 10_000 },
+            );
+            const parsed = JSON.parse(raw) as Array<{ body: string; ts: string }>;
+            const gates: GateStatus[] = [];
+            for (const c of parsed) {
+              const m = c.body.match(GATE_COMMENT_RE);
+              if (m) {
+                gates.push({ gate: parseInt(m[1], 10), status: m[2], comment: m[3].trim(), timestamp: c.ts });
+              }
+            }
+            issue.gates = gates;
+            gateCache.set(cacheKey, { ts: Date.now(), gates });
+          } catch {
+            /* ignore */
+          }
+        });
+      await Promise.all(gatePromises);
+    }
+
+    // Clean cache for issues no longer in-progress
+    for (const [key] of gateCache) {
+      if (!allIssues.some((i) => `${i.repo}/${i.number}` === key && i.pipelineState === "in_progress")) {
+        gateCache.delete(key);
       }
     }
-  }
-  // Clean cache for issues no longer in-progress
-  for (const [key] of gateCache) {
-    if (!allIssues.some(i => `${i.repo}/${i.number}` === key && i.pipelineState === "in_progress")) {
-      gateCache.delete(key);
-    }
-  }
 
-  cachedPipelineIssues = allIssues;
-  broadcast({ type: "pipelineIssues", issues: allIssues } as any);
-  if (allIssues.length > 0) {
-    console.log(`[Server] Fetched ${allIssues.length} pipeline issues from ${repoSet.size} repos`);
+    cachedPipelineIssues = allIssues;
+    broadcast({ type: "pipelineIssues", issues: allIssues } as any);
+    if (allIssues.length > 0) {
+      console.log(`[Server] Fetched ${allIssues.length} pipeline issues from ${repoSet.size} repos`);
+    }
+  } finally {
+    pipelineFetchRunning = false;
   }
 }
 
 // Initial fetch after a short delay (let agents connect first)
-setTimeout(fetchPipelineIssues, 5000);
-const pipelineIssuesPollTimer = setInterval(fetchPipelineIssues, PIPELINE_POLL_INTERVAL_MS);
+setTimeout(() => { fetchPipelineIssues().catch(() => {}); }, 5000);
+const pipelineIssuesPollTimer = setInterval(() => { fetchPipelineIssues().catch(() => {}); }, PIPELINE_POLL_INTERVAL_MS);
 
 // Start
 for (const watcher of watchers) {

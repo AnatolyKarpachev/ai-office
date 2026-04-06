@@ -16,7 +16,12 @@ const SEND_MESSAGE_SIDEBAR_MAX_LENGTH = 200;
 const MAX_AGENT_NAME_LENGTH = 15;
 const IDLE_ACTIVITY_TIMEOUT_MS = 120_000; // 2 min — long-running tools (builds, tests) need time
 
-const KNOWN_RECORD_TYPES = new Set(["assistant", "user", "system", "progress", "agent-name", "custom-title"]);
+const KNOWN_RECORD_TYPES = new Set([
+  "assistant", "user", "system", "progress", "agent-name", "custom-title",
+  // Claude Code internal record types — safe to ignore
+  "permission-mode", "attachment", "file-history-snapshot", "queue-operation",
+  "worktree-state", "pr-link", "last-prompt",
+]);
 // Track warned record types per agent to log only first occurrence
 const warnedRecordTypes = new Map<number, Set<string>>();
 
