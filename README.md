@@ -1,6 +1,6 @@
 <p align="right">🇷🇺 <strong>Русский</strong> | 🇬🇧 <a href="README_EN.md">English</a> | 🇨🇳 <a href="README_ZH.md">中文</a></p>
 
-<h1>Визуализация ИИ агентов Claude и Codex в real time</h1>
+<h1>Визуализация ИИ агентов Claude и Codex в real time в браузере</h1>
 
 <p align="center">
   <img src="docs/images/main_picture_agent_visualization.png" width="980" alt="Главный экран визуализации агентов" />
