@@ -1,6 +1,6 @@
 <p align="right">🇷🇺 <a href="README.md">Русский</a> | 🇬🇧 <strong>English</strong> | 🇨🇳 <a href="README_ZH.md">中文</a></p>
 
-<h1>Real-time Visualization of Claude and Codex AI Agents</h1>
+<h1>Real-time Visualization of Claude and Codex AI Agents in your browser</h1>
 
 <p align="center">
   <img src="docs/images/main_picture_agent_visualization.png" width="980" alt="Main agent visualization screen" />
