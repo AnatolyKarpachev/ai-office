@@ -8,6 +8,7 @@ import type { WatchedFile } from "./sourceTypes.js";
 const CLAUDE_PROJECTS_DIR = join(homedir(), ".claude", "projects");
 const ACTIVE_THRESHOLD_MS = 1_800_000; // 30 minutes — sessions survive long builds and user idle
 const POLL_INTERVAL_MS = 3000; // 3 seconds — reduces I/O pressure from statSync on tracked files
+const RESCAN_INTERVAL_MS = 15_000; // 15 seconds — periodic rescan to catch files chokidar missed (new dirs)
 
 const MAX_PROJECT_NAME_LENGTH = 15;
 
@@ -62,6 +63,7 @@ export class JsonlWatcher extends EventEmitter {
   private files = new Map<string, WatchedFile>();
   private watcher: ReturnType<typeof watch> | null = null;
   private pollInterval: ReturnType<typeof setInterval> | null = null;
+  private rescanInterval: ReturnType<typeof setInterval> | null = null;
   private pinnedPaths = new Set<string>();
   private suspendedPaths = new Set<string>(); // auto-suspended files — blocked from re-add
 
@@ -103,11 +105,15 @@ export class JsonlWatcher extends EventEmitter {
     });
 
     this.pollInterval = setInterval(() => this.pollFiles(), POLL_INTERVAL_MS);
+
+    // Periodic rescan to catch files in new directories that chokidar/fsevents missed
+    this.rescanInterval = setInterval(() => this.scanForActiveFiles(), RESCAN_INTERVAL_MS);
   }
 
   stop(): void {
     this.watcher?.close();
     if (this.pollInterval) clearInterval(this.pollInterval);
+    if (this.rescanInterval) clearInterval(this.rescanInterval);
     this.pinnedPaths.clear();
   }
 
