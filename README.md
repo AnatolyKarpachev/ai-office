@@ -1,4 +1,4 @@
-<p align="right"><strong>Русский</strong> | <a href="README_EN.md">English</a></p>
+<p align="right">🇷🇺 <strong>Русский</strong> | 🇬🇧 <a href="README_EN.md">English</a> | 🇨🇳 <a href="README_ZH.md">中文</a></p>
 
 <h1>Визуализация ИИ агентов Claude и Codex в real time</h1>
 
