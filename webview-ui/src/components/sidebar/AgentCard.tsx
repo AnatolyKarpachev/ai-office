@@ -50,6 +50,24 @@ export function getStatusLabel(
   return 'Idle'
 }
 
+/** Status label with agent type hint for idle/waiting states */
+function getStatusLabelWithType(
+  agentId: number,
+  agentTools: Record<number, ToolActivity[]>,
+  agentStatuses: Record<number, string>,
+  isActive: boolean,
+  agentTeamInfo: Map<number, { teamName?: string; isTeamLead?: boolean }>,
+  isSubagent: boolean,
+): string {
+  const base = getStatusLabel(agentId, agentTools, agentStatuses, isActive)
+  if (base !== 'Waiting for input' && base !== 'Idle') return base
+  const ti = agentTeamInfo.get(agentId)
+  if (ti?.isTeamLead) return base
+  if (ti?.teamName) return `teammate · ${base}`
+  if (isSubagent) return `subagent · ${base}`
+  return base
+}
+
 export function getSubagentActivity(
   parentAgentId: number,
   parentToolId: string,
@@ -122,7 +140,7 @@ export function AgentCard({
   const tools = agentTools[id]
   const hasPermission = tools?.some((t) => t.permissionWait && !t.done)
   const hasActiveTools = tools?.some((t) => !t.done)
-  const statusLabel = getStatusLabel(id, agentTools, agentStatuses, isActive)
+  const statusLabel = getStatusLabelWithType(id, agentTools, agentStatuses, isActive, agentTeamInfo, ch.isSubagent)
   const totalTokens = stats ? stats.totalInputTokens + stats.totalOutputTokens : 0
   const contextTokens = stats?.currentContextTokens ?? totalTokens
   const contextLimit = stats?.currentContextLimit ?? (stats ? getContextLimit(stats.model) : 0)
@@ -176,7 +194,11 @@ export function AgentCard({
             const subName = subCh?.folderName || sub.label || `subagent-${sub.id}`
             const subHasPermission = subCh?.bubbleType === 'permission'
             const subIsActive = subCh?.isActive ?? false
-            const subActivity = getSubagentActivity(sub.parentAgentId, sub.parentToolId, subagentTools, officeState, sub.id, agentTools, agentStatuses)
+            const subActivityRaw = getSubagentActivity(sub.parentAgentId, sub.parentToolId, subagentTools, officeState, sub.id, agentTools, agentStatuses)
+            const subTi = agentTeamInfo.get(sub.id)
+            const subTypeLabel = subTi?.isTeamLead ? 'lead' : subTi?.teamName ? 'teammate' : 'subagent'
+            const subActivity = subActivityRaw === 'Waiting for input' || subActivityRaw === 'Idle'
+              ? `${subTypeLabel} · ${subActivityRaw}` : subActivityRaw
             let subDotColor: string | null = null
             if (subHasPermission) subDotColor = 'var(--pixel-status-permission)'
             else if (subIsActive) subDotColor = 'var(--pixel-status-active)'
