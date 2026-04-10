@@ -1,7 +1,7 @@
 import { TileType, TILE_SIZE, MAX_COLS, MAX_ROWS } from '../types.js'
 import { DEFAULT_NEUTRAL_COLOR } from '../../constants.js'
 import type { TileType as TileTypeVal, OfficeLayout, PlacedFurniture, FloorColor, FurnitureCatalogEntry } from '../types.js'
-import { getCatalogEntry, getRotatedType, getToggledType } from '../layout/furnitureCatalog.js'
+import { getCatalogEntry, getRotatedType, getToggledType, isDoorFurniture } from '../layout/furnitureCatalog.js'
 import { getPlacementBlockedTiles } from '../layout/layoutSerializer.js'
 
 /**
@@ -138,7 +138,9 @@ export function canPlaceFurniture(
   }
 
   // Build occupied set excluding the item being moved, skipping background tile rows
-  const occupied = getPlacementBlockedTiles(layout.furniture, excludeUid)
+  // Doors can overlap other doors — exclude door tiles from occupied set when placing a door
+  const isDoor = isDoorFurniture(type)
+  const occupied = getPlacementBlockedTiles(layout.furniture, excludeUid, isDoor)
 
   // If this item can be placed on surfaces, build set of desk tiles to exclude from collision
   let deskTiles: Set<string> | null = null

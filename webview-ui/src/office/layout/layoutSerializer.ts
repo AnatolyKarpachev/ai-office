@@ -1,6 +1,6 @@
 import { TileType, FurnitureType, DEFAULT_COLS, DEFAULT_ROWS, TILE_SIZE, Direction } from '../types.js'
 import type { TileType as TileTypeVal, OfficeLayout, PlacedFurniture, Seat, FurnitureInstance, FloorColor } from '../types.js'
-import { getCatalogEntry, getOrientationInGroup } from './furnitureCatalog.js'
+import { getCatalogEntry, getOrientationInGroup, isDoorFurniture } from './furnitureCatalog.js'
 import { getColorizedSprite } from '../colorize.js'
 
 /** Convert flat tile array from layout into 2D grid */
@@ -182,16 +182,18 @@ export function getBlockedTiles(furniture: PlacedFurniture[], excludeTiles?: Set
   return tiles
 }
 
-/** Get tiles blocked for placement purposes — skips top backgroundTiles rows per item */
-export function getPlacementBlockedTiles(furniture: PlacedFurniture[], excludeUid?: string): Set<string> {
+/** Get tiles blocked for placement purposes — skips top backgroundTiles rows per item.
+ *  excludeDoors: if true, skip door furniture tiles (doors can overlap other doors). */
+export function getPlacementBlockedTiles(furniture: PlacedFurniture[], excludeUid?: string, excludeDoors?: boolean): Set<string> {
   const tiles = new Set<string>()
   for (const item of furniture) {
     if (item.uid === excludeUid) continue
+    if (excludeDoors && isDoorFurniture(item.type)) continue
     const entry = getCatalogEntry(item.type)
     if (!entry) continue
     const bgRows = entry.backgroundTiles || 0
     for (let dr = 0; dr < entry.footprintH; dr++) {
-      if (dr < bgRows) continue // skip background rows
+      if (dr < bgRows) continue
       for (let dc = 0; dc < entry.footprintW; dc++) {
         tiles.add(`${item.col + dc},${item.row + dr}`)
       }
