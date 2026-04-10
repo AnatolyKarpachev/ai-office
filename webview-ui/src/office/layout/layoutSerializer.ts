@@ -162,7 +162,7 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[]): Furnit
 export function getBlockedTiles(furniture: PlacedFurniture[], excludeTiles?: Set<string>, openDoorUids?: Set<string>): Set<string> {
   const tiles = new Set<string>()
   // Categories that don't block walking
-  const WALKABLE_CATEGORIES = new Set(['chairs', 'floor_decor'])
+  const WALKABLE_CATEGORIES = new Set(['chairs', 'floor_decor', 'doors'])
   for (const item of furniture) {
     // Open doors don't block
     if (openDoorUids && openDoorUids.has(item.uid)) continue

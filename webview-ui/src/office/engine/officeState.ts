@@ -1196,16 +1196,14 @@ export class OfficeState {
     const animFrame = Math.floor(this.furnitureAnimTimer / FURNITURE_ANIM_INTERVAL_SEC)
     const hasAutoOn = autoOnTiles.size > 0
     const modifiedFurniture: PlacedFurniture[] = this.layout.furniture.map((item) => {
-      // Door auto-open based on proximity
+      // Door auto-open based on proximity — show last frame (fully open), no loop
       if (isDoorFurniture(item.type) && openDoorUids.has(item.uid)) {
-        let onType = getOnStateType(item.type)
+        const onType = getOnStateType(item.type)
         if (onType !== item.type) {
           const onFrames = getAnimationFrames(onType)
-          if (onFrames && onFrames.length > 1) {
-            const frameIdx = animFrame % onFrames.length
-            onType = onFrames[frameIdx]
-          }
-          return { ...item, type: onType }
+          // Use last frame = fully open (no cycling)
+          const finalType = onFrames && onFrames.length > 0 ? onFrames[onFrames.length - 1] : onType
+          return { ...item, type: finalType }
         }
       }
       const entry = getCatalogEntry(item.type)
