@@ -66,6 +66,7 @@ export class OfficeState {
   furnitureAnimTimer = 0
   _prevOpenDoors?: Set<string>
   _openDoorUids = new Set<string>()
+  doorTiles = new Set<string>()
   selectedAgentId: number | null = null
   cameraFollowId: number | null = null
   hoveredAgentId: number | null = null
@@ -100,12 +101,29 @@ export class OfficeState {
     applySeatFacingOverrides(this.seats)
     const seatTiles = getSeatTiles(this.seats)
     this.blockedTiles = getBlockedTiles(this.layout.furniture, seatTiles)
+    this.doorTiles = this.computeDoorTiles()
     // Door bridge tiles must always be passable — unblock them globally
     for (const k of DOOR_BRIDGE_TILES) {
       this.blockedTiles.delete(k)
     }
     this.furniture = layoutToFurnitureInstances(this.layout.furniture)
     this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles)
+  }
+
+  /** Compute set of tile keys occupied by door furniture */
+  private computeDoorTiles(): Set<string> {
+    const tiles = new Set<string>()
+    for (const item of this.layout.furniture) {
+      if (!isDoorFurniture(item.type)) continue
+      const entry = getCatalogEntry(item.type)
+      if (!entry) continue
+      for (let dr = 0; dr < entry.footprintH; dr++) {
+        for (let dc = 0; dc < entry.footprintW; dc++) {
+          tiles.add(`${item.col + dc},${item.row + dr}`)
+        }
+      }
+    }
+    return tiles
   }
 
   /** Rebuild all derived state from a new layout. Reassigns existing characters.
@@ -118,6 +136,7 @@ export class OfficeState {
     applySeatFacingOverrides(this.seats)
     const seatTiles = getSeatTiles(this.seats)
     this.blockedTiles = getBlockedTiles(layout.furniture, seatTiles)
+    this.doorTiles = this.computeDoorTiles()
     // Door bridge tiles must always be passable — unblock them globally
     for (const k of DOOR_BRIDGE_TILES) {
       this.blockedTiles.delete(k)
@@ -448,7 +467,7 @@ export class OfficeState {
         const seat = this.seats.get(bestUid)!
         // Walk to new seat
         const path = this.withOwnSeatUnblocked(ch, () =>
-          findPath(ch.tileCol, ch.tileRow, seat.seatCol, seat.seatRow, this.tileMap, this.blockedTiles)
+          findPath(ch.tileCol, ch.tileRow, seat.seatCol, seat.seatRow, this.tileMap, this.blockedTiles, this.doorTiles)
         )
         if (path.length > 0) {
           ch.path = path
@@ -481,12 +500,12 @@ export class OfficeState {
 
   /** Build a path from the entrance tile to a target tile, unblocking door tiles */
   private buildPathFromEntrance(toCol: number, toRow: number): Array<{ col: number; row: number }> {
-    return _buildPathFromEntrance(toCol, toRow, this.layout, this.tileMap, this.blockedTiles, this.walkableTiles)
+    return _buildPathFromEntrance(toCol, toRow, this.layout, this.tileMap, this.blockedTiles, this.walkableTiles, this.doorTiles)
   }
 
   /** Build a path from a source tile to the entrance tile, unblocking door tiles */
   private buildPathToEntrance(fromCol: number, fromRow: number): Array<{ col: number; row: number }> {
-    return _buildPathToEntrance(fromCol, fromRow, this.layout, this.tileMap, this.blockedTiles, this.walkableTiles)
+    return _buildPathToEntrance(fromCol, fromRow, this.layout, this.tileMap, this.blockedTiles, this.walkableTiles, this.doorTiles)
   }
 
   /** Start the leave-office sequence: walk to entrance and despawn */
@@ -709,7 +728,7 @@ export class OfficeState {
     ch.seatId = seatId
     // Pathfind to new seat (unblock own seat tile for this query)
     const path = this.withOwnSeatUnblocked(ch, () =>
-      findPath(ch.tileCol, ch.tileRow, seat.seatCol, seat.seatRow, this.tileMap, this.blockedTiles)
+      findPath(ch.tileCol, ch.tileRow, seat.seatCol, seat.seatRow, this.tileMap, this.blockedTiles, this.doorTiles)
     )
     if (path.length > 0) {
       ch.path = path
@@ -821,7 +840,7 @@ export class OfficeState {
     const seat = this.seats.get(ch.seatId)
     if (!seat) return
     const path = this.withOwnSeatUnblocked(ch, () =>
-      findPath(ch.tileCol, ch.tileRow, seat.seatCol, seat.seatRow, this.tileMap, this.blockedTiles)
+      findPath(ch.tileCol, ch.tileRow, seat.seatCol, seat.seatRow, this.tileMap, this.blockedTiles, this.doorTiles)
     )
     if (path.length > 0) {
       ch.path = path
@@ -851,7 +870,7 @@ export class OfficeState {
       if (!key || key !== `${col},${row}`) return false
     }
     const path = this.withOwnSeatUnblocked(ch, () =>
-      findPath(ch.tileCol, ch.tileRow, col, row, this.tileMap, this.blockedTiles)
+      findPath(ch.tileCol, ch.tileRow, col, row, this.tileMap, this.blockedTiles, this.doorTiles)
     )
     if (path.length === 0) return false
     ch.path = path
@@ -1136,18 +1155,24 @@ export class OfficeState {
       }
     }
 
-    // Door proximity detection — collect door tiles that should be "open"
-    const DOOR_PROXIMITY = 3  // Manhattan distance in tiles
+    // Door proximity detection — open door when agent is adjacent (≤1 tile),
+    // close when all agents are >2 tiles away
+    const DOOR_OPEN_DIST = 1   // open when agent within 1 tile
+    const DOOR_CLOSE_DIST = 2  // close when all agents beyond 2 tiles
     const openDoorUids = new Set<string>()
     for (const item of this.layout.furniture) {
       if (!isDoorFurniture(item.type)) continue
-      const doorCenterCol = item.col
-      const doorCenterRow = item.row + Math.floor((getCatalogEntry(item.type)?.footprintH ?? 1) / 2)
+      const entry = getCatalogEntry(item.type)
+      if (!entry) continue
+      const doorCenterCol = item.col + Math.floor(entry.footprintW / 2)
+      const doorCenterRow = item.row + Math.floor(entry.footprintH / 2)
+      const wasOpen = this._prevOpenDoors?.has(item.uid) ?? false
+      const threshold = wasOpen ? DOOR_CLOSE_DIST : DOOR_OPEN_DIST
       for (const ch of this.characters.values()) {
         const chCol = Math.round(ch.col)
         const chRow = Math.round(ch.row)
         const dist = Math.abs(chCol - doorCenterCol) + Math.abs(chRow - doorCenterRow)
-        if (dist <= DOOR_PROXIMITY) {
+        if (dist <= threshold) {
           openDoorUids.add(item.uid)
           break
         }
@@ -1279,7 +1304,7 @@ export class OfficeState {
       this.getLayout().furniture, ch, this.characters, this.tileMap, this.blockedTiles,
     )
     if (!coffeeSpot) return
-    const path = findPath(ch.tileCol, ch.tileRow, coffeeSpot.col, coffeeSpot.row, this.tileMap, this.blockedTiles)
+    const path = findPath(ch.tileCol, ch.tileRow, coffeeSpot.col, coffeeSpot.row, this.tileMap, this.blockedTiles, this.doorTiles)
     if (path.length > 0) {
       ch.path = path
       ch.moveProgress = 0
@@ -1297,7 +1322,7 @@ export class OfficeState {
     if (!ch) return
     const spot = findFreeSmokingSpot(ch, this.characters, this.tileMap, this.blockedTiles, this.walkableTiles)
     if (!spot) return
-    const path = findPath(ch.tileCol, ch.tileRow, spot.col, spot.row, this.tileMap, this.blockedTiles)
+    const path = findPath(ch.tileCol, ch.tileRow, spot.col, spot.row, this.tileMap, this.blockedTiles, this.doorTiles)
     if (path.length > 0) {
       ch.path = path
       ch.moveProgress = 0
@@ -1376,12 +1401,12 @@ export class OfficeState {
         // Idle agents: unblock only desk tiles near their own seat so they can leave workspace,
         // but keep all other desks/tables blocked to prevent walking through them
         this.withOwnWorkspaceUnblocked(ch, () =>
-          updateCharacter(ch, dt, this.walkableTiles, this.seats, this.tileMap, this.blockedTiles, this.characters, this.layout.furniture)
+          updateCharacter(ch, dt, this.walkableTiles, this.seats, this.tileMap, this.blockedTiles, this.characters, this.layout.furniture, this.doorTiles)
         )
       } else {
         // Active agents: normal furniture blocking, unblock own seat
         this.withOwnSeatUnblocked(ch, () =>
-          updateCharacter(ch, dt, this.walkableTiles, this.seats, this.tileMap, this.blockedTiles, this.characters, this.layout.furniture)
+          updateCharacter(ch, dt, this.walkableTiles, this.seats, this.tileMap, this.blockedTiles, this.characters, this.layout.furniture, this.doorTiles)
         )
       }
       // Expose state for debugging

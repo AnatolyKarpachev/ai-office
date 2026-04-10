@@ -7,6 +7,7 @@ export function isWalkable(
   row: number,
   tileMap: TileType[][],
   blockedTiles: Set<string>,
+  doorTiles?: Set<string>,
 ): boolean {
   const rows = tileMap.length
   const cols = rows > 0 ? tileMap[0].length : 0
@@ -14,7 +15,12 @@ export function isWalkable(
   const t = tileMap[row][col]
   if (t === TileType.WALL || t === TileType.VOID) return false
   if (isFenceFloorPattern(t)) return false
-  if (blockedTiles.has(`${col},${row}`)) return false
+  const key = `${col},${row}`
+  if (blockedTiles.has(key)) {
+    // Door tiles are passable for pathfinding
+    if (doorTiles && doorTiles.has(key)) return true
+    return false
+  }
   return true
 }
 
@@ -73,7 +79,8 @@ export function bfsDistanceMap(
   return dist
 }
 
-/** BFS pathfinding on 4-connected grid (no diagonals). Returns path excluding start, including end. */
+/** BFS pathfinding on 4-connected grid (no diagonals). Returns path excluding start, including end.
+ *  doorTiles: set of tile keys that are doors — pathfinding treats them as walkable even if blocked. */
 export function findPath(
   startCol: number,
   startRow: number,
@@ -81,6 +88,7 @@ export function findPath(
   endRow: number,
   tileMap: TileType[][],
   blockedTiles: Set<string>,
+  doorTiles?: Set<string>,
 ): Array<{ col: number; row: number }> {
   if (startCol === endCol && startRow === endRow) return []
 
@@ -88,11 +96,8 @@ export function findPath(
   const startKey = key(startCol, startRow)
   const endKey = key(endCol, endRow)
 
-  // End must be walkable (or be a chair tile which may be adjacent to desk)
-  // We allow the end tile even if it's not strictly walkable for chair positions
-  const endWalkable = isWalkable(endCol, endRow, tileMap, blockedTiles)
+  const endWalkable = isWalkable(endCol, endRow, tileMap, blockedTiles, doorTiles)
   if (!endWalkable) {
-    // If the end is a desk tile, we still can't path there
     return []
   }
 
@@ -114,7 +119,6 @@ export function findPath(
     const currKey = key(curr.col, curr.row)
 
     if (currKey === endKey) {
-      // Reconstruct path
       const path: Array<{ col: number; row: number }> = []
       let k = endKey
       while (k !== startKey) {
@@ -131,7 +135,7 @@ export function findPath(
       const nk = key(nc, nr)
 
       if (visited.has(nk)) continue
-      if (!isWalkable(nc, nr, tileMap, blockedTiles)) continue
+      if (!isWalkable(nc, nr, tileMap, blockedTiles, doorTiles)) continue
 
       visited.add(nk)
       parent.set(nk, currKey)
@@ -139,6 +143,5 @@ export function findPath(
     }
   }
 
-  // No path found
   return []
 }

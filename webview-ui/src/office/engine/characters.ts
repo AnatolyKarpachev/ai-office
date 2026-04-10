@@ -273,6 +273,7 @@ export function updateCharacter(
   blockedTiles: Set<string>,
   allCharacters?: Map<number, Character>,
   placedFurniture?: PlacedFurniture[],
+  doorTiles?: Set<string>,
 ): void {
   ch.frameTimer += dt
 
@@ -318,7 +319,7 @@ export function updateCharacter(
         if (ch.seatId) {
           const ownSeat = seats.get(ch.seatId)
           if (ownSeat?.requiredRoles && (ch.tileCol !== ownSeat.seatCol || ch.tileRow !== ownSeat.seatRow)) {
-            const ownPath = findPath(ch.tileCol, ch.tileRow, ownSeat.seatCol, ownSeat.seatRow, tileMap, blockedTiles)
+            const ownPath = findPath(ch.tileCol, ch.tileRow, ownSeat.seatCol, ownSeat.seatRow, tileMap, blockedTiles, doorTiles)
             if (ownPath.length > 0) {
               ch.path = ownPath
               ch.moveProgress = 0
@@ -334,7 +335,7 @@ export function updateCharacter(
         if (activityRoll < COFFEE_BREAK_CHANCE) {
           const coffeeSpot = findFreeCoffeeSpot(placedFurniture, ch, allCharacters, tileMap, blockedTiles)
           if (coffeeSpot) {
-            const coffeePath = findPath(ch.tileCol, ch.tileRow, coffeeSpot.col, coffeeSpot.row, tileMap, blockedTiles)
+            const coffeePath = findPath(ch.tileCol, ch.tileRow, coffeeSpot.col, coffeeSpot.row, tileMap, blockedTiles, doorTiles)
             if (coffeePath.length > 0) {
               ch.path = coffeePath
               ch.moveProgress = 0
@@ -348,7 +349,7 @@ export function updateCharacter(
         } else if (activityRoll < COFFEE_BREAK_CHANCE + SMOKING_BREAK_CHANCE) {
           const smokingSpot = findFreeSmokingSpot(ch, allCharacters, tileMap, blockedTiles, walkableTiles)
           if (smokingSpot) {
-            const smokingPath = findPath(ch.tileCol, ch.tileRow, smokingSpot.col, smokingSpot.row, tileMap, blockedTiles)
+            const smokingPath = findPath(ch.tileCol, ch.tileRow, smokingSpot.col, smokingSpot.row, tileMap, blockedTiles, doorTiles)
             if (smokingPath.length > 0) {
               ch.path = smokingPath
               ch.moveProgress = 0
@@ -363,7 +364,7 @@ export function updateCharacter(
         // Sofa (fallback or 33% roll)
         const loungeTarget = findFreeLoungeSeat(seats, ch, allCharacters, tileMap, blockedTiles)
         if (loungeTarget) {
-          const path = findPath(ch.tileCol, ch.tileRow, loungeTarget.seatCol, loungeTarget.seatRow, tileMap, blockedTiles)
+          const path = findPath(ch.tileCol, ch.tileRow, loungeTarget.seatCol, loungeTarget.seatRow, tileMap, blockedTiles, doorTiles)
           if (path.length > 0) {
             ch.path = path
             ch.moveProgress = 0
@@ -418,7 +419,7 @@ export function updateCharacter(
             }
             // Fall through to wander logic below
           } else {
-            const path = findPath(ch.tileCol, ch.tileRow, seat.seatCol, seat.seatRow, tileMap, blockedTiles)
+            const path = findPath(ch.tileCol, ch.tileRow, seat.seatCol, seat.seatRow, tileMap, blockedTiles, doorTiles)
             if (path.length > 0) {
               ch.path = path
               ch.moveProgress = 0
@@ -448,7 +449,7 @@ export function updateCharacter(
           if (ch.seatId) {
             const ownSeat = seats.get(ch.seatId)
             if (ownSeat?.requiredRoles && (ch.tileCol !== ownSeat.seatCol || ch.tileRow !== ownSeat.seatRow)) {
-              const ownPath = findPath(ch.tileCol, ch.tileRow, ownSeat.seatCol, ownSeat.seatRow, tileMap, blockedTiles)
+              const ownPath = findPath(ch.tileCol, ch.tileRow, ownSeat.seatCol, ownSeat.seatRow, tileMap, blockedTiles, doorTiles)
               if (ownPath.length > 0) {
                 ch.path = ownPath
                 ch.moveProgress = 0
@@ -466,7 +467,7 @@ export function updateCharacter(
           if (actRoll < COFFEE_BREAK_CHANCE) {
             const coffeeSpot = findFreeCoffeeSpot(placedFurniture, ch, allCharacters, tileMap, blockedTiles)
             if (coffeeSpot) {
-              const coffeePath = findPath(ch.tileCol, ch.tileRow, coffeeSpot.col, coffeeSpot.row, tileMap, blockedTiles)
+              const coffeePath = findPath(ch.tileCol, ch.tileRow, coffeeSpot.col, coffeeSpot.row, tileMap, blockedTiles, doorTiles)
               if (coffeePath.length > 0) {
                 ch.path = coffeePath
                 ch.moveProgress = 0
@@ -480,7 +481,7 @@ export function updateCharacter(
           } else if (actRoll < COFFEE_BREAK_CHANCE + SMOKING_BREAK_CHANCE) {
             const smokingSpot = findFreeSmokingSpot(ch, allCharacters, tileMap, blockedTiles, walkableTiles)
             if (smokingSpot) {
-              const smokingPath = findPath(ch.tileCol, ch.tileRow, smokingSpot.col, smokingSpot.row, tileMap, blockedTiles)
+              const smokingPath = findPath(ch.tileCol, ch.tileRow, smokingSpot.col, smokingSpot.row, tileMap, blockedTiles, doorTiles)
               if (smokingPath.length > 0) {
                 ch.path = smokingPath
                 ch.moveProgress = 0
@@ -498,7 +499,7 @@ export function updateCharacter(
             const loungeKey = `${loungeTarget.seatCol},${loungeTarget.seatRow}`
             const wasBlocked = blockedTiles.has(loungeKey)
             blockedTiles.delete(loungeKey)
-            const path = findPath(ch.tileCol, ch.tileRow, loungeTarget.seatCol, loungeTarget.seatRow, tileMap, blockedTiles)
+            const path = findPath(ch.tileCol, ch.tileRow, loungeTarget.seatCol, loungeTarget.seatRow, tileMap, blockedTiles, doorTiles)
             if (wasBlocked) blockedTiles.add(loungeKey)
             if (path.length > 0) {
               ch.path = path
@@ -520,7 +521,7 @@ export function updateCharacter(
               // Too far from parent — walk toward a tile near (but not on top of) parent
               const targetCol = parentCh.tileCol + randomInt(-SUBAGENT_MIN_DISTANCE, SUBAGENT_MIN_DISTANCE)
               const targetRow = parentCh.tileRow + randomInt(-SUBAGENT_MIN_DISTANCE, SUBAGENT_MIN_DISTANCE)
-              const path = findPath(ch.tileCol, ch.tileRow, targetCol, targetRow, tileMap, blockedTiles)
+              const path = findPath(ch.tileCol, ch.tileRow, targetCol, targetRow, tileMap, blockedTiles, doorTiles)
               if (path.length > 0) {
                 ch.path = path
                 ch.moveProgress = 0
@@ -539,7 +540,7 @@ export function updateCharacter(
         if (ch.wanderCount >= ch.wanderLimit && ch.seatId) {
           const seat = seats.get(ch.seatId)
           if (seat) {
-            const path = findPath(ch.tileCol, ch.tileRow, seat.seatCol, seat.seatRow, tileMap, blockedTiles)
+            const path = findPath(ch.tileCol, ch.tileRow, seat.seatCol, seat.seatRow, tileMap, blockedTiles, doorTiles)
             if (path.length > 0) {
               ch.path = path
               ch.moveProgress = 0
@@ -570,7 +571,7 @@ export function updateCharacter(
           } else {
             target = walkableTiles[Math.floor(Math.random() * walkableTiles.length)]
           }
-          const path = findPath(ch.tileCol, ch.tileRow, target.col, target.row, tileMap, blockedTiles)
+          const path = findPath(ch.tileCol, ch.tileRow, target.col, target.row, tileMap, blockedTiles, doorTiles)
           if (path.length > 0) {
             ch.path = path
             ch.moveProgress = 0
@@ -713,7 +714,7 @@ export function updateCharacter(
           if (seat) {
             const lastStep = ch.path[ch.path.length - 1]
             if (!lastStep || lastStep.col !== seat.seatCol || lastStep.row !== seat.seatRow) {
-              const newPath = findPath(ch.tileCol, ch.tileRow, seat.seatCol, seat.seatRow, tileMap, blockedTiles)
+              const newPath = findPath(ch.tileCol, ch.tileRow, seat.seatCol, seat.seatRow, tileMap, blockedTiles, doorTiles)
               if (newPath.length > 0) {
                 ch.path = newPath
               }

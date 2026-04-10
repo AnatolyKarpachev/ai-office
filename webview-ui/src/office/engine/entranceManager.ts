@@ -63,11 +63,12 @@ export function buildPathFromEntrance(
   tileMap: TileTypeVal[][],
   blockedTiles: Set<string>,
   walkableTiles: Array<{ col: number; row: number }>,
+  doorTiles?: Set<string>,
 ): Array<{ col: number; row: number }> {
   const entrance = getEntranceTile(layout, tileMap, blockedTiles, walkableTiles)
   if (!entrance) return []
   const bt = getEntranceBlockedTiles(blockedTiles)
-  return findPath(entrance.col, entrance.row, toCol, toRow, tileMap, bt)
+  return findPath(entrance.col, entrance.row, toCol, toRow, tileMap, bt, doorTiles)
 }
 
 /** Build a path from a source tile to the entrance tile, unblocking door tiles */
@@ -78,11 +79,12 @@ export function buildPathToEntrance(
   tileMap: TileTypeVal[][],
   blockedTiles: Set<string>,
   walkableTiles: Array<{ col: number; row: number }>,
+  doorTiles?: Set<string>,
 ): Array<{ col: number; row: number }> {
   const entrance = getEntranceTile(layout, tileMap, blockedTiles, walkableTiles)
   if (!entrance) return []
   const bt = getEntranceBlockedTiles(blockedTiles)
-  return findPath(fromCol, fromRow, entrance.col, entrance.row, tileMap, bt)
+  return findPath(fromCol, fromRow, entrance.col, entrance.row, tileMap, bt, doorTiles)
 }
 
 /** Start the leave-office sequence: walk to entrance and despawn */
