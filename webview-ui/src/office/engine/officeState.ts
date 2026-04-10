@@ -1155,12 +1155,11 @@ export class OfficeState {
       }
     }
 
-    // Door open detection — open only when a WALKING agent's path goes through the door
+    // Door open detection — open only when a WALKING agent is on door tile or next step is door
     const openDoorUids = new Set<string>()
     for (const item of this.layout.furniture) {
       if (!isDoorFurniture(item.type)) continue
       const entry = getCatalogEntry(item.type)
-      // Collect door tiles
       const doorKeys = new Set<string>()
       const fw = entry?.footprintW ?? 1
       const fh = entry?.footprintH ?? 2
@@ -1171,21 +1170,17 @@ export class OfficeState {
       }
       for (const ch of this.characters.values()) {
         if (ch.state !== CharacterState.WALK || ch.path.length === 0) continue
-        // Check if agent is currently on a door tile or next few path steps go through it
-        const currentKey = `${ch.tileCol},${ch.tileRow}`
-        if (doorKeys.has(currentKey)) {
+        // Open only if agent is ON the door tile right now
+        if (doorKeys.has(`${ch.tileCol},${ch.tileRow}`)) {
           openDoorUids.add(item.uid)
           break
         }
-        // Check upcoming path (next 3 steps)
-        for (let i = 0; i < Math.min(3, ch.path.length); i++) {
-          const step = ch.path[i]
-          if (doorKeys.has(`${step.col},${step.row}`)) {
-            openDoorUids.add(item.uid)
-            break
-          }
+        // Or next step is the door tile (about to enter)
+        const next = ch.path[0]
+        if (next && doorKeys.has(`${next.col},${next.row}`)) {
+          openDoorUids.add(item.uid)
+          break
         }
-        if (openDoorUids.has(item.uid)) break
       }
     }
 
