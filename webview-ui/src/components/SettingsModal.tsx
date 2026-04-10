@@ -11,19 +11,17 @@ interface SettingsModalProps {
   onToggleAlwaysShowOverlay: () => void
 }
 
-const menuItemBase: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  width: '100%',
-  padding: '6px 10px',
-  fontSize: '24px',
-  color: 'rgba(255, 255, 255, 0.8)',
-  background: 'transparent',
-  border: 'none',
-  borderRadius: 0,
-  cursor: 'pointer',
-  textAlign: 'left',
+const menuItemCls = "flex items-center justify-between w-full px-2.5 py-1.5 text-[24px] text-pixel-text bg-transparent border-0 cursor-pointer text-left hover:bg-pixel-btn"
+
+function Checkbox({ checked }: { checked: boolean }) {
+  return (
+    <span
+      className="w-3.5 h-3.5 border-2 border-white/50 shrink-0 flex items-center justify-center text-[12px] leading-none text-white"
+      style={{ background: checked ? 'rgba(90, 140, 255, 0.8)' : 'transparent' }}
+    >
+      {checked ? 'X' : ''}
+    </span>
+  )
 }
 
 export function SettingsModal({
@@ -34,7 +32,6 @@ export function SettingsModal({
   alwaysShowOverlay,
   onToggleAlwaysShowOverlay,
 }: SettingsModalProps) {
-  const [hovered, setHovered] = useState<string | null>(null)
   const [soundLocal, setSoundLocal] = useState(isSoundEnabled)
   const [desktopNotifLocal, setDesktopNotifLocal] = useState(isDesktopNotificationsEnabled)
 
@@ -42,92 +39,21 @@ export function SettingsModal({
 
   return (
     <>
-      {/* Dark backdrop — click to close */}
-      <div
-        onClick={onClose}
-        style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          background: 'rgba(0, 0, 0, 0.5)',
-          zIndex: 190,
-        }}
-      />
-      {/* Centered modal */}
-      <div
-        style={{
-          position: 'fixed',
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
-          zIndex: 191,
-          background: 'var(--pixel-bg)',
-          border: '2px solid var(--pixel-border)',
-          borderRadius: 0,
-          padding: '4px',
-          boxShadow: 'var(--pixel-shadow)',
-          minWidth: 200,
-        }}
-      >
-        {/* Header with title and X button */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: '4px 10px',
-            borderBottom: '1px solid var(--pixel-border)',
-            marginBottom: '4px',
-          }}
-        >
-          <span style={{ fontSize: '24px', color: 'rgba(255, 255, 255, 0.9)' }}>Settings</span>
+      <div onClick={onClose} className="fixed inset-0 bg-black/50 z-[190]" />
+      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[191] bg-pixel-bg border-2 border-pixel-border p-1 shadow-pixel min-w-[200px]">
+        <div className="flex items-center justify-between px-2.5 py-1 border-b border-pixel-border mb-1">
+          <span className="text-[24px] text-white/90">Settings</span>
           <button
             onClick={onClose}
-            onMouseEnter={() => setHovered('close')}
-            onMouseLeave={() => setHovered(null)}
-            style={{
-              background: hovered === 'close' ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
-              border: 'none',
-              borderRadius: 0,
-              color: 'rgba(255, 255, 255, 0.6)',
-              fontSize: '24px',
-              cursor: 'pointer',
-              padding: '0 4px',
-              lineHeight: 1,
-            }}
+            className="bg-transparent border-0 text-white/60 text-[24px] cursor-pointer px-1 leading-none hover:bg-pixel-btn hover:text-pixel-close-hover"
           >
             X
           </button>
         </div>
-        {/* Menu items */}
-        <button
-          onClick={() => {
-            onExportLayout()
-            onClose()
-          }}
-          onMouseEnter={() => setHovered('export')}
-          onMouseLeave={() => setHovered(null)}
-          style={{
-            ...menuItemBase,
-            background: hovered === 'export' ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
-          }}
-        >
+        <button onClick={() => { onExportLayout(); onClose() }} className={menuItemCls}>
           Export Layout
         </button>
-        <button
-          onClick={() => {
-            onImportLayout()
-            onClose()
-          }}
-          onMouseEnter={() => setHovered('import')}
-          onMouseLeave={() => setHovered(null)}
-          style={{
-            ...menuItemBase,
-            background: hovered === 'import' ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
-          }}
-        >
+        <button onClick={() => { onImportLayout(); onClose() }} className={menuItemCls}>
           Import Layout
         </button>
         <button
@@ -137,32 +63,10 @@ export function SettingsModal({
             setSoundLocal(newVal)
             vscode.postMessage({ type: 'saveSoundEnabled', enabled: newVal })
           }}
-          onMouseEnter={() => setHovered('sound')}
-          onMouseLeave={() => setHovered(null)}
-          style={{
-            ...menuItemBase,
-            background: hovered === 'sound' ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
-          }}
+          className={menuItemCls}
         >
           <span>Sound Notifications</span>
-          <span
-            style={{
-              width: 14,
-              height: 14,
-              border: '2px solid rgba(255, 255, 255, 0.5)',
-              borderRadius: 0,
-              background: soundLocal ? 'rgba(90, 140, 255, 0.8)' : 'transparent',
-              flexShrink: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '12px',
-              lineHeight: 1,
-              color: '#fff',
-            }}
-          >
-            {soundLocal ? 'X' : ''}
-          </span>
+          <Checkbox checked={soundLocal} />
         </button>
         <button
           onClick={() => {
@@ -171,79 +75,19 @@ export function SettingsModal({
             setDesktopNotifLocal(newVal)
             vscode.postMessage({ type: 'saveDesktopNotifications', enabled: newVal })
           }}
-          onMouseEnter={() => setHovered('desktop-notif')}
-          onMouseLeave={() => setHovered(null)}
-          style={{
-            ...menuItemBase,
-            background: hovered === 'desktop-notif' ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
-          }}
+          className={menuItemCls}
         >
           <span>Desktop Notifications</span>
-          <span
-            style={{
-              width: 14,
-              height: 14,
-              border: '2px solid rgba(255, 255, 255, 0.5)',
-              borderRadius: 0,
-              background: desktopNotifLocal ? 'rgba(90, 140, 255, 0.8)' : 'transparent',
-              flexShrink: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '12px',
-              lineHeight: 1,
-              color: '#fff',
-            }}
-          >
-            {desktopNotifLocal ? 'X' : ''}
-          </span>
+          <Checkbox checked={desktopNotifLocal} />
         </button>
-        <button
-          onClick={onToggleAlwaysShowOverlay}
-          onMouseEnter={() => setHovered('overlay')}
-          onMouseLeave={() => setHovered(null)}
-          style={{
-            ...menuItemBase,
-            background: hovered === 'overlay' ? 'rgba(255, 255, 255, 0.08)' : 'transparent',
-          }}
-        >
+        <button onClick={onToggleAlwaysShowOverlay} className={menuItemCls}>
           <span>Always Show Labels</span>
-          <span
-            style={{
-              width: 14,
-              height: 14,
-              border: '2px solid rgba(255, 255, 255, 0.5)',
-              borderRadius: 0,
-              background: alwaysShowOverlay ? 'rgba(90, 140, 255, 0.8)' : 'transparent',
-              flexShrink: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '12px',
-              lineHeight: 1,
-              color: '#fff',
-            }}
-          >
-            {alwaysShowOverlay ? 'X' : ''}
-          </span>
+          <Checkbox checked={alwaysShowOverlay} />
         </button>
-        <div
-          style={{
-            marginTop: '8px',
-            padding: '10px',
-            borderTop: '1px solid var(--pixel-border)',
-            fontSize: '20px',
-            lineHeight: 1.45,
-            color: 'rgba(255, 255, 255, 0.78)',
-            maxWidth: 520,
-          }}
-        >
+        <div className="mt-2 p-2.5 border-t border-pixel-border text-[20px] leading-[1.45] text-white/[0.78] max-w-[520px]">
           Проект поддерживается по личной инициативе и содержит баги, которые стараюсь оперативно
           исправлять. Если вам понравилось, то лучшая благодарность это подписка на канал:{' '}
-          <a href="https://t.me/segagridchin" target="_blank" rel="noreferrer" style={{
-            color: 'var(--pixel-accent)',
-            textDecoration: 'none',
-          }}>
+          <a href="https://t.me/segagridchin" target="_blank" rel="noreferrer" className="text-pixel-accent no-underline">
             t.me/segagridchin
           </a>
         </div>

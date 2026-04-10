@@ -1,3 +1,5 @@
+@import "tailwindcss";
+
 @font-face {
   font-family: 'FS Pixel Sans';
   font-style: normal;
@@ -6,6 +8,44 @@
   src: url('./fonts/FSPixelSansUnicode-Regular.ttf') format('truetype');
 }
 
+@theme {
+  /* Colors */
+  --color-pixel-bg: #1e1e2e;
+  --color-pixel-border: #4a4a6a;
+  --color-pixel-border-light: #6a6a8a;
+  --color-pixel-accent: #5a8cff;
+  --color-pixel-green: #5ac88c;
+  --color-pixel-text: rgba(255, 255, 255, 0.8);
+  --color-pixel-text-dim: rgba(255, 255, 255, 0.7);
+  --color-pixel-btn: rgba(255, 255, 255, 0.08);
+  --color-pixel-btn-hover: rgba(255, 255, 255, 0.15);
+  --color-pixel-active: rgba(90, 140, 255, 0.25);
+  --color-pixel-agent-bg: rgba(90, 200, 140, 0.15);
+  --color-pixel-agent-hover: rgba(90, 200, 140, 0.3);
+  --color-pixel-agent-border: #5ac88c;
+  --color-pixel-agent-text: rgba(200, 255, 220, 0.95);
+  --color-pixel-close-text: rgba(255, 255, 255, 0.5);
+  --color-pixel-close-hover: #e55;
+  --color-pixel-hint: #3278c8;
+  --color-pixel-reset-text: #ecc;
+  --color-pixel-danger: #a33;
+  --color-pixel-status-permission: #cca700;
+  --color-pixel-status-active: #3794ff;
+
+  /* Font */
+  --font-pixel: 'FS Pixel Sans', sans-serif;
+
+  /* Shadow */
+  --shadow-pixel: 2px 2px 0px #0a0a14;
+
+  /* Z-index */
+  --z-controls: 50;
+  --z-overlay: 100;
+  --z-overlay-selected: 110;
+  --z-sidebar: 120;
+}
+
+/* Preserve legacy CSS variables for components not yet migrated */
 :root {
   --pixel-bg: #1e1e2e;
   --pixel-border: #4a4a6a;
@@ -13,59 +53,43 @@
   --pixel-accent: #5a8cff;
   --pixel-green: #5ac88c;
   --pixel-shadow: 2px 2px 0px #0a0a14;
-
-  /* Button base */
   --pixel-text: rgba(255, 255, 255, 0.8);
   --pixel-text-dim: rgba(255, 255, 255, 0.7);
   --pixel-btn-bg: rgba(255, 255, 255, 0.08);
   --pixel-btn-hover-bg: rgba(255, 255, 255, 0.15);
   --pixel-btn-disabled-opacity: 0.35;
-
-  /* Active/selected button state */
   --pixel-active-bg: rgba(90, 140, 255, 0.25);
-
-  /* Agent button */
   --pixel-agent-bg: rgba(90, 200, 140, 0.15);
   --pixel-agent-hover-bg: rgba(90, 200, 140, 0.3);
   --pixel-agent-border: #5ac88c;
   --pixel-agent-text: rgba(200, 255, 220, 0.95);
-
-  /* Close button */
   --pixel-close-text: rgba(255, 255, 255, 0.5);
   --pixel-close-hover: #e55;
-
-  /* Hints & confirmations */
   --pixel-hint-bg: #3278c8;
   --pixel-reset-text: #ecc;
   --pixel-danger-bg: #a33;
-
-  /* Vignette */
   --pixel-vignette: radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.6) 100%);
-
-  /* Standalone fallbacks for VS Code variables */
   --vscode-foreground: #cccccc;
   --vscode-charts-yellow: #cca700;
   --vscode-charts-blue: #3794ff;
-
-  /* Status dot colors */
   --pixel-status-permission: var(--vscode-charts-yellow, #cca700);
   --pixel-status-active: var(--vscode-charts-blue, #3794ff);
-
-  /* ToolOverlay z-index layers */
   --pixel-overlay-z: 100;
   --pixel-overlay-selected-z: 110;
   --pixel-controls-z: 50;
   --pixel-sidebar-z: 120;
 }
 
-html, body, #root {
-  margin: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  font-family: 'FS Pixel Sans', sans-serif;
-}
+@layer base {
+  html, body, #root {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
 
-* {
-  font-family: 'FS Pixel Sans', sans-serif;
+  * {
+    font-family: 'FS Pixel Sans', sans-serif;
+    border-radius: 0;
+  }
 }

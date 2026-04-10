@@ -28,43 +28,6 @@ interface LeftSidebarProps {
   isShareMode?: boolean
 }
 
-const sidebarStyle: React.CSSProperties = {
-  position: 'absolute',
-  top: 10,
-  left: 10,
-  bottom: 60,
-  zIndex: 'var(--pixel-sidebar-z)',
-  display: 'flex',
-  flexDirection: 'column',
-  background: 'var(--pixel-bg)',
-  border: '2px solid var(--pixel-border)',
-  borderRadius: 0,
-  boxShadow: 'var(--pixel-shadow)',
-  overflow: 'hidden',
-  transition: 'width 0.2s ease',
-}
-
-const headerStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  padding: '6px 8px',
-  borderBottom: '2px solid var(--pixel-border)',
-  background: 'rgba(255,255,255,0.03)',
-  flexShrink: 0,
-}
-
-const toggleBtnStyle: React.CSSProperties = {
-  padding: '2px 6px',
-  fontSize: '18px',
-  color: 'var(--pixel-text-dim)',
-  background: 'var(--pixel-btn-bg)',
-  border: '2px solid transparent',
-  borderRadius: 0,
-  cursor: 'pointer',
-}
-
-
 export function LeftSidebar({
   agents,
   agentTools,
@@ -86,18 +49,15 @@ export function LeftSidebar({
   const toggleCollapse = useCallback(() => setCollapsed((v) => !v), [])
   const toggleTasksCollapse = useCallback(() => setTasksCollapsed((v) => !v), [])
 
-  // Build set of all live agent IDs (have a character on the map)
   const liveIds = new Set<number>()
   for (const id of agents) {
     if (officeState.characters.get(id)) liveIds.add(id)
   }
 
-  // Root agents = non-subagent OR orphan (subagent whose parent is gone)
   const mainAgents = agents.filter((id) => {
     const ch = officeState.characters.get(id)
     if (!ch) return false
     if (!ch.isSubagent) return true
-    // Orphan: parent no longer exists -> promote to root
     if (!ch.parentAgentId || !liveIds.has(ch.parentAgentId)) return true
     return false
   })
@@ -109,12 +69,11 @@ export function LeftSidebar({
     subsByParent.set(sub.parentAgentId, list)
   }
 
-  // Also include file-based subagents (from subagents/ directory) that aren't in subagentCharacters
   const toolSubIds = new Set(subagentCharacters.map(s => s.id))
   for (const id of agents) {
     const ch = officeState.characters.get(id)
     if (!ch || !ch.isSubagent || !ch.parentAgentId) continue
-    if (toolSubIds.has(id)) continue // already tracked as tool-based subtask
+    if (toolSubIds.has(id)) continue
     const parentId = ch.parentAgentId
     const list = subsByParent.get(parentId) || []
     const roleInfo = agentRoles.get(id)
@@ -127,12 +86,9 @@ export function LeftSidebar({
 
   if (collapsed) {
     return (
-      <div style={{ ...sidebarStyle, width: 36, alignItems: 'center', padding: '6px 0' }}>
-        <button onClick={toggleCollapse} style={toggleBtnStyle} title="Expand sidebar">{'\u25B6'}</button>
-        <div style={{
-          writingMode: 'vertical-rl', textOrientation: 'mixed',
-          fontSize: '16px', color: 'var(--pixel-text-dim)', marginTop: 8, letterSpacing: '1px',
-        }}>
+      <div className="absolute top-2.5 left-2.5 bottom-[60px] z-sidebar flex flex-col items-center py-1.5 w-9 bg-pixel-bg border-2 border-pixel-border shadow-pixel overflow-hidden transition-[width] duration-200">
+        <button onClick={toggleCollapse} className="px-1.5 py-0.5 text-[18px] text-pixel-text-dim bg-pixel-btn border-2 border-transparent cursor-pointer hover:bg-pixel-btn-hover" title="Expand sidebar">{'\u25B6'}</button>
+        <div className="text-[16px] text-pixel-text-dim mt-2 tracking-[1px]" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
           AGENTS ({totalCount})
         </div>
       </div>
@@ -140,33 +96,31 @@ export function LeftSidebar({
   }
 
   return (
-    <div style={{ ...sidebarStyle, width: 280 }}>
+    <div className="absolute top-2.5 left-2.5 bottom-[60px] z-sidebar flex flex-col w-[280px] bg-pixel-bg border-2 border-pixel-border shadow-pixel overflow-hidden transition-[width] duration-200">
       {/* Header */}
-      <div style={headerStyle}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: '18px', color: 'var(--pixel-accent)', fontWeight: 'bold' }}>
-            AGENTS
-          </span>
+      <div className="flex items-center justify-between px-2 py-1.5 border-b-2 border-pixel-border bg-white/[0.03] shrink-0">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[18px] text-pixel-accent font-bold">AGENTS</span>
           {serverMode && (
-            <span style={{
-              fontSize: '10px', padding: '0 4px', fontWeight: 'bold',
-              textTransform: 'uppercase', letterSpacing: '0.5px', lineHeight: '14px',
-              background: serverMode === 'dev' ? 'rgba(255,159,67,0.15)' : 'rgba(90,200,140,0.15)',
-              color: serverMode === 'dev' ? '#ff9f43' : '#5ac88c',
-              border: `1px solid ${serverMode === 'dev' ? 'rgba(255,159,67,0.3)' : 'rgba(90,200,140,0.3)'}`,
-              borderRadius: 0,
-            }}>
+            <span
+              className="text-[10px] px-1 font-bold uppercase tracking-[0.5px] leading-[14px]"
+              style={{
+                background: serverMode === 'dev' ? 'rgba(255,159,67,0.15)' : 'rgba(90,200,140,0.15)',
+                color: serverMode === 'dev' ? '#ff9f43' : '#5ac88c',
+                border: `1px solid ${serverMode === 'dev' ? 'rgba(255,159,67,0.3)' : 'rgba(90,200,140,0.3)'}`,
+              }}
+            >
               {serverMode}
             </span>
           )}
         </div>
-        <button onClick={toggleCollapse} style={toggleBtnStyle} title="Collapse sidebar">{'\u25C0'}</button>
+        <button onClick={toggleCollapse} className="px-1.5 py-0.5 text-[18px] text-pixel-text-dim bg-pixel-btn border-2 border-transparent cursor-pointer hover:bg-pixel-btn-hover" title="Collapse sidebar">{'\u25C0'}</button>
       </div>
 
       {/* Agents list */}
-      <div style={{ flex: '1 1 0', overflowY: 'auto', padding: '4px', minHeight: 0 }}>
+      <div className="flex-1 overflow-y-auto p-1 min-h-0">
         {mainAgents.length === 0 ? (
-            <div style={{ padding: 16, textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '18px', fontStyle: 'italic' }}>
+            <div className="p-4 text-center text-white/30 text-[18px] italic">
               No agents active
             </div>
           ) : (

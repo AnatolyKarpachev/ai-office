@@ -17,37 +17,8 @@ interface BottomToolbarProps {
   shareLink: { url: string; expiresAt: number } | null
 }
 
-const panelStyle: React.CSSProperties = {
-  position: 'absolute',
-  bottom: 10,
-  left: 10,
-  zIndex: 'var(--pixel-controls-z)',
-  display: 'flex',
-  alignItems: 'center',
-  gap: 4,
-  background: 'var(--pixel-bg)',
-  border: '2px solid var(--pixel-border)',
-  borderRadius: 0,
-  padding: '4px 6px',
-  boxShadow: 'var(--pixel-shadow)',
-}
-
-const btnBase: React.CSSProperties = {
-  padding: '5px 10px',
-  fontSize: '24px',
-  color: 'var(--pixel-text)',
-  background: 'var(--pixel-btn-bg)',
-  border: '2px solid transparent',
-  borderRadius: 0,
-  cursor: 'pointer',
-}
-
-const btnActive: React.CSSProperties = {
-  ...btnBase,
-  background: 'var(--pixel-active-bg)',
-  border: '2px solid var(--pixel-accent)',
-}
-
+const btnCls = "px-2.5 py-1.5 text-[24px] text-pixel-text bg-pixel-btn border-2 border-transparent cursor-pointer hover:bg-pixel-btn-hover"
+const btnActiveCls = "px-2.5 py-1.5 text-[24px] text-pixel-text bg-pixel-active border-2 border-pixel-accent cursor-pointer"
 
 export function BottomToolbar({
   isEditMode,
@@ -63,7 +34,6 @@ export function BottomToolbar({
   onToggleHud,
   shareLink,
 }: BottomToolbarProps) {
-  const [hovered, setHovered] = useState<string | null>(null)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isShareOpen, setIsShareOpen] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -81,95 +51,46 @@ export function BottomToolbar({
 
   return (
     <>
-    <div style={panelStyle}>
+    <div className="absolute bottom-2.5 left-2.5 z-controls flex items-center gap-1 bg-pixel-bg border-2 border-pixel-border px-1.5 py-1 shadow-pixel">
       <button
         onClick={onToggleEditMode}
-        onMouseEnter={() => setHovered('edit')}
-        onMouseLeave={() => setHovered(null)}
-        style={
-          isEditMode
-            ? { ...btnActive }
-            : {
-                ...btnBase,
-                background: hovered === 'edit' ? 'var(--pixel-btn-hover-bg)' : btnBase.background,
-              }
-        }
+        className={isEditMode ? btnActiveCls : btnCls}
         title="Edit office layout"
       >
         Layout
       </button>
       <button
         onClick={() => setIsSettingsOpen((v) => !v)}
-        onMouseEnter={() => setHovered('settings')}
-        onMouseLeave={() => setHovered(null)}
-        style={
-          isSettingsOpen
-            ? { ...btnActive }
-            : {
-                ...btnBase,
-                background: hovered === 'settings' ? 'var(--pixel-btn-hover-bg)' : btnBase.background,
-              }
-        }
+        className={isSettingsOpen ? btnActiveCls : btnCls}
         title="Settings"
       >
         Settings
       </button>
       <button
         onClick={onFitView}
-        onMouseEnter={() => setHovered('fit')}
-        onMouseLeave={() => setHovered(null)}
-        style={{
-          ...btnBase,
-          background: hovered === 'fit' ? 'var(--pixel-btn-hover-bg)' : btnBase.background,
-        }}
+        className={btnCls}
         title="Fit office to view"
       >
         Fit
       </button>
       <button
         onClick={onToggleHud}
-        onMouseEnter={() => setHovered('hud')}
-        onMouseLeave={() => setHovered(null)}
-        style={
-          isHudOpen
-            ? { ...btnActive }
-            : {
-                ...btnBase,
-                background: hovered === 'hud' ? 'var(--pixel-btn-hover-bg)' : btnBase.background,
-              }
-        }
+        className={isHudOpen ? btnActiveCls : btnCls}
         title="Heads-Up Display"
       >
         HUD
       </button>
       <button
         onClick={() => setIsShareOpen((v) => !v)}
-        onMouseEnter={() => setHovered('share')}
-        onMouseLeave={() => setHovered(null)}
-        style={
-          isShareOpen || shareUrl
-            ? { ...btnActive, color: shareUrl ? 'var(--pixel-green)' : 'var(--pixel-text)' }
-            : {
-                ...btnBase,
-                background: hovered === 'share' ? 'var(--pixel-btn-hover-bg)' : btnBase.background,
-              }
-        }
+        className={isShareOpen || shareUrl ? btnActiveCls : btnCls}
+        style={isShareOpen || shareUrl ? { color: shareUrl ? 'var(--pixel-green)' : undefined } : undefined}
         title="Share office with friends"
       >
         Share
       </button>
       <button
         onClick={onToggleShowTeamLines}
-        onMouseEnter={() => setHovered('teams')}
-        onMouseLeave={() => setHovered(null)}
-        style={
-          showTeamLines
-            ? { ...btnActive }
-            : {
-                ...btnBase,
-                background: hovered === 'teams' ? 'var(--pixel-btn-hover-bg)' : btnBase.background,
-              }
-        }
+        className={showTeamLines ? btnActiveCls : btnCls}
         title="Show team group lines and clusters"
       >
         Show teams
@@ -190,95 +111,55 @@ export function BottomToolbar({
       <>
         <div
           onClick={() => setIsShareOpen(false)}
-          style={{ position: 'fixed', inset: 0, zIndex: 190 }}
+          className="fixed inset-0 z-[190]"
         />
-        <div style={{
-          position: 'fixed',
-          bottom: 60,
-          left: 10,
-          zIndex: 191,
-          background: 'var(--pixel-bg)',
-          border: '2px solid var(--pixel-border)',
-          borderRadius: 0,
-          padding: '8px',
-          boxShadow: 'var(--pixel-shadow)',
-          minWidth: 260,
-        }}>
-          <div style={{ fontSize: '18px', color: 'rgba(255,255,255,0.5)', marginBottom: 6, fontWeight: 'bold' }}>
+        <div className="fixed bottom-[60px] left-2.5 z-[191] bg-pixel-bg border-2 border-pixel-border p-2 shadow-pixel min-w-[260px]">
+          <div className="text-[18px] text-white/50 mb-1.5 font-bold">
             SHARE OFFICE
           </div>
           {shareUrl ? (
             <div>
-              <div style={{
-                fontSize: '14px',
-                color: 'var(--pixel-green)',
-                wordBreak: 'break-all',
-                marginBottom: 6,
-                padding: '4px 6px',
-                background: 'rgba(90, 200, 140, 0.08)',
-                border: '1px solid rgba(90, 200, 140, 0.2)',
-              }}>
+              <div className="text-[14px] text-pixel-green break-all mb-1.5 px-1.5 py-1 bg-[rgba(90,200,140,0.08)] border border-[rgba(90,200,140,0.2)]">
                 {shareUrl}
               </div>
-              <div style={{ fontSize: '16px', color: 'rgba(255,255,255,0.6)', marginBottom: 6 }}>
+              <div className="text-[16px] text-white/60 mb-1.5">
                 Expires in {shareMinutes}:{shareSeconds.toString().padStart(2, '0')}
               </div>
-              <div style={{ display: 'flex', gap: 4 }}>
+              <div className="flex gap-1">
                 <button
                   onClick={() => {
                     navigator.clipboard.writeText(shareUrl)
                     setCopied(true)
                     setTimeout(() => setCopied(false), 2000)
                   }}
-                  style={{
-                    ...btnBase,
-                    fontSize: '16px',
-                    flex: 1,
-                    textAlign: 'center',
-                    background: copied ? 'rgba(90, 200, 140, 0.15)' : 'var(--pixel-btn-bg)',
-                    color: copied ? 'var(--pixel-green)' : 'var(--pixel-text)',
-                  }}
+                  className={`flex-1 text-center text-[16px] px-2.5 py-1.5 border-2 border-transparent cursor-pointer ${
+                    copied ? 'bg-pixel-agent-bg text-pixel-green' : 'bg-pixel-btn text-pixel-text hover:bg-pixel-btn-hover'
+                  }`}
                 >
                   {copied ? 'Copied!' : 'Copy'}
                 </button>
                 <button
+                  className="flex-1 text-center text-[16px] px-2.5 py-1.5 bg-pixel-btn border-2 border-transparent cursor-pointer text-pixel-close-hover hover:bg-pixel-btn-hover"
                   onClick={() => {
                     const token = shareUrl.split('/').pop()
                     vscode.postMessage({ type: 'revokeShareLink', token })
                   }}
-                  style={{ ...btnBase, fontSize: '16px', flex: 1, textAlign: 'center', color: '#e55' }}
                 >
                   Revoke
                 </button>
               </div>
             </div>
           ) : (
-            <div style={{ display: 'flex', gap: 4 }}>
+            <div className="flex gap-1">
               <button
                 onClick={() => vscode.postMessage({ type: 'createShareLink', durationMs: 600000 })}
-                onMouseEnter={() => setHovered('share-10')}
-                onMouseLeave={() => setHovered(null)}
-                style={{
-                  ...btnBase,
-                  fontSize: '16px',
-                  flex: 1,
-                  textAlign: 'center',
-                  background: hovered === 'share-10' ? 'var(--pixel-btn-hover-bg)' : 'var(--pixel-btn-bg)',
-                }}
+                className={`${btnCls} text-[16px] flex-1 text-center`}
               >
                 10 min
               </button>
               <button
                 onClick={() => vscode.postMessage({ type: 'createShareLink', durationMs: 3600000 })}
-                onMouseEnter={() => setHovered('share-60')}
-                onMouseLeave={() => setHovered(null)}
-                style={{
-                  ...btnBase,
-                  fontSize: '16px',
-                  flex: 1,
-                  textAlign: 'center',
-                  background: hovered === 'share-60' ? 'var(--pixel-btn-hover-bg)' : 'var(--pixel-btn-bg)',
-                }}
+                className={`${btnCls} text-[16px] flex-1 text-center`}
               >
                 60 min
               </button>

@@ -30,57 +30,7 @@ interface RightSidebarProps {
   sendMessages: Array<{ id: number; from: string; to: string; message: string; timestamp: number }>
 }
 
-const sidebarStyle: React.CSSProperties = {
-  position: 'absolute',
-  top: 10,
-  right: 10,
-  bottom: 60,
-  zIndex: 'var(--pixel-sidebar-z)',
-  display: 'flex',
-  flexDirection: 'column',
-  background: 'var(--pixel-bg)',
-  border: '2px solid var(--pixel-border)',
-  borderRadius: 0,
-  boxShadow: 'var(--pixel-shadow)',
-  overflow: 'hidden',
-  transition: 'width 0.2s ease',
-}
-
-const headerStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  padding: '6px 8px',
-  borderBottom: '2px solid var(--pixel-border)',
-  background: 'rgba(255,255,255,0.03)',
-  flexShrink: 0,
-}
-
-const toggleBtnStyle: React.CSSProperties = {
-  padding: '2px 6px',
-  fontSize: '18px',
-  color: 'var(--pixel-text-dim)',
-  background: 'var(--pixel-btn-bg)',
-  border: '2px solid transparent',
-  borderRadius: 0,
-  cursor: 'pointer',
-}
-
-const tabBtnBase: React.CSSProperties = {
-  flex: 1,
-  padding: '4px 8px',
-  fontSize: '18px',
-  fontWeight: 'bold',
-  textTransform: 'uppercase',
-  letterSpacing: '0.5px',
-  border: 'none',
-  borderBottom: '2px solid transparent',
-  borderRadius: 0,
-  cursor: 'pointer',
-  background: 'transparent',
-  color: 'rgba(255,255,255,0.35)',
-  transition: 'color 0.15s ease',
-}
+const tabCls = "flex-1 px-2 py-1 text-[18px] font-bold uppercase tracking-[0.5px] border-0 border-b-2 border-transparent cursor-pointer bg-transparent text-white/35 transition-colors duration-150"
 
 export function RightSidebar({
   agents,
@@ -104,7 +54,6 @@ export function RightSidebar({
   const [entries, setEntries] = useState<ActivityEntry[]>([])
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Track previous state for change detection
   const prevAgentsRef = useRef<number[]>([])
   const prevToolsRef = useRef<Record<number, ToolActivity[]>>({})
   const prevStatusesRef = useRef<Record<number, string>>({})
@@ -112,7 +61,6 @@ export function RightSidebar({
   const prevSubToolsRef = useRef<Record<number, Record<string, ToolActivity[]>>>({})
   const prevSendMessagesRef = useRef<Array<{ id: number; from: string; to: string; message: string; timestamp: number }>>([])
 
-  // Generate activity entries from state changes
   useEffect(() => {
     const newEntries: ActivityEntry[] = []
     const now = Date.now()
@@ -122,184 +70,71 @@ export function RightSidebar({
       return ch?.folderName || `agent-${id}`
     }
 
-    // --- Main agents ---
-
-    // Detect new agents
     for (const id of agents) {
       if (!prevAgentsRef.current.includes(id)) {
-        newEntries.push({
-          id: bumpEntryId(),
-          agentId: id,
-          agentName: getAgentName(id),
-          text: 'Joined the office',
-          type: 'agent_joined',
-          timestamp: now,
-        })
+        newEntries.push({ id: bumpEntryId(), agentId: id, agentName: getAgentName(id), text: 'Joined the office', type: 'agent_joined', timestamp: now })
       }
     }
-
-    // Detect removed agents
     for (const id of prevAgentsRef.current) {
       if (!agents.includes(id)) {
-        newEntries.push({
-          id: bumpEntryId(),
-          agentId: id,
-          agentName: getAgentName(id),
-          text: 'Left the office',
-          type: 'agent_left',
-          timestamp: now,
-        })
+        newEntries.push({ id: bumpEntryId(), agentId: id, agentName: getAgentName(id), text: 'Left the office', type: 'agent_left', timestamp: now })
       }
     }
-
-    // Detect new tools
     for (const id of agents) {
       const tools = agentTools[id] || []
       const prevTools = prevToolsRef.current[id] || []
-
       for (const tool of tools) {
         const prevTool = prevTools.find((t) => t.toolId === tool.toolId)
         if (!prevTool) {
-          newEntries.push({
-            id: bumpEntryId(),
-            agentId: id,
-            agentName: getAgentName(id),
-            text: tool.status,
-            type: 'tool_start',
-            timestamp: now,
-          })
+          newEntries.push({ id: bumpEntryId(), agentId: id, agentName: getAgentName(id), text: tool.status, type: 'tool_start', timestamp: now })
         } else if (tool.done && !prevTool.done) {
-          newEntries.push({
-            id: bumpEntryId(),
-            agentId: id,
-            agentName: getAgentName(id),
-            text: `Done: ${tool.status}`,
-            type: 'tool_done',
-            timestamp: now,
-          })
+          newEntries.push({ id: bumpEntryId(), agentId: id, agentName: getAgentName(id), text: `Done: ${tool.status}`, type: 'tool_done', timestamp: now })
         } else if (tool.permissionWait && !prevTool.permissionWait) {
-          newEntries.push({
-            id: bumpEntryId(),
-            agentId: id,
-            agentName: getAgentName(id),
-            text: `Permission needed: ${tool.status}`,
-            type: 'permission',
-            timestamp: now,
-          })
+          newEntries.push({ id: bumpEntryId(), agentId: id, agentName: getAgentName(id), text: `Permission needed: ${tool.status}`, type: 'permission', timestamp: now })
         }
       }
     }
-
-    // Detect status changes
     for (const id of agents) {
       const status = agentStatuses[id]
       const prevStatus = prevStatusesRef.current[id]
       if (status && status !== prevStatus) {
-        newEntries.push({
-          id: bumpEntryId(),
-          agentId: id,
-          agentName: getAgentName(id),
-          text: status === 'waiting' ? 'Waiting for user input' : `Status: ${status}`,
-          type: 'status',
-          timestamp: now,
-        })
+        newEntries.push({ id: bumpEntryId(), agentId: id, agentName: getAgentName(id), text: status === 'waiting' ? 'Waiting for user input' : `Status: ${status}`, type: 'status', timestamp: now })
       }
     }
-
-    // --- Subagents ---
-
-    // Detect new subagents
     for (const sub of subagentCharacters) {
       if (!prevSubagentsRef.current.some((s) => s.id === sub.id)) {
-        newEntries.push({
-          id: bumpEntryId(),
-          agentId: sub.parentAgentId,
-          agentName: `${getAgentName(sub.parentAgentId)} > ${sub.label || 'subtask'}`,
-          text: `Subagent spawned: ${sub.label || 'subtask'}`,
-          type: 'sub_joined',
-          timestamp: now,
-          isSubagent: true,
-        })
+        newEntries.push({ id: bumpEntryId(), agentId: sub.parentAgentId, agentName: `${getAgentName(sub.parentAgentId)} > ${sub.label || 'subtask'}`, text: `Subagent spawned: ${sub.label || 'subtask'}`, type: 'sub_joined', timestamp: now, isSubagent: true })
       }
     }
-
-    // Detect removed subagents
     for (const sub of prevSubagentsRef.current) {
       if (!subagentCharacters.some((s) => s.id === sub.id)) {
-        newEntries.push({
-          id: bumpEntryId(),
-          agentId: sub.parentAgentId,
-          agentName: `${getAgentName(sub.parentAgentId)} > ${sub.label || 'subtask'}`,
-          text: `Subagent finished: ${sub.label || 'subtask'}`,
-          type: 'sub_left',
-          timestamp: now,
-          isSubagent: true,
-        })
+        newEntries.push({ id: bumpEntryId(), agentId: sub.parentAgentId, agentName: `${getAgentName(sub.parentAgentId)} > ${sub.label || 'subtask'}`, text: `Subagent finished: ${sub.label || 'subtask'}`, type: 'sub_left', timestamp: now, isSubagent: true })
       }
     }
-
-    // Detect subagent tool changes
     for (const parentIdStr of Object.keys(subagentTools)) {
       const parentId = Number(parentIdStr)
       const agentSubs = subagentTools[parentId] || {}
       const prevAgentSubs = prevSubToolsRef.current[parentId] || {}
-
       for (const [parentToolId, tools] of Object.entries(agentSubs)) {
         const prevTools = prevAgentSubs[parentToolId] || []
         const subChar = subagentCharacters.find((s) => s.parentAgentId === parentId && s.parentToolId === parentToolId)
         const subLabel = subChar?.label || 'subtask'
-
         for (const tool of tools) {
           const prevTool = prevTools.find((t) => t.toolId === tool.toolId)
           if (!prevTool) {
-            newEntries.push({
-              id: bumpEntryId(),
-              agentId: parentId,
-              agentName: `${getAgentName(parentId)} > ${subLabel}`,
-              text: tool.status,
-              type: 'sub_tool_start',
-              timestamp: now,
-              isSubagent: true,
-            })
+            newEntries.push({ id: bumpEntryId(), agentId: parentId, agentName: `${getAgentName(parentId)} > ${subLabel}`, text: tool.status, type: 'sub_tool_start', timestamp: now, isSubagent: true })
           } else if (tool.done && !prevTool.done) {
-            newEntries.push({
-              id: bumpEntryId(),
-              agentId: parentId,
-              agentName: `${getAgentName(parentId)} > ${subLabel}`,
-              text: `Done: ${tool.status}`,
-              type: 'sub_tool_done',
-              timestamp: now,
-              isSubagent: true,
-            })
+            newEntries.push({ id: bumpEntryId(), agentId: parentId, agentName: `${getAgentName(parentId)} > ${subLabel}`, text: `Done: ${tool.status}`, type: 'sub_tool_done', timestamp: now, isSubagent: true })
           } else if (tool.permissionWait && !prevTool.permissionWait) {
-            newEntries.push({
-              id: bumpEntryId(),
-              agentId: parentId,
-              agentName: `${getAgentName(parentId)} > ${subLabel}`,
-              text: `Permission needed: ${tool.status}`,
-              type: 'sub_permission',
-              timestamp: now,
-              isSubagent: true,
-            })
+            newEntries.push({ id: bumpEntryId(), agentId: parentId, agentName: `${getAgentName(parentId)} > ${subLabel}`, text: `Permission needed: ${tool.status}`, type: 'sub_permission', timestamp: now, isSubagent: true })
           }
         }
       }
     }
-
-    // Detect new SendMessage events
     const prevSendMsgCount = prevSendMessagesRef.current.length
     for (let i = prevSendMsgCount; i < sendMessages.length; i++) {
       const sm = sendMessages[i]
-      newEntries.push({
-        id: bumpEntryId(),
-        agentId: sm.id,
-        agentName: sm.from,
-        text: sm.message,
-        type: 'send_message',
-        timestamp: sm.timestamp,
-        sendFrom: sm.from,
-        sendTo: sm.to,
-      })
+      newEntries.push({ id: bumpEntryId(), agentId: sm.id, agentName: sm.from, text: sm.message, type: 'send_message', timestamp: sm.timestamp, sendFrom: sm.from, sendTo: sm.to })
     }
 
     prevAgentsRef.current = [...agents]
@@ -314,21 +149,14 @@ export function RightSidebar({
     }
   }, [agents, agentTools, agentStatuses, subagentCharacters, subagentTools, officeState, sendMessages])
 
-  // Auto-switch to Chat tab when agent is inspected
   useEffect(() => {
-    if (inspectedAgentId !== null) {
-      setActiveTab('chat')
-    }
+    if (inspectedAgentId !== null) setActiveTab('chat')
   }, [inspectedAgentId])
 
-  // Auto-request conversation when Chat tab is active
   useEffect(() => {
-    if (activeTab === 'chat' && selectedAgentId !== null) {
-      requestAgentConversation(selectedAgentId)
-    }
+    if (activeTab === 'chat' && selectedAgentId !== null) requestAgentConversation(selectedAgentId)
   }, [activeTab, selectedAgentId, requestAgentConversation])
 
-  // Auto-scroll
   useEffect(() => {
     if (scrollRef.current && (activeTab === 'activity' || activeTab === 'chat')) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
@@ -339,22 +167,9 @@ export function RightSidebar({
 
   if (collapsed) {
     return (
-      <div style={{ ...sidebarStyle, width: 36, alignItems: 'center', padding: '6px 0' }}>
-        <button
-          onClick={toggleCollapse}
-          style={toggleBtnStyle}
-          title="Expand sidebar"
-        >
-          {'\u25C0'}
-        </button>
-        <div style={{
-          writingMode: 'vertical-rl',
-          textOrientation: 'mixed',
-          fontSize: '16px',
-          color: 'var(--pixel-text-dim)',
-          marginTop: 8,
-          letterSpacing: '1px',
-        }}>
+      <div className="absolute top-2.5 right-2.5 bottom-[60px] z-sidebar flex flex-col items-center py-1.5 w-9 bg-pixel-bg border-2 border-pixel-border shadow-pixel overflow-hidden transition-[width] duration-200">
+        <button onClick={toggleCollapse} className="px-1.5 py-0.5 text-[18px] text-pixel-text-dim bg-pixel-btn border-2 border-transparent cursor-pointer hover:bg-pixel-btn-hover" title="Expand sidebar">{'\u25C0'}</button>
+        <div className="text-[16px] text-pixel-text-dim mt-2 tracking-[1px]" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
           ACTIVITY
         </div>
       </div>
@@ -362,59 +177,40 @@ export function RightSidebar({
   }
 
   return (
-    <div style={{ ...sidebarStyle, width: 320 }}>
+    <div className="absolute top-2.5 right-2.5 bottom-[60px] z-sidebar flex flex-col w-[320px] bg-pixel-bg border-2 border-pixel-border shadow-pixel overflow-hidden transition-[width] duration-200">
       {/* Header */}
-      <div style={headerStyle}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: '18px', color: 'var(--pixel-accent)', fontWeight: 'bold' }}>
+      <div className="flex items-center justify-between px-2 py-1.5 border-b-2 border-pixel-border bg-white/[0.03] shrink-0">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[18px] text-pixel-accent font-bold">
             {activeTab === 'activity' ? 'ACTIVITY' : activeTab === 'messages' ? 'MESSAGES' : 'CHAT'}
           </span>
-          <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.4)' }}>
+          <span className="text-[14px] text-white/40">
             ({activeTab === 'activity' ? entries.length : activeTab === 'messages' ? sendMessages.length : agentConversation?.messages.length ?? 0})
           </span>
         </div>
-        <button
-          onClick={toggleCollapse}
-          style={toggleBtnStyle}
-          title="Collapse sidebar"
-        >
-          {'\u25B6'}
-        </button>
+        <button onClick={toggleCollapse} className="px-1.5 py-0.5 text-[18px] text-pixel-text-dim bg-pixel-btn border-2 border-transparent cursor-pointer hover:bg-pixel-btn-hover" title="Collapse sidebar">{'\u25B6'}</button>
       </div>
 
       {/* Tabs */}
-      <div style={{
-        display: 'flex',
-        borderBottom: '2px solid var(--pixel-border)',
-        flexShrink: 0,
-      }}>
+      <div className="flex border-b-2 border-pixel-border shrink-0">
         <button
           onClick={() => setActiveTab('activity')}
-          style={{
-            ...tabBtnBase,
-            color: activeTab === 'activity' ? '#ff9f43' : tabBtnBase.color,
-            borderBottomColor: activeTab === 'activity' ? '#ff9f43' : 'transparent',
-          }}
+          className={tabCls}
+          style={activeTab === 'activity' ? { color: '#ff9f43', borderBottomColor: '#ff9f43' } : undefined}
         >
           Events
         </button>
         <button
           onClick={() => setActiveTab('messages')}
-          style={{
-            ...tabBtnBase,
-            color: activeTab === 'messages' ? '#ffb347' : tabBtnBase.color,
-            borderBottomColor: activeTab === 'messages' ? '#ffb347' : 'transparent',
-          }}
+          className={tabCls}
+          style={activeTab === 'messages' ? { color: '#ffb347', borderBottomColor: '#ffb347' } : undefined}
         >
           Messages
         </button>
         <button
           onClick={() => setActiveTab('chat')}
-          style={{
-            ...tabBtnBase,
-            color: activeTab === 'chat' ? '#e056fd' : tabBtnBase.color,
-            borderBottomColor: activeTab === 'chat' ? '#e056fd' : 'transparent',
-          }}
+          className={tabCls}
+          style={activeTab === 'chat' ? { color: '#e056fd', borderBottomColor: '#e056fd' } : undefined}
         >
           Chat
         </button>
@@ -422,9 +218,8 @@ export function RightSidebar({
 
       {/* Content */}
       {activeTab === 'chat' ? (
-        /* Chat tab: split view — Chat top + Agent Details bottom */
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '4px', minHeight: 0 }}>
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto p-1 min-h-0">
             <ConversationView
               messages={agentConversation?.id === selectedAgentId ? agentConversation.messages : []}
               selectedAgentId={selectedAgentId}
@@ -439,11 +234,10 @@ export function RightSidebar({
           )}
         </div>
       ) : (
-      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '4px' }}>
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-1">
         {activeTab === 'activity' ? (
           <ActivityFeed entries={entries} agentRoles={agentRoles} />
         ) : (
-          /* Messages View — agent-to-agent communication */
           <MessagesView messages={sendMessages} />
         )}
       </div>

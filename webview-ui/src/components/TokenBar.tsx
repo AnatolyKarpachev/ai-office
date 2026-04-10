@@ -28,7 +28,6 @@ export function TokenBar({ totalTokens, usageTokens, contextLimit, model, turnCo
   const pct = Math.min((contextTokens / contextLimit) * 100, 100)
   const modelShort = getModelShortName(model)
 
-  // Color gradient: green (<50%) -> yellow (50-80%) -> red (>80%)
   let barColor: string
   if (pct < 50) {
     barColor = '#4caf50'
@@ -41,49 +40,19 @@ export function TokenBar({ totalTokens, usageTokens, contextLimit, model, turnCo
   const tooltipText = `${formatNumber(contextTokens)} / ${formatNumber(contextLimit)} tokens in context (${Math.round(pct)}%) | ${formatNumber(totalTokens)} total | ${turnCount} turns`
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 4,
-        marginTop: 2,
-      }}
-    >
+    <div className="flex items-center gap-1 mt-0.5">
       {modelShort && (
-        <span
-          style={{
-            fontSize: '10px',
-            lineHeight: 1,
-            color: 'var(--pixel-text-dim)',
-            fontFamily: 'monospace',
-            letterSpacing: '0.5px',
-            textTransform: 'uppercase',
-          }}
-        >
+        <span className="text-[10px] leading-none text-pixel-text-dim font-mono tracking-[0.5px] uppercase">
           {modelShort}
         </span>
       )}
       <div
         title={tooltipText}
-        style={{
-          width: 64,
-          height: 5,
-          background: 'rgba(255, 255, 255, 0.1)',
-          border: '1px solid rgba(255, 255, 255, 0.15)',
-          borderRadius: 0,
-          overflow: 'hidden',
-          imageRendering: 'pixelated',
-        }}
+        className="w-16 h-[5px] bg-white/10 border border-white/15 overflow-hidden [image-rendering:pixelated]"
       >
         <div
-          style={{
-            width: `${pct}%`,
-            height: '100%',
-            background: barColor,
-            borderRadius: 0,
-            transition: 'width 0.3s ease',
-            imageRendering: 'pixelated',
-          }}
+          className="h-full transition-[width] duration-300 ease-in-out [image-rendering:pixelated]"
+          style={{ width: `${pct}%`, background: barColor }}
         />
       </div>
     </div>

@@ -24,7 +24,7 @@ export interface AgentDetails {
 }
 
 interface InspectionPanelProps {
-  agentId: number | null // null = hidden
+  agentId: number | null
   agentDetails: AgentDetails | null
   folderName?: string
   onClose: () => void
@@ -53,7 +53,6 @@ function formatTime(isoString: string): string {
   }
 }
 
-/** Pixel-art styled progress bar */
 function PixelBar({ value, max, color }: { value: number; max: number; color: string }) {
   const totalBlocks = 10
   const filled = max > 0 ? Math.round((value / max) * totalBlocks) : 0
@@ -62,78 +61,17 @@ function PixelBar({ value, max, color }: { value: number; max: number; color: st
     blocks.push(i < filled ? '\u2588' : '\u2591')
   }
   return (
-    <span style={{ fontFamily: 'monospace', letterSpacing: '1px', color, fontSize: '14px' }}>
+    <span className="font-mono tracking-[1px] text-[14px]" style={{ color }}>
       {blocks.join('')}
     </span>
   )
 }
 
-const panelStyle: React.CSSProperties = {
-  position: 'fixed',
-  top: '50%',
-  right: 24,
-  transform: 'translateY(-50%)',
-  width: 380,
-  maxHeight: '80vh',
-  background: '#1a1a2e',
-  border: '2px solid #4a4a6a',
-  boxShadow: '4px 4px 0px #0a0a14',
-  zIndex: 200,
-  display: 'flex',
-  flexDirection: 'column',
-  overflow: 'hidden',
-}
-
-const headerStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  padding: '8px 12px',
-  borderBottom: '2px solid #4a4a6a',
-  background: '#22223a',
-}
-
-const sectionStyle: React.CSSProperties = {
-  padding: '8px 12px',
-  borderBottom: '1px solid #333355',
-}
-
-const sectionTitleStyle: React.CSSProperties = {
-  fontSize: '16px',
-  color: '#8888bb',
-  marginBottom: 4,
-  textTransform: 'uppercase' as const,
-  letterSpacing: '1px',
-}
-
-const labelStyle: React.CSSProperties = {
-  fontSize: '14px',
-  color: 'rgba(255,255,255,0.5)',
-  minWidth: 70,
-  display: 'inline-block',
-}
-
-const valueStyle: React.CSSProperties = {
-  fontSize: '14px',
-  color: 'rgba(255,255,255,0.85)',
-}
-
-const rowStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 8,
-  padding: '2px 0',
-}
-
-const closeBtnStyle: React.CSSProperties = {
-  background: 'none',
-  border: 'none',
-  color: 'rgba(255,255,255,0.5)',
-  fontSize: '18px',
-  cursor: 'pointer',
-  padding: '0 4px',
-  lineHeight: 1,
-}
+const sectionCls = "px-3 py-2 border-b border-[#333355]"
+const sectionTitleCls = "text-[16px] text-[#8888bb] mb-1 uppercase tracking-[1px]"
+const labelCls = "text-[14px] text-white/50 min-w-[70px] inline-block"
+const valueCls = "text-[14px] text-white/85"
+const rowCls = "flex items-center gap-2 py-0.5"
 
 export function InspectionPanel({ agentId, agentDetails, folderName, onClose }: InspectionPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -166,170 +104,139 @@ export function InspectionPanel({ agentId, agentDetails, folderName, onClose }: 
       : 0
   const avgTurnMs = d.turnCount > 0 ? d.totalDurationMs / d.turnCount : 0
 
-  // Reversed tool history (most recent first)
   const reversedHistory = [...d.toolHistory].reverse()
 
   return (
-    <div style={panelStyle} onClick={(e) => e.stopPropagation()}>
+    <div className="fixed top-1/2 right-6 -translate-y-1/2 w-[380px] max-h-[80vh] bg-[#1a1a2e] border-2 border-[#4a4a6a] shadow-[4px_4px_0px_#0a0a14] z-[200] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
       {/* Header */}
-      <div style={headerStyle}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button style={closeBtnStyle} onClick={onClose} title="Close (Esc)">
+      <div className="flex items-center justify-between px-3 py-2 border-b-2 border-[#4a4a6a] bg-[#22223a]">
+        <div className="flex items-center gap-2">
+          <button className="bg-transparent border-0 text-white/50 text-[18px] cursor-pointer px-1 leading-none hover:text-pixel-close-hover" onClick={onClose} title="Close (Esc)">
             [X]
           </button>
-          <span style={{ fontSize: '16px', color: '#fff' }}>
+          <span className="text-[16px] text-white">
             Agent: {folderName ?? `#${d.id}`} ({modelShort})
           </span>
         </div>
-        <span
-          style={{
-            fontSize: '12px',
-            color: '#5ac88c',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-          }}
-        >
-          <span
-            style={{
-              display: 'inline-block',
-              width: 6,
-              height: 6,
-              borderRadius: '50%',
-              background: '#5ac88c',
-            }}
-          />
+        <span className="text-[12px] text-pixel-green flex items-center gap-1">
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-pixel-green" />
           active
         </span>
       </div>
 
       {/* Scrollable body */}
-      <div ref={scrollRef} style={{ overflowY: 'auto', flex: 1 }}>
+      <div ref={scrollRef} className="overflow-y-auto flex-1">
         {/* Info section */}
-        <div style={sectionStyle}>
-          <div style={sectionTitleStyle}>Info</div>
+        <div className={sectionCls}>
+          <div className={sectionTitleCls}>Info</div>
           {d.gitBranch && (
-            <div style={rowStyle}>
-              <span style={labelStyle}>Branch:</span>
-              <span style={{ ...valueStyle, color: '#7cb3ff' }}>{d.gitBranch}</span>
+            <div className={rowCls}>
+              <span className={labelCls}>Branch:</span>
+              <span className={`${valueCls} text-[#7cb3ff]`}>{d.gitBranch}</span>
             </div>
           )}
           {d.cwd && (
-            <div style={rowStyle}>
-              <span style={labelStyle}>Dir:</span>
-              <span style={{ ...valueStyle, fontSize: '12px', wordBreak: 'break-all' }}>{d.cwd}</span>
+            <div className={rowCls}>
+              <span className={labelCls}>Dir:</span>
+              <span className={`${valueCls} text-[12px] break-all`}>{d.cwd}</span>
             </div>
           )}
-          <div style={rowStyle}>
-            <span style={labelStyle}>Session:</span>
-            <span style={valueStyle}>{d.sessionId.slice(0, 8)}</span>
+          <div className={rowCls}>
+            <span className={labelCls}>Session:</span>
+            <span className={valueCls}>{d.sessionId.slice(0, 8)}</span>
           </div>
           {d.version && (
-            <div style={rowStyle}>
-              <span style={labelStyle}>Version:</span>
-              <span style={valueStyle}>{d.version}</span>
+            <div className={rowCls}>
+              <span className={labelCls}>Version:</span>
+              <span className={valueCls}>{d.version}</span>
             </div>
           )}
           {d.permissionMode && (
-            <div style={rowStyle}>
-              <span style={labelStyle}>Perms:</span>
-              <span style={{ ...valueStyle, color: d.permissionMode === 'bypassPermissions' ? '#e5c07b' : '#98c379' }}>
+            <div className={rowCls}>
+              <span className={labelCls}>Perms:</span>
+              <span className={valueCls} style={{ color: d.permissionMode === 'bypassPermissions' ? '#e5c07b' : '#98c379' }}>
                 {d.permissionMode}
               </span>
             </div>
           )}
           {d.startTime && (
-            <div style={rowStyle}>
-              <span style={labelStyle}>Started:</span>
-              <span style={valueStyle}>{formatTime(d.startTime)}</span>
+            <div className={rowCls}>
+              <span className={labelCls}>Started:</span>
+              <span className={valueCls}>{formatTime(d.startTime)}</span>
             </div>
           )}
         </div>
 
         {/* Token Usage section */}
-        <div style={sectionStyle}>
-          <div style={sectionTitleStyle}>Token Usage</div>
-          <div style={rowStyle}>
-            <span style={{ ...labelStyle, minWidth: 60 }}>Input:</span>
+        <div className={sectionCls}>
+          <div className={sectionTitleCls}>Token Usage</div>
+          <div className={rowCls}>
+            <span className={`${labelCls} min-w-[60px]`}>Input:</span>
             <PixelBar value={contextInput} max={contextLimit} color="#5a8cff" />
-            <span style={{ ...valueStyle, marginLeft: 4 }}>{formatNumber(contextInput)}</span>
+            <span className={`${valueCls} ml-1`}>{formatNumber(contextInput)}</span>
           </div>
-          <div style={rowStyle}>
-            <span style={{ ...labelStyle, minWidth: 60 }}>Output:</span>
+          <div className={rowCls}>
+            <span className={`${labelCls} min-w-[60px]`}>Output:</span>
             <PixelBar value={contextOutput} max={contextLimit} color="#5ac88c" />
-            <span style={{ ...valueStyle, marginLeft: 4 }}>{formatNumber(contextOutput)}</span>
+            <span className={`${valueCls} ml-1`}>{formatNumber(contextOutput)}</span>
           </div>
-          <div style={rowStyle}>
-            <span style={{ ...labelStyle, minWidth: 60 }}>Cache:</span>
+          <div className={rowCls}>
+            <span className={`${labelCls} min-w-[60px]`}>Cache:</span>
             <PixelBar value={contextCacheRead} max={contextLimit} color="#c678dd" />
-            <span style={{ ...valueStyle, marginLeft: 4 }}>{formatNumber(contextCacheRead)}</span>
+            <span className={`${valueCls} ml-1`}>{formatNumber(contextCacheRead)}</span>
           </div>
-          <div style={rowStyle}>
-            <span style={{ ...labelStyle, minWidth: 60 }}>Context:</span>
+          <div className={rowCls}>
+            <span className={`${labelCls} min-w-[60px]`}>Context:</span>
             <PixelBar value={contextTotal} max={contextLimit} color="#e5c07b" />
-            <span style={{ ...valueStyle, marginLeft: 4 }}>
+            <span className={`${valueCls} ml-1`}>
               {formatNumber(contextTotal)}/{formatNumber(contextLimit)}
             </span>
           </div>
           {d.contextUsage && (
-            <div style={rowStyle}>
-              <span style={{ ...labelStyle, minWidth: 60 }}>Lifetime:</span>
-              <span style={valueStyle}>{formatNumber(totalTokens)}</span>
+            <div className={rowCls}>
+              <span className={`${labelCls} min-w-[60px]`}>Lifetime:</span>
+              <span className={valueCls}>{formatNumber(totalTokens)}</span>
             </div>
           )}
         </div>
 
         {/* Performance section */}
-        <div style={sectionStyle}>
-          <div style={sectionTitleStyle}>Performance</div>
-          <div style={rowStyle}>
-            <span style={valueStyle}>
+        <div className={sectionCls}>
+          <div className={sectionTitleCls}>Performance</div>
+          <div className={rowCls}>
+            <span className={valueCls}>
               Turns: {d.turnCount} | Avg: {formatDuration(avgTurnMs)}
             </span>
           </div>
-          <div style={rowStyle}>
-            <span style={valueStyle}>
+          <div className={rowCls}>
+            <span className={valueCls}>
               Cache hit: {cacheHitRate}% | Total: {formatDuration(d.totalDurationMs)}
             </span>
           </div>
         </div>
 
         {/* Tool History section */}
-        <div style={{ ...sectionStyle, borderBottom: 'none', paddingBottom: 12 }}>
-          <div style={sectionTitleStyle}>Tool History (last {d.toolHistory.length})</div>
-          <div
-            style={{
-              maxHeight: 200,
-              overflowY: 'auto',
-              background: '#151528',
-              border: '1px solid #333355',
-              padding: '4px 0',
-            }}
-          >
+        <div className="px-3 py-2 pb-3">
+          <div className={sectionTitleCls}>Tool History (last {d.toolHistory.length})</div>
+          <div className="max-h-[200px] overflow-y-auto bg-[#151528] border border-[#333355] py-1">
             {reversedHistory.length === 0 && (
-              <div style={{ padding: '8px 12px', color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>
+              <div className="px-3 py-2 text-white/30 text-[13px]">
                 No tools used yet
               </div>
             )}
             {reversedHistory.map((entry, i) => (
               <div
                 key={`${entry.timestamp}-${i}`}
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  padding: '2px 8px',
-                  fontSize: '13px',
-                  color: 'rgba(255,255,255,0.7)',
-                  borderBottom: i < reversedHistory.length - 1 ? '1px solid #222244' : 'none',
-                }}
+                className="flex justify-between px-2 py-0.5 text-[13px] text-white/70"
+                style={{ borderBottom: i < reversedHistory.length - 1 ? '1px solid #222244' : 'none' }}
               >
-                <span style={{ color: 'rgba(255,255,255,0.4)', minWidth: 65 }}>
+                <span className="text-white/40 min-w-[65px]">
                   {formatTime(entry.timestamp)}
                 </span>
-                <span style={{ flex: 1, textAlign: 'left', marginLeft: 8, color: '#7cb3ff' }}>
+                <span className="flex-1 text-left ml-2 text-[#7cb3ff]">
                   {entry.name}
                 </span>
-                <span style={{ minWidth: 60, textAlign: 'right', color: 'rgba(255,255,255,0.5)' }}>
+                <span className="min-w-[60px] text-right text-white/50">
                   {entry.durationMs !== undefined ? formatDuration(entry.durationMs) : '...'}
                 </span>
               </div>
