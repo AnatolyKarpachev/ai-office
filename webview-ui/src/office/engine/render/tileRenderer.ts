@@ -2,7 +2,7 @@ import { TileType, TILE_SIZE } from '../../types.js'
 import type { TileType as TileTypeVal, FloorColor } from '../../types.js'
 import { getCachedSprite } from '../../sprites/spriteCache.js'
 import { getColorizedFloorSprite, hasFloorSprites, WALL_COLOR } from '../../floorTiles.js'
-import { wallColorToHex } from '../../wallTiles.js'
+import { wallColorToHex, hasWallSprites } from '../../wallTiles.js'
 import {
   FALLBACK_FLOOR_COLOR,
   GRID_LINE_COLOR,
@@ -33,15 +33,32 @@ export function renderTileGrid(
       // Skip VOID tiles entirely (transparent)
       if (tile === TileType.VOID) continue
 
-      if (tile === TileType.WALL || !useSpriteFloors) {
-        // Wall tiles or fallback: solid color
-        if (tile === TileType.WALL) {
+      if (tile === TileType.WALL) {
+        if (hasWallSprites()) {
+          // Wall sprites render as z-sorted instances — draw floor underneath
+          // so the base of the wall tile shows floor, not a solid block
+          const colorIdx = r * layoutCols + c
+          const color = tileColors?.[colorIdx] ?? { h: 0, s: 0, b: 0, c: 0 }
+          if (useSpriteFloors) {
+            const sprite = getColorizedFloorSprite(1, color)
+            const cached = getCachedSprite(sprite, zoom)
+            ctx.drawImage(cached, offsetX + c * s, offsetY + r * s)
+          } else {
+            ctx.fillStyle = FALLBACK_FLOOR_COLOR
+            ctx.fillRect(offsetX + c * s, offsetY + r * s, s, s)
+          }
+        } else {
+          // No wall sprites — solid color fallback
           const colorIdx = r * layoutCols + c
           const wallColor = tileColors?.[colorIdx]
           ctx.fillStyle = wallColor ? wallColorToHex(wallColor) : WALL_COLOR
-        } else {
-          ctx.fillStyle = FALLBACK_FLOOR_COLOR
+          ctx.fillRect(offsetX + c * s, offsetY + r * s, s, s)
         }
+        continue
+      }
+
+      if (!useSpriteFloors) {
+        ctx.fillStyle = FALLBACK_FLOOR_COLOR
         ctx.fillRect(offsetX + c * s, offsetY + r * s, s, s)
         continue
       }
