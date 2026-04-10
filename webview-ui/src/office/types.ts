@@ -122,6 +122,7 @@ export interface FurnitureCatalogEntry {
   footprintH: number
   sprite: SpriteData
   isDesk: boolean
+  isDoor?: boolean
   category?: string
   /** Orientation from rotation group: 'front' | 'back' | 'left' | 'right' */
   orientation?: string

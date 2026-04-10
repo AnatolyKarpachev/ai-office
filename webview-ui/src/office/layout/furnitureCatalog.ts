@@ -471,16 +471,12 @@ export function getRotatedType(currentType: string, direction: 'cw' | 'ccw'): st
   return order[nextIdx]
 }
 
-/** Returns true if the given furniture type is a door (has isDoor flag). */
+/** Returns true if the given furniture type is a door (ANIM_DOOR variants). */
 export function isDoorFurniture(type: string): boolean {
+  if (type.startsWith('ANIM_DOOR')) return true
+  // Check catalog isDoor flag as fallback
   const entry = getCatalogEntry(type)
   if (entry?.isDoor) return true
-  // Also check the "off" variant (closed door)
-  const offType = getOffStateType(type)
-  if (offType !== type) {
-    const offEntry = getCatalogEntry(offType)
-    if (offEntry?.isDoor) return true
-  }
   return false
 }
 

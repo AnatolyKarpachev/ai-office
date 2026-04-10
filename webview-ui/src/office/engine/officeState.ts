@@ -1155,24 +1155,19 @@ export class OfficeState {
       }
     }
 
-    // Door proximity detection — open door when agent is adjacent (≤1 tile),
-    // close when all agents are >2 tiles away
-    const DOOR_OPEN_DIST = 1   // open when agent within 1 tile
-    const DOOR_CLOSE_DIST = 2  // close when all agents beyond 2 tiles
+    // Door proximity detection — like agent-town DoorManager:
+    // Open when any character is within threshold, close when all are far
+    const DOOR_THRESHOLD_SQ = 4  // ~2 tiles squared distance
     const openDoorUids = new Set<string>()
     for (const item of this.layout.furniture) {
       if (!isDoorFurniture(item.type)) continue
-      const entry = getCatalogEntry(item.type)
-      if (!entry) continue
-      const doorCenterCol = item.col + Math.floor(entry.footprintW / 2)
-      const doorCenterRow = item.row + Math.floor(entry.footprintH / 2)
-      const wasOpen = this._prevOpenDoors?.has(item.uid) ?? false
-      const threshold = wasOpen ? DOOR_CLOSE_DIST : DOOR_OPEN_DIST
+      // Door center in pixel coords
+      const doorCx = item.col + 0.5
+      const doorCy = item.row + 1.5  // center of 1x3 door
       for (const ch of this.characters.values()) {
-        const chCol = Math.round(ch.col)
-        const chRow = Math.round(ch.row)
-        const dist = Math.abs(chCol - doorCenterCol) + Math.abs(chRow - doorCenterRow)
-        if (dist <= threshold) {
+        const dx = ch.col - doorCx
+        const dy = ch.row - doorCy
+        if (dx * dx + dy * dy < DOOR_THRESHOLD_SQ) {
           openDoorUids.add(item.uid)
           break
         }
