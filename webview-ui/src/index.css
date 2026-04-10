@@ -80,6 +80,16 @@
   --pixel-sidebar-z: 120;
 }
 
+@layer utilities {
+  @keyframes pixel-agents-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  .pixel-agents-pulse {
+    animation: pixel-agents-pulse 1.5s ease-in-out infinite;
+  }
+}
+
 @layer base {
   html, body, #root {
     margin: 0;
