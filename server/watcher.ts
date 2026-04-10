@@ -1,22 +1,18 @@
 import { watch } from "chokidar";
-import { statSync, readdirSync, openSync, readSync, closeSync, readFileSync } from "fs";
+import { statSync, readdirSync, readFileSync } from "fs";
 import { join, basename, dirname } from "path";
 import { homedir } from "os";
 import { EventEmitter } from "events";
 import type { WatchedFile } from "./sourceTypes.js";
+import { compactName, readNewLines } from "./utils.js";
 
 const CLAUDE_PROJECTS_DIR = join(homedir(), ".claude", "projects");
 const ACTIVE_THRESHOLD_MS = 1_800_000; // 30 minutes — sessions survive long builds and user idle
 const POLL_INTERVAL_MS = 3000; // 3 seconds — reduces I/O pressure from statSync on tracked files
 const RESCAN_INTERVAL_MS = 15_000; // 15 seconds — periodic rescan to catch files chokidar missed (new dirs)
 
-const MAX_PROJECT_NAME_LENGTH = 15;
-
 /**
  * Extract a human-readable project name from the Claude projects directory name.
- * - Worktree ISSUE-378 → "#378"
- * - Home dir only (no project) → "" (empty)
- * - Named worktree → worktree name
  */
 function extractProjectName(projectDirName: string): string {
   const worktreeSep = "--claude-worktrees-";
@@ -28,35 +24,15 @@ function extractProjectName(projectDirName: string): string {
     if (issueMatch) {
       return `#${issueMatch[1]}`;
     }
-    // Named worktree like "flamboyant-mestorf"
-    return truncateName(worktreeName);
+    return compactName(worktreeName);
   }
 
-  // Check if this is just the home directory (e.g., "-Users-grid")
   const parts = projectDirName.split("-").filter(Boolean);
   if (parts.length <= 2 && parts[0] === "Users") {
     return "MegaBoss";
   }
 
   return "";
-}
-
-/** Compact a name to fit within maxLen — max 2 words, proportionally shortened. */
-function compactName(name: string, maxLen: number): string {
-  if (name.length <= maxLen) return name;
-  const words = name.split(/[-_\s]+/).filter(Boolean);
-  if (words.length === 0) return name.slice(0, maxLen);
-  const w1 = words[0].toLowerCase();
-  const w2 = words.length > 1 ? words[1][0].toUpperCase() + words[1].slice(1) : "";
-  if ((w1 + w2).length <= maxLen) return w1 + w2;
-  const total = w1.length + w2.length;
-  const budget1 = Math.max(3, Math.min(w1.length, Math.floor((w1.length / total) * maxLen)));
-  const budget2 = Math.max(3, maxLen - budget1);
-  return w1.slice(0, budget1) + (w2 ? w2.slice(0, budget2) : "");
-}
-
-function truncateName(name: string): string {
-  return compactName(name, MAX_PROJECT_NAME_LENGTH);
 }
 
 export class JsonlWatcher extends EventEmitter {
@@ -205,7 +181,7 @@ export class JsonlWatcher extends EventEmitter {
       // For subagents: use description from meta.json if available, otherwise directory-based name
       // (agentType is used for the role badge, not the display name)
       const rawName = description || extractProjectName(projectDirName);
-      projectName = truncateName(rawName);
+      projectName = compactName(rawName);
     } else {
       projectName = extractProjectName(parentDirName);
     }
@@ -227,7 +203,7 @@ export class JsonlWatcher extends EventEmitter {
     this.emit("fileAdded", file);
 
     // Read existing content to catch up
-    this.readNewLines(file);
+    this.readFileLines(file);
   }
 
   private pollFiles(): void {
@@ -235,7 +211,7 @@ export class JsonlWatcher extends EventEmitter {
       try {
         const stat = statSync(path);
         if (stat.size > file.offset) {
-          this.readNewLines(file);
+          this.readFileLines(file);
         }
         // Remove stale files (but not pinned ones — team members stay)
         if (Date.now() - stat.mtimeMs > ACTIVE_THRESHOLD_MS && !this.pinnedPaths.has(path)) {
@@ -249,31 +225,8 @@ export class JsonlWatcher extends EventEmitter {
     }
   }
 
-  private readNewLines(file: WatchedFile): void {
-    try {
-      const stat = statSync(file.path);
-      if (stat.size <= file.offset) return;
-
-      const buf = Buffer.alloc(stat.size - file.offset);
-      const fd = openSync(file.path, "r");
-      readSync(fd, buf, 0, buf.length, file.offset);
-      closeSync(fd);
-
-      file.offset = stat.size;
-      const text = file.lineBuffer + buf.toString("utf-8");
-      const lines = text.split("\n");
-
-      // Last element is incomplete line (buffer it)
-      file.lineBuffer = lines.pop() || "";
-
-      for (const line of lines) {
-        if (line.trim()) {
-          this.emit("line", file, line);
-        }
-      }
-    } catch {
-      /* file may have been deleted */
-    }
+  private readFileLines(file: WatchedFile): void {
+    readNewLines(file, this);
   }
 
   getActiveFiles(): WatchedFile[] {

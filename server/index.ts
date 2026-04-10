@@ -1,455 +1,136 @@
 import express from "express";
 import { createServer } from "http";
-import { WebSocketServer, WebSocket } from "ws";
+import { WebSocketServer } from "ws";
 import { join, dirname } from "path";
 import { homedir } from "os";
 import { fileURLToPath } from "url";
-import { existsSync, readFileSync, writeFileSync, mkdirSync, watch, statSync, renameSync, unlinkSync, readdirSync, openSync, readSync, closeSync } from "fs";
-import type { FSWatcher } from "fs";
-import { spawn, execSync, execFile, type ChildProcess } from "child_process";
-import { promisify } from "util";
-
-const execFileAsync = promisify(execFile);
+import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from "fs";
+import { spawn, type ChildProcess } from "child_process";
 import crypto from "crypto";
+
 import { JsonlWatcher } from "./watcher.js";
 import { CodexJsonlWatcher } from "./codexWatcher.js";
-import { processTranscriptLine, cleanupAgentParserState } from "./parser.js";
-import { processCodexTranscriptLine, cleanupCodexParserState } from "./codexParser.js";
 import {
   loadCharacterSprites,
   loadWallTiles,
   loadFloorTiles,
-  loadFurnitureAssets,
   loadDefaultLayout,
 } from "./assetLoader.js";
 import type { LoadedFurnitureAssets } from "./assetLoader.js";
-import { loadConfig, saveConfig, getConfig, type GithubTaskStateConfig } from "./configPersistence.js";
-import type { TrackedAgent, ServerMessage } from "./types.js";
-import { getRoleColors, resolveDerivedAgentName, resolveDisplayRole } from "./roleDetector.js";
-import type { AgentProvider, WatchedFile } from "./sourceTypes.js";
+import { loadConfig, getConfig, saveConfig } from "./configPersistence.js";
 import { openPath, findPidsOnPort } from "./platform.js";
 import { DaemonHub } from "./daemonHub.js";
+import { isShareTokenValid } from "./shareManager.js";
+import { stopShareCleanup } from "./shareManager.js";
+import {
+  loadAllFurniture,
+  loadLayoutWithRevision,
+  writeLayoutToFile,
+  loadPersistedSeats,
+  loadRoleOverrides,
+  LayoutWatcher,
+  persistDir,
+} from "./layoutManager.js";
+import {
+  saveAgentState,
+  loadAgentState,
+  startSubagentAutoSuspend,
+} from "./agentPersistence.js";
+import {
+  agents,
+  nextAgentId,
+  setNextAgentId,
+  recentSendMessages,
+  init as initAgentManager,
+  handleFileAdded,
+  handleFileRemoved,
+  handleWatchedLine,
+} from "./agentManager.js";
+import { resolveTeamParent } from "./agentManager.js";
+import { startPolling as startGithubPolling, stopPolling as stopGithubPolling } from "./githubPoller.js";
+import {
+  broadcast,
+  clients,
+  startHeartbeat,
+  initWsHandler,
+  setupConnectionHandler,
+} from "./wsHandler.js";
+
+// ── Paths & constants ───────────────────────────────────────────────────
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PORT = parseInt(process.env.PORT || "9876", 10);
-const IDLE_SHUTDOWN_MS = 600_000; // 10 minutes
-const SUBAGENT_AUTO_SUSPEND_MS = 600_000; // 10 minutes — auto-close idle subagents
-
-// Accumulate SendMessage events so new clients see historical inter-agent communication
-const MAX_SEND_MESSAGES = 200;
-const recentSendMessages: Array<{ id: number; toolId: string; from: string; to: string; message: string; timestamp: number }> = [];
-
-// Context window limits by model for health bar calculation
-const MODEL_CONTEXT_LIMITS: Record<string, number> = {
-  "claude-opus-4-6": 200000,
-  "claude-sonnet-4-6": 200000,
-  "claude-haiku-4-5": 200000,
-  "default": 200000,
-};
-
 const CLAUDE_PROJECTS_DIR = join(homedir(), ".claude", "projects");
 const CODEX_SESSIONS_DIR = join(homedir(), ".codex", "sessions");
 
-function buildAgentStatsMessage(agent: TrackedAgent): ServerMessage {
-  const totalTokens = agent.totalInputTokens + agent.totalOutputTokens;
-  const cacheHitRate = totalTokens > 0
-    ? Math.round((agent.totalCacheRead / Math.max(agent.totalInputTokens, 1)) * 100)
-    : 0;
-  return {
-    type: "agentStats",
-    id: agent.id,
-    model: agent.model,
-    totalInputTokens: agent.totalInputTokens,
-    totalOutputTokens: agent.totalOutputTokens,
-    totalCacheRead: agent.totalCacheRead,
-    totalCacheCreation: agent.totalCacheCreation,
-    currentContextTokens: agent.currentContextTokens,
-    currentContextLimit: agent.currentContextLimit,
-    turnCount: agent.turnCount,
-    totalDurationMs: agent.totalDurationMs,
-    cacheHitRate,
-  };
-}
+// ── Assets ──────────────────────────────────────────────────────────────
 
-// ── Role helpers ─────────────────────────────────────────────────────────
-// Role = agentSetting from Claude Code JSONL, enhanced with description fallback
-function getAgentRoleInputs(agent: TrackedAgent): { description: string | undefined; isSubagent: boolean } {
-  const isSubagent = !!agent.parentSessionId || !!(agent.teamName && !agent.isTeamLead);
-  // For team members without agentDescription, use projectName (e.g. "coach", "planner") as description
-  const description = agent.agentDescription || (agent.teamName && !agent.isTeamLead ? agent.projectName : undefined);
-  return { description, isSubagent };
-}
+const devAssetsRoot = join(__dirname, "..", "webview-ui", "public", "assets");
+const prodAssetsRoot = join(__dirname, "public", "assets");
+const isDev = !__dirname.endsWith("/dist") && !__dirname.endsWith("\\dist");
+const assetsRoot = isDev ? devAssetsRoot : prodAssetsRoot;
 
-function buildAgentRoleMessage(agent: TrackedAgent): ServerMessage {
-  // Check for persistent role override first
-  const override = roleOverrides[agent.id];
-  if (override) {
-    return {
-      type: "agentRole",
-      id: agent.id,
-      role: override.role,
-      autoDetected: false,
-      colors: override.colors,
-    };
-  }
-  const { description, isSubagent } = getAgentRoleInputs(agent);
-  let { displayRole, colors } = resolveDisplayRole(agent.agentSetting, description, isSubagent);
-  // Only one boss allowed — if another boss already exists, cap at "lead"
-  if (displayRole === "boss") {
-    for (const [, other] of agents) {
-      if (other.id !== agent.id && other.role === "boss") {
-        displayRole = "lead";
-        colors = getRoleColors("lead");
-        break;
-      }
-    }
-  }
-  return {
-    type: "agentRole",
-    id: agent.id,
-    role: displayRole,
-    autoDetected: true,
-    colors,
-  };
-}
+console.log(`[Server] Loading assets from: ${assetsRoot}`);
 
-function syncRoleAndBroadcast(agent: TrackedAgent): void {
-  // Don't override manually set roles
-  if (roleOverrides[agent.id]) return;
-  const { description, isSubagent } = getAgentRoleInputs(agent);
-  const { displayRole } = resolveDisplayRole(agent.agentSetting, description, isSubagent);
-  if (displayRole !== agent.role) {
-    agent.role = displayRole;
-    broadcast(buildAgentRoleMessage(agent));
-  }
-}
+const characterSprites = loadCharacterSprites(assetsRoot);
+const wallTiles = loadWallTiles(assetsRoot);
+const floorTiles = loadFloorTiles(assetsRoot);
 
-function syncAgentNameAndBroadcast(agent: TrackedAgent): void {
-  if (agent.provider !== "claude") return;
-  if (agent.nameSource === "explicit") return;
-  // Don't override team-derived names (from agentName or teamName fields)
-  if (agent.nameSource === "derived" && agent.teamName) return;
+// ── Config ──────────────────────────────────────────────────────────────
 
-  const isSubagent = !!agent.parentSessionId;
-  const derivedName = resolveDerivedAgentName(agent.agentSetting, agent.agentDescription, isSubagent);
-  if (!derivedName) return;
+const config = loadConfig();
+console.log(`[Server] Config loaded: soundEnabled=${config.soundEnabled}, externalDirs=${config.externalAssetDirectories.length}`);
 
-  if (agent.projectName !== derivedName || agent.nameSource !== "derived") {
-    agent.projectName = derivedName;
-    agent.nameSource = "derived";
-    broadcast({ type: "agentRenamed", id: agent.id, folderName: agent.projectName });
-  }
-}
+// ── Furniture & Layout ──────────────────────────────────────────────────
 
-function onAgentStatsUpdate(agent: TrackedAgent): void {
-  broadcast(buildAgentStatsMessage(agent));
-  syncAgentNameAndBroadcast(agent);
-  // Recalculate role when stats change (model detected, tools used, etc.)
-  syncRoleAndBroadcast(agent);
-  // Resolve team parent-child relationships
-  resolveTeamParent(agent);
-  // Fallback: link orphan agents (no team, no parent) to nearest top-level session
-  resolveOrphanParent(agent);
-}
+let furnitureAssets = loadAllFurniture(assetsRoot);
+const defaultLayout = loadDefaultLayout(assetsRoot);
 
-/** Link orphan agents to nearest top-level session.
- *  Two modes:
- *  - Top-level agent: adopt existing orphaned subagents
- *  - Subagent with dead parent: find a living top-level agent */
-function resolveOrphanParent(agent: TrackedAgent): void {
-  if (agent.teamName) return;
-
-  // If agent has a parent, check it's still alive
-  if (agent.parentAgentId !== undefined) {
-    const parentAlive = [...agents.values()].some(a => a.id === agent.parentAgentId);
-    if (parentAlive) return;
-    console.log(`[orphan] ${agent.projectName} (${agent.id}): parent ${agent.parentAgentId} gone, clearing`);
-    agent.parentAgentId = undefined;
-  }
-
-  // Top-level agent (no parentSessionId) → adopt orphaned subagents
-  if (!agent.parentSessionId) {
-    for (const [, other] of agents) {
-      if (other.id === agent.id || other.teamName || other.provider !== agent.provider) continue;
-      if (!other.parentSessionId) continue; // skip other top-level agents
-      // Check if this subagent has a dead/missing parent
-      if (other.parentAgentId !== undefined) {
-        const alive = [...agents.values()].some(a => a.id === other.parentAgentId);
-        if (alive) continue;
-        other.parentAgentId = undefined;
-      }
-      if (other.parentAgentId === undefined) {
-        other.parentAgentId = agent.id;
-        broadcast({ type: "agentCreated", id: other.id, folderName: other.projectName, parentAgentId: agent.id });
-        console.log(`[orphan] adopted ${other.projectName} (${other.id}) → parent ${agent.projectName} (${agent.id})`);
-      }
-    }
-    return;
-  }
-
-  // Subagent (has parentSessionId) with no live parent → find top-level agent
-  for (const [, other] of agents) {
-    if (other.id === agent.id || other.teamName || other.provider !== agent.provider) continue;
-    if (other.parentSessionId || other.parentAgentId !== undefined) continue;
-
-    agent.parentAgentId = other.id;
-    broadcast({ type: "agentCreated", id: agent.id, folderName: agent.projectName, parentAgentId: other.id });
-    console.log(`[orphan] ${agent.projectName} (${agent.id}) → parent ${other.projectName} (${other.id})`);
-    break;
-  }
-}
-
-// Track teams we already discovered to avoid repeated scans
-const discoveredTeams = new Set<string>();
-
-/** Tag an agent as team lead and broadcast updates */
-function tagAsTeamLead(lead: TrackedAgent, teamName: string): void {
-  if (lead.teamName === teamName && lead.isTeamLead) return;
-  lead.teamName = teamName;
-  lead.isTeamLead = true;
-  if (lead.nameSource === "fallback") {
-    const words = teamName.split(/[-_\s]+/).filter(Boolean).slice(0, 2);
-    lead.projectName = (words[0] + (words[1] ? words[1][0].toUpperCase() + words[1].slice(1) : "")).slice(0, 15);
-    lead.nameSource = "derived";
-    broadcast({ type: "agentRenamed", id: lead.id, folderName: lead.projectName });
-  }
-  broadcast(buildAgentRoleMessage(lead));
-  console.log(`[team] tagged ${lead.projectName} (${lead.id}) as lead of "${teamName}"`);
-}
-
-/** Discover and force-add all member JSONL files for a team.
- *  Scans project directories for JSONL files matching teamName. */
-function discoverTeamMembers(teamName: string): void {
-  if (discoveredTeams.has(teamName)) return;
-  discoveredTeams.add(teamName);
-
-  try {
-    const teamConfigPath = join(homedir(), ".claude", "teams", teamName, "config.json");
-    if (!existsSync(teamConfigPath)) return;
-    const teamConfig = JSON.parse(readFileSync(teamConfigPath, "utf-8"));
-    const members = teamConfig.members as Array<Record<string, unknown>> | undefined;
-    if (!Array.isArray(members)) return;
-
-    // Collect member cwds to know which project dirs to scan
-    const cwds = new Set<string>();
-    for (const m of members) {
-      if (typeof m.cwd === "string") cwds.add(m.cwd);
-    }
-
-    // Also pin/add the lead session
-    const leadSessionId = teamConfig.leadSessionId as string | undefined;
-    if (leadSessionId) {
-      // Find the lead's JSONL file across all project dirs
-      const projectDirs = readdirSync(join(homedir(), ".claude", "projects"), { withFileTypes: true });
-      for (const dir of projectDirs) {
-        if (!dir.isDirectory()) continue;
-        const candidatePath = join(homedir(), ".claude", "projects", dir.name, leadSessionId + ".jsonl");
-        if (existsSync(candidatePath)) {
-          claudeWatcher.pinFile(candidatePath);
-          claudeWatcher.forceAdd(candidatePath);
-          console.log(`[team-discover] pinned lead ${leadSessionId.slice(0, 8)} from ${dir.name}`);
-          break;
-        }
-      }
-    }
-
-    // Scan project directories for JSONL files with matching teamName
-    const projectDirs = readdirSync(join(homedir(), ".claude", "projects"), { withFileTypes: true });
-    for (const dir of projectDirs) {
-      if (!dir.isDirectory()) continue;
-      const dirPath = join(homedir(), ".claude", "projects", dir.name);
-      let files: string[];
-      try {
-        files = readdirSync(dirPath).filter(f => f.endsWith(".jsonl"));
-      } catch { continue; }
-
-      for (const f of files) {
-        const filePath = join(dirPath, f);
-        // Quick check: does the file contain this teamName?
-        try {
-          const fd = openSync(filePath, "r");
-          // Read first 4KB to check for teamName (it appears early in JSONL)
-          const buf = Buffer.alloc(4096);
-          const bytesRead = readSync(fd, buf, 0, buf.length, 0);
-          closeSync(fd);
-          const snippet = buf.toString("utf-8", 0, bytesRead);
-          if (snippet.includes(`"${teamName}"`)) {
-            claudeWatcher.pinFile(filePath);
-            claudeWatcher.forceAdd(filePath);
-            console.log(`[team-discover] pinned member ${f.replace(".jsonl", "").slice(0, 8)} from ${dir.name}`);
-          }
-        } catch { /* skip unreadable */ }
-      }
-    }
-  } catch (err) {
-    console.warn(`[team-discover] failed for "${teamName}": ${err instanceof Error ? err.message : err}`);
-  }
-}
-
-/** Link teammate agents to their team lead, and team leads to their spawner */
-function resolveTeamParent(agent: TrackedAgent): void {
-  if (!agent.teamName) return;
-
-  // Check if existing parent is still alive
-  if (agent.parentAgentId !== undefined) {
-    const parentAlive = [...agents.values()].some(a => a.id === agent.parentAgentId);
-    if (parentAlive) {
-      // Parent alive — still trigger discovery for other team members
-      discoverTeamMembers(agent.teamName);
-      return;
-    }
-    // Parent is dead — clear and re-resolve
-    console.log(`[team] ${agent.projectName} (${agent.id}): parent ${agent.parentAgentId} gone, re-resolving`);
-    agent.parentAgentId = undefined;
-  }
-
-  // Trigger team discovery on first encounter
-  discoverTeamMembers(agent.teamName);
-
-  if (agent.isTeamLead) {
-    // Link team lead to the nearest MegaBoss/top-level session without a team
-    for (const [, other] of agents) {
-      if (!other.teamName && !other.parentSessionId && !other.parentAgentId && other.id !== agent.id && other.provider === "claude") {
-        agent.parentAgentId = other.id;
-        broadcast({ type: "agentCreated", id: agent.id, folderName: agent.projectName, parentAgentId: other.id });
-        console.log(`[team] lead ${agent.projectName} (${agent.id}) → parent ${other.projectName} (${other.id})`);
-        break;
-      }
-    }
-    return;
-  }
-
-  // Link teammate to team lead (same teamName, isTeamLead=true)
-  for (const [, other] of agents) {
-    if (other.teamName === agent.teamName && other.isTeamLead && other.id !== agent.id) {
-      agent.parentAgentId = other.id;
-      broadcast({ type: "agentCreated", id: agent.id, folderName: agent.projectName, parentAgentId: other.id });
-      console.log(`[team] ${agent.projectName} (${agent.id}) → parent ${other.projectName} (${other.id}) via team "${agent.teamName}"`);
-      return;
-    }
-  }
-
-  // Fallback 1: teamName in JSONL may differ from config name — check ~/.claude/teams/{teamName}/config.json
-  try {
-    const teamConfigPath = join(homedir(), ".claude", "teams", agent.teamName, "config.json");
-    if (existsSync(teamConfigPath)) {
-      const teamConfig = JSON.parse(readFileSync(teamConfigPath, "utf-8"));
-      const leadSessionId = teamConfig.leadSessionId as string | undefined;
-      if (leadSessionId) {
-        for (const [, other] of agents) {
-          if (other.sessionId === leadSessionId && other.id !== agent.id) {
-            agent.parentAgentId = other.id;
-            // Tag the lead so future teammates find it directly
-            tagAsTeamLead(other, agent.teamName);
-            broadcast({ type: "agentCreated", id: agent.id, folderName: agent.projectName, parentAgentId: other.id });
-            console.log(`[team] ${agent.projectName} (${agent.id}) → parent ${other.projectName} (${other.id}) via config leadSessionId`);
-            return;
-          }
-        }
-      }
-    }
-  } catch {
-    // Config read failed — skip fallback
-  }
-
-  // Fallback 2: match by gitBranch — all teammates share the same branch
-  if (agent.gitBranch) {
-    for (const [, other] of agents) {
-      if (other.isTeamLead && other.gitBranch === agent.gitBranch && other.id !== agent.id && other.provider === agent.provider) {
-        agent.parentAgentId = other.id;
-        broadcast({ type: "agentCreated", id: agent.id, folderName: agent.projectName, parentAgentId: other.id });
-        console.log(`[team] ${agent.projectName} (${agent.id}) → parent ${other.projectName} (${other.id}) via shared branch "${agent.gitBranch}"`);
-        return;
-      }
-    }
-  }
-}
-
-// State
-const agents = new Map<string, TrackedAgent>(); // provider:sessionId -> agent
-let nextAgentId = 1;
-const clients = new Set<WebSocket>();
-const testAgentIds = new Set<number>();
-const testAgentData = new Map<number, { folderName: string; role: string; parentAgentId?: number; model: string }>();
-let lastActivityTime = Date.now();
-const spawnedClaudes = new Set<ChildProcess>();
-const codexSubagentHints = new Map<string, { nickname?: string; role?: string; parentSessionId: string }>();
-
-// ── Share token management ──────────────────────────────────────────────
-interface ShareToken {
-  token: string;
-  expiresAt: number;
-  createdAt: number;
-  durationMs: number;
-}
-const activeShareTokens = new Map<string, ShareToken>();
-
-function createShareToken(durationMs: number): ShareToken {
-  const token = crypto.randomBytes(16).toString("hex");
-  const share: ShareToken = {
-    token,
-    expiresAt: Date.now() + durationMs,
-    createdAt: Date.now(),
-    durationMs,
-  };
-  activeShareTokens.set(token, share);
-  return share;
-}
-
-function isShareTokenValid(token: string): boolean {
-  const share = activeShareTokens.get(token);
-  if (!share) return false;
-  if (Date.now() > share.expiresAt) {
-    activeShareTokens.delete(token);
-    return false;
-  }
-  return true;
-}
-
-// Cleanup expired tokens every 60s
-setInterval(() => {
-  const now = Date.now();
-  for (const [token, share] of activeShareTokens) {
-    if (now > share.expiresAt) activeShareTokens.delete(token);
-  }
-}, 60_000);
-
-function getAgentKey(provider: AgentProvider, sessionId: string): string {
-  return `${provider}:${sessionId}`;
-}
-
-function resolveSessionLabel(provider: AgentProvider, sessionId: string): string | undefined {
-  const key = getAgentKey(provider, sessionId);
-  const agent = agents.get(key);
-  if (agent) return agent.projectName;
-  const hint = provider === "codex" ? codexSubagentHints.get(sessionId) : undefined;
-  return hint?.nickname;
-}
-
-// ── Persistent role overrides ─────────────────────────────────────────────
-const roleOverridesPath = join(homedir(), ".pixel-agents", "role-overrides.json");
-
-function loadRoleOverrides(): Record<number, { role: string; colors: { primary: string; badge: string } }> {
-  try {
-    if (existsSync(roleOverridesPath)) {
-      return JSON.parse(readFileSync(roleOverridesPath, "utf-8"));
-    }
-  } catch { /* ignore */ }
-  return {};
-}
-
-function saveRoleOverrides(overrides: Record<number, { role: string; colors: { primary: string; badge: string } }>): void {
-  try {
-    mkdirSync(dirname(roleOverridesPath), { recursive: true });
-    writeFileSync(roleOverridesPath, JSON.stringify(overrides, null, 2));
-  } catch (err) {
-    console.error(`[Server] Failed to save role overrides: ${err instanceof Error ? err.message : err}`);
-  }
-}
-
+const layoutResult = loadLayoutWithRevision(defaultLayout);
+const currentLayout = { value: layoutResult?.layout ?? null };
+const layoutWasReset = layoutResult?.wasReset ?? false;
+const persistedSeats = loadPersistedSeats();
 const roleOverrides = loadRoleOverrides();
 
-/** Spawn a detached Claude Code process. Returns immediately. */
+// ── Agent state persistence ─────────────────────────────────────────────
+
+const agentStatePath = join(persistDir, "agents-state.json");
+const previousAgentState = loadAgentState(agentStatePath);
+if (previousAgentState) {
+  console.log(`[Server] Found previous agent state with ${previousAgentState.agents.length} agents, nextAgentId=${previousAgentState.nextAgentId}`);
+  if (previousAgentState.nextAgentId > nextAgentId) {
+    setNextAgentId(previousAgentState.nextAgentId);
+  }
+}
+
+// ── Watchers ────────────────────────────────────────────────────────────
+
+const claudeWatcher = new JsonlWatcher();
+const watchers = [claudeWatcher, new CodexJsonlWatcher()];
+
+// ── Initialize agent manager ────────────────────────────────────────────
+
+let lastActivityTime = Date.now();
+
+initAgentManager({
+  broadcast,
+  claudeWatcher,
+  roleOverrides,
+  previousAgentState,
+  onActivity: () => { lastActivityTime = Date.now(); },
+});
+
+// Wire watcher events
+for (const watcher of watchers) {
+  watcher.on("fileAdded", handleFileAdded);
+  watcher.on("fileRemoved", handleFileRemoved);
+  watcher.on("line", handleWatchedLine);
+}
+
+// ── Claude process spawning ─────────────────────────────────────────────
+
+const spawnedClaudes = new Set<ChildProcess>();
+
 function launchClaude(bypassPermissions: boolean): void {
   const sessionId = crypto.randomUUID();
   const args = ["--session-id", sessionId];
@@ -468,124 +149,15 @@ function launchClaude(bypassPermissions: boolean): void {
   child.unref();
 }
 
-/** Kill all spawned Claude processes */
 function cleanupSpawnedClaudes(): void {
   for (const child of spawnedClaudes) {
     try {
-      // Kill the process group (negative pid) since detached creates a new group
       if (child.pid) {
         process.kill(-child.pid, "SIGTERM");
       }
-    } catch {
-      /* already exited */
-    }
+    } catch { /* already exited */ }
   }
   spawnedClaudes.clear();
-}
-
-// Load assets at startup
-// In dev mode (tsx), __dirname is server/ so assets are at ../webview-ui/public/assets/
-// In production (esbuild), __dirname is dist/ so assets are at ./public/assets/
-const devAssetsRoot = join(__dirname, "..", "webview-ui", "public", "assets");
-const prodAssetsRoot = join(__dirname, "public", "assets");
-// Production when running from dist/ directory (esbuild output)
-const isDev = !__dirname.endsWith("/dist") && !__dirname.endsWith("\\dist");
-const assetsRoot = isDev ? devAssetsRoot : prodAssetsRoot;
-
-console.log(`[Server] Loading assets from: ${assetsRoot}`);
-
-const characterSprites = loadCharacterSprites(assetsRoot);
-const wallTiles = loadWallTiles(assetsRoot);
-const floorTiles = loadFloorTiles(assetsRoot);
-
-// Load config from ~/.pixel-agents/config.json
-const config = loadConfig();
-console.log(`[Server] Config loaded: soundEnabled=${config.soundEnabled}, externalDirs=${config.externalAssetDirectories.length}`);
-
-// Merge bundled + external furniture assets
-function loadAllFurniture(): LoadedFurnitureAssets | null {
-  let assets = loadFurnitureAssets(assetsRoot);
-  const cfg = getConfig();
-  for (const extraDir of cfg.externalAssetDirectories) {
-    if (!existsSync(extraDir)) {
-      console.warn(`[Server] External asset directory not found: ${extraDir}`);
-      continue;
-    }
-    console.log(`[Server] Loading external furniture from: ${extraDir}`);
-    const extra = loadFurnitureAssets(extraDir);
-    if (extra) {
-      if (assets) {
-        // Merge: concatenate catalogs, merge sprite maps
-        assets = {
-          catalog: [...assets.catalog, ...extra.catalog],
-          sprites: { ...assets.sprites, ...extra.sprites },
-        };
-      } else {
-        assets = extra;
-      }
-    }
-  }
-  return assets;
-}
-
-let furnitureAssets = loadAllFurniture();
-
-// Persistence directory
-const persistDir = join(homedir(), ".pixel-agents");
-const persistedLayoutPath = join(persistDir, "layout.json");
-const persistedSeatsPath = join(persistDir, "agent-seats.json");
-
-// Load layout: persisted first, then default, with revision comparison
-interface LayoutLoadResult {
-  layout: Record<string, unknown>;
-  wasReset: boolean;
-}
-
-const defaultLayout = loadDefaultLayout(assetsRoot);
-
-function loadLayoutWithRevision(): LayoutLoadResult | null {
-  if (existsSync(persistedLayoutPath)) {
-    try {
-      const content = readFileSync(persistedLayoutPath, "utf-8");
-      const persisted = JSON.parse(content) as Record<string, unknown>;
-      const fileRevision = (persisted.layoutRevision as number) ?? 0;
-      const defaultRevision = (defaultLayout?.layoutRevision as number) ?? 0;
-
-      if (defaultRevision > fileRevision) {
-        console.log(
-          `[Server] Layout revision outdated (${fileRevision} < ${defaultRevision}), resetting to bundled default`,
-        );
-        writeLayoutToFile(defaultLayout!);
-        return { layout: defaultLayout!, wasReset: true };
-      }
-
-      console.log(`[Server] Loaded persisted layout from ${persistedLayoutPath}`);
-      return { layout: persisted, wasReset: false };
-    } catch (err) {
-      console.warn(`[Server] Failed to load persisted layout: ${err instanceof Error ? err.message : err}`);
-    }
-  }
-
-  if (defaultLayout) {
-    console.log("[Server] Writing bundled default layout to file");
-    writeLayoutToFile(defaultLayout);
-    return { layout: defaultLayout, wasReset: false };
-  }
-
-  return null;
-}
-
-/** Write layout to file atomically (tmp + rename) */
-function writeLayoutToFile(layout: Record<string, unknown>): void {
-  try {
-    mkdirSync(persistDir, { recursive: true });
-    const json = JSON.stringify(layout, null, 2);
-    const tmpPath = persistedLayoutPath + ".tmp";
-    writeFileSync(tmpPath, json, "utf-8");
-    renameSync(tmpPath, persistedLayoutPath);
-  } catch (err) {
-    console.error(`[Server] Failed to write layout file: ${err instanceof Error ? err.message : err}`);
-  }
 }
 
 function openSessionsFolder(): void {
@@ -599,45 +171,27 @@ function openSessionsFolder(): void {
   }
 }
 
-function isLayoutPayload(value: unknown): value is Record<string, unknown> {
-  if (!value || typeof value !== "object") return false;
-  const layout = value as Record<string, unknown>;
-  return layout.version === 1 && Array.isArray(layout.tiles) && Array.isArray(layout.furniture);
-}
+// ── Test agents ─────────────────────────────────────────────────────────
 
-function loadPersistedSeats(): Record<number, { palette: number; hueShift: number; seatId: string | null }> | null {
-  if (existsSync(persistedSeatsPath)) {
-    try {
-      const content = readFileSync(persistedSeatsPath, "utf-8");
-      return JSON.parse(content);
-    } catch {
-      return null;
-    }
-  }
-  return null;
-}
+const testAgentIds = new Set<number>();
+const testAgentData = new Map<number, { folderName: string; role: string; parentAgentId?: number; model: string }>();
 
-const layoutResult = loadLayoutWithRevision();
-let currentLayout = layoutResult?.layout ?? null;
-const layoutWasReset = layoutResult?.wasReset ?? false;
-const persistedSeats = loadPersistedSeats();
+// ── Express app ─────────────────────────────────────────────────────────
 
-// Express app
 const app = express();
-// Share URL route — must be before static middleware
+
 app.get("/share/:token", (req, res) => {
   const { token } = req.params;
   if (!isShareTokenValid(token)) {
     res.status(410).send("Share link expired or invalid");
     return;
   }
-  // Inject <base href> so assets resolve correctly (e.g. /office/ when behind proxy)
   const cfg = getConfig();
   let basePath = "/";
   if (cfg.shareProxyUrl) {
     try {
       const parsed = new URL(cfg.shareProxyUrl);
-      basePath = parsed.pathname.replace(/\/?$/, "/"); // ensure trailing slash
+      basePath = parsed.pathname.replace(/\/?$/, "/");
     } catch { /* use default */ }
   }
   const html = readFileSync(join(__dirname, "public", "index.html"), "utf-8");
@@ -645,7 +199,6 @@ app.get("/share/:token", (req, res) => {
   res.type("html").send(patched);
 });
 
-// Serve production build
 app.use(express.static(join(__dirname, "public"), {
   etag: false,
   lastModified: false,
@@ -655,1076 +208,46 @@ app.use(express.static(join(__dirname, "public"), {
   },
 }));
 
-const server = createServer(app);
+// ── HTTP & WebSocket server ─────────────────────────────────────────────
 
-// WebSocket
+const server = createServer(app);
 const wss = new WebSocketServer({ server });
 
-// Prevent unhandled WSS errors from crashing the process
 wss.on("error", (err) => {
   console.error(`[Server] WebSocket server error: ${err.message}`);
 });
 
-// Ping/pong heartbeat — keeps clients Set accurate for shutdown guard
-const HEARTBEAT_INTERVAL_MS = 30_000;
-setInterval(() => {
-  for (const ws of clients) {
-    if ((ws as unknown as Record<string, boolean>).__isAlive === false) {
-      clients.delete(ws);
-      ws.terminate();
-      continue;
-    }
-    (ws as unknown as Record<string, boolean>).__isAlive = false;
-    ws.ping();
-  }
-}, HEARTBEAT_INTERVAL_MS);
+// ── Initialize WS handler ───────────────────────────────────────────────
 
-function broadcast(msg: ServerMessage): void {
-  const data = JSON.stringify(msg);
-  for (const client of clients) {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(data);
-    }
-  }
-}
+const heartbeatTimer = startHeartbeat();
 
-function sendInitialData(ws: WebSocket, isReadOnly = false): void {
-  // Send settings (persisted from config)
-  const cfg = getConfig();
-  ws.send(JSON.stringify({
-    type: "settingsLoaded",
-    soundEnabled: cfg.soundEnabled,
-    desktopNotifications: cfg.desktopNotifications,
-    externalAssetDirectories: cfg.externalAssetDirectories,
-    githubTasks: isReadOnly ? { enabled: false, maxIssues: 0, pipeline: { enabled: false, states: [], gates: [] } } : cfg.githubTasks,
-    serverMode: isDev ? "dev" : "prod",
-  }));
-
-  // Send character sprites
-  if (characterSprites) {
-    ws.send(JSON.stringify({ type: "characterSpritesLoaded", characters: characterSprites.characters }));
-  }
-
-  // Send wall tiles (multi-set format)
-  if (wallTiles) {
-    ws.send(JSON.stringify({ type: "wallTilesLoaded", sets: wallTiles.sets }));
-  }
-
-  // Send floor tiles (optional)
-  if (floorTiles) {
-    ws.send(JSON.stringify({ type: "floorTilesLoaded", sprites: floorTiles.sprites }));
-  }
-
-  // Send furniture assets (optional)
-  if (furnitureAssets) {
-    ws.send(
-      JSON.stringify({
-        type: "furnitureAssetsLoaded",
-        catalog: furnitureAssets.catalog,
-        sprites: furnitureAssets.sprites,
-      }),
-    );
-  }
-
-  // Send cached pipeline issues (not for share viewers — confidential)
-  if (!isReadOnly && cachedPipelineIssues.length > 0) {
-    ws.send(JSON.stringify({ type: "pipelineIssues", issues: cachedPipelineIssues }));
-  }
-
-  // Send existing agents with persisted seat metadata
-  const agentList = Array.from(agents.values());
-  const agentIds = agentList.map((a) => a.id);
-  const folderNames: Record<number, string> = {};
-  const agentMeta: Record<number, { palette?: number; hueShift?: number; seatId?: string }> = {};
-  const parentAgentIds: Record<number, number> = {};
-  const teamNames: Record<number, string> = {};
-  const isTeamLeads: Record<number, boolean> = {};
-  for (const a of agentList) {
-    folderNames[a.id] = a.projectName;
-    if (a.parentAgentId !== undefined) {
-      parentAgentIds[a.id] = a.parentAgentId;
-    }
-    if (a.teamName) {
-      teamNames[a.id] = a.teamName;
-    }
-    if (a.isTeamLead) {
-      isTeamLeads[a.id] = true;
-    }
-    if (persistedSeats?.[a.id]) {
-      const s = persistedSeats[a.id];
-      agentMeta[a.id] = { palette: s.palette, hueShift: s.hueShift, seatId: s.seatId ?? undefined };
-    } else {
-      // Fall back to previous agent state for seat info (restored across restarts)
-      const prev = previousAgentState?.agents.find((p) => p.id === a.id);
-      if (prev) {
-        agentMeta[a.id] = { palette: prev.palette, hueShift: prev.hueShift, seatId: prev.seatId ?? undefined };
-      }
-    }
-  }
-  ws.send(JSON.stringify({ type: "existingAgents", agents: agentIds, folderNames, agentMeta, parentAgentIds, teamNames, isTeamLeads }));
-
-  // Send agentStats for each active agent
-  for (const a of agentList) {
-    ws.send(JSON.stringify(buildAgentStatsMessage(a)));
-  }
-
-  // Send agentRole for each active agent
-  for (const a of agentList) {
-    ws.send(JSON.stringify(buildAgentRoleMessage(a)));
-  }
-
-  // Send idle status for agents with no active tools (so frontend triggers sofa behavior)
-  for (const a of agentList) {
-    if (a.activeTools.size === 0) {
-      ws.send(JSON.stringify({ type: "agentStatus", id: a.id, status: "waiting" }));
-    }
-  }
-
-  // Send layout (must come after existingAgents — the hook buffers agents until layout arrives)
-  if (currentLayout) {
-    ws.send(JSON.stringify({ type: "layoutLoaded", layout: currentLayout, version: 1, wasReset: layoutWasReset }));
-  } else {
-    // Send null layout to trigger default layout creation in the UI
-    ws.send(JSON.stringify({ type: "layoutLoaded", layout: null, version: 0, wasReset: false }));
-  }
-
-  // Send accumulated SendMessage events — only from agents that still exist
-  const activeIds = new Set(agentList.map(a => a.id));
-  for (const sm of recentSendMessages) {
-    if (activeIds.has(sm.id)) {
-      ws.send(JSON.stringify({ type: "agentSendMessage", ...sm }));
-    }
-  }
-
-  // Re-send test agents so they survive page refresh
-  for (const [id, data] of testAgentData) {
-    ws.send(JSON.stringify({ type: "agentCreated", id, folderName: data.folderName, parentAgentId: data.parentAgentId }));
-    ws.send(JSON.stringify({ type: "agentRole", id, role: data.role, autoDetected: true, colors: getRoleColors(data.role) }));
-    ws.send(JSON.stringify({
-      type: "agentStats", id, model: data.model,
-      totalInputTokens: 10000, totalOutputTokens: 5000, totalCacheRead: 0,
-      totalCacheCreation: 0, turnCount: 5, totalDurationMs: 60000, cacheHitRate: 0,
-    }));
-  }
-}
-
-wss.on("connection", (ws, req) => {
-  (ws as unknown as Record<string, boolean>).__isAlive = true;
-  ws.on("pong", () => { (ws as unknown as Record<string, boolean>).__isAlive = true; });
-
-  // Share token detection
-  const wsUrl = new URL(req.url || "/", `http://${req.headers.host}`);
-  const shareToken = wsUrl.searchParams.get("share");
-  let isReadOnly = false;
-  if (shareToken) {
-    if (!isShareTokenValid(shareToken)) {
-      ws.close(4001, "Share token expired");
-      return;
-    }
-    isReadOnly = true;
-  }
-  (ws as any).__readOnly = isReadOnly;
-  (ws as any).__host = req.headers.host;
-
-  clients.add(ws);
-
-  ws.on("message", (raw) => {
-    try {
-      const msg = JSON.parse(raw.toString());
-      if (msg.type !== "webviewReady" && msg.type !== "ready") {
-        console.log(`[Server] WS msg: ${msg.type}`);
-      }
-      // Guard write operations for read-only share viewers
-      if ((ws as any).__readOnly) {
-        const allowedTypes = ["webviewReady", "ready", "requestAgentDetails", "requestAgentConversation"];
-        if (!allowedTypes.includes(msg.type)) return;
-      }
-      if (msg.type === "webviewReady" || msg.type === "ready") {
-        sendInitialData(ws, !!(ws as any).__readOnly);
-      } else if (msg.type === "saveLayout") {
-        try {
-          currentLayout = msg.layout as Record<string, unknown>;
-          layoutWatcherOwnWrite = true;
-          writeLayoutToFile(currentLayout);
-          // Broadcast to other clients for multi-tab sync
-          const data = JSON.stringify({ type: "layoutLoaded", layout: msg.layout, version: 1, wasReset: false });
-          for (const client of clients) {
-            if (client !== ws && client.readyState === WebSocket.OPEN) {
-              client.send(data);
-            }
-          }
-        } catch (err) {
-          console.error(`[Server] Failed to save layout: ${err instanceof Error ? err.message : err}`);
-        }
-      } else if (msg.type === "saveAgentSeats") {
-        try {
-          mkdirSync(persistDir, { recursive: true });
-          writeFileSync(persistedSeatsPath, JSON.stringify(msg.seats, null, 2));
-        } catch (err) {
-          console.error(`[Server] Failed to save agent seats: ${err instanceof Error ? err.message : err}`);
-        }
-      } else if (msg.type === "saveSoundEnabled") {
-        const cfg = getConfig();
-        cfg.soundEnabled = !!msg.enabled;
-        saveConfig(cfg);
-        console.log(`[Server] Sound enabled: ${cfg.soundEnabled}`);
-      } else if (msg.type === "saveDesktopNotifications") {
-        const cfg = getConfig();
-        cfg.desktopNotifications = !!msg.enabled;
-        saveConfig(cfg);
-        console.log(`[Server] Desktop notifications: ${cfg.desktopNotifications}`);
-      } else if (msg.type === "openSessionsFolder") {
-        openSessionsFolder();
-      } else if (msg.type === "addExternalAssetDirectory") {
-        const newPath = typeof msg.path === "string" ? msg.path.trim() : "";
-        if (!newPath) return;
-        const cfg = getConfig();
-        if (!cfg.externalAssetDirectories.includes(newPath)) {
-          cfg.externalAssetDirectories.push(newPath);
-          saveConfig(cfg);
-          // Reload furniture with new external dirs
-          furnitureAssets = loadAllFurniture();
-          // Broadcast updated furniture to all clients
-          if (furnitureAssets) {
-            broadcast({
-              type: "furnitureAssetsLoaded",
-              catalog: furnitureAssets.catalog,
-              sprites: furnitureAssets.sprites,
-            });
-          }
-          // Broadcast updated directories list to all clients
-          const dirMsg = JSON.stringify({
-            type: "externalAssetDirectoriesUpdated",
-            dirs: cfg.externalAssetDirectories,
-          });
-          for (const client of clients) {
-            if (client.readyState === WebSocket.OPEN) {
-              client.send(dirMsg);
-            }
-          }
-          console.log(`[Server] Added external asset directory: ${newPath}`);
-        }
-      } else if (msg.type === "removeExternalAssetDirectory") {
-        const removePath = typeof msg.path === "string" ? msg.path : "";
-        const cfg = getConfig();
-        cfg.externalAssetDirectories = cfg.externalAssetDirectories.filter(
-          (d) => d !== removePath,
-        );
-        saveConfig(cfg);
-        // Reload furniture without the removed dir
-        furnitureAssets = loadAllFurniture();
-        // Broadcast updated furniture to all clients
-        if (furnitureAssets) {
-          broadcast({
-            type: "furnitureAssetsLoaded",
-            catalog: furnitureAssets.catalog,
-            sprites: furnitureAssets.sprites,
-          });
-        }
-        // Broadcast updated directories list to all clients
-        const dirMsg = JSON.stringify({
-          type: "externalAssetDirectoriesUpdated",
-          dirs: cfg.externalAssetDirectories,
-        });
-        for (const client of clients) {
-          if (client.readyState === WebSocket.OPEN) {
-            client.send(dirMsg);
-          }
-        }
-        console.log(`[Server] Removed external asset directory: ${removePath}`);
-      } else if (msg.type === "openClaude") {
-        launchClaude(false);
-      } else if (msg.type === "openClaudeBypass") {
-        launchClaude(true);
-      } else if (msg.type === "requestAgentDetails") {
-        const requestedId = msg.id as number;
-        for (const agent of agents.values()) {
-          if (agent.id === requestedId) {
-            const details: ServerMessage = {
-              type: "agentDetails",
-              id: agent.id,
-              model: agent.model,
-              gitBranch: agent.gitBranch,
-              cwd: agent.cwd,
-              sessionId: agent.sessionId,
-              version: agent.version,
-              permissionMode: agent.permissionMode,
-              toolHistory: agent.toolHistory,
-              tokenBreakdown: {
-                input: agent.totalInputTokens,
-                output: agent.totalOutputTokens,
-                cacheRead: agent.totalCacheRead,
-                cacheCreation: agent.totalCacheCreation,
-              },
-              contextUsage: agent.currentContextLimit
-                ? {
-                    input: agent.currentInputTokens ?? 0,
-                    output: agent.currentOutputTokens ?? 0,
-                    cacheRead: agent.currentCacheRead ?? 0,
-                    total: agent.currentContextTokens ?? 0,
-                    limit: agent.currentContextLimit,
-                  }
-                : undefined,
-              turnCount: agent.turnCount,
-              totalDurationMs: agent.totalDurationMs,
-              startTime: agent.startTime,
-            };
-            ws.send(JSON.stringify(details));
-            break;
-          }
-        }
-      } else if (msg.type === "requestAgentConversation") {
-        const requestedId = msg.id as number;
-        for (const agent of agents.values()) {
-          if (agent.id === requestedId) {
-            ws.send(JSON.stringify({
-              type: "agentConversation",
-              id: agent.id,
-              messages: agent.conversation || [],
-            }));
-            break;
-          }
-        }
-      } else if (msg.type === "setAgentRole") {
-        const targetId = msg.id as number;
-        const newRole = msg.role as string;
-        const colors = getRoleColors(newRole);
-        // Save persistent override
-        roleOverrides[targetId] = { role: newRole, colors };
-        saveRoleOverrides(roleOverrides);
-        // Broadcast updated role to all clients
-        broadcast({
-          type: "agentRole",
-          id: targetId,
-          role: newRole,
-          autoDetected: false,
-          colors,
-        });
-        console.log(`[Server] Role override set: agent ${targetId} → "${newRole}"`);
-      } else if (msg.type === "createShareLink") {
-        if ((ws as any).__readOnly) return;
-        const cfg = getConfig();
-        const share = createShareToken(msg.durationMs as number);
-        const baseUrl = cfg.shareProxyUrl
-          ? cfg.shareProxyUrl.replace(/\/$/, "")
-          : `http://${(ws as any).__host || `localhost:${PORT}`}`;
-        const url = `${baseUrl}/share/${share.token}`;
-        ws.send(JSON.stringify({
-          type: "shareLinkCreated",
-          token: share.token,
-          url,
-          expiresAt: share.expiresAt,
-          durationMs: share.durationMs,
-        }));
-        console.log(`[Server] Share link created: ${url} (expires in ${share.durationMs / 60000}min)`);
-      } else if (msg.type === "revokeShareLink") {
-        if ((ws as any).__readOnly) return;
-        activeShareTokens.delete(msg.token as string);
-        ws.send(JSON.stringify({ type: "shareLinkRevoked", token: msg.token }));
-        console.log(`[Server] Share link revoked: ${msg.token}`);
-      } else if (msg.type === "removeTestAgents") {
-        // Remove all test agents
-        const toRemove: number[] = [];
-        for (const id of testAgentIds) {
-          toRemove.push(id);
-          broadcast({ type: "agentClosed", id });
-        }
-        testAgentIds.clear();
-        testAgentData.clear();
-        console.log(`[Server] Removed ${toRemove.length} test agents`);
-      } else if (msg.type === "spawnTestAgents") {
-        // Remove existing test agents first
-        for (const id of testAgentIds) {
-          broadcast({ type: "agentClosed", id });
-        }
-        testAgentIds.clear();
-        testAgentData.clear();
-
-        // 4-level hierarchy: MegaBoss(real) → pipeDebate → teammates → subagents
-        // Find first real MegaBoss to use as root parent
-        let rootParentId: number | undefined;
-        for (const [, a] of agents) {
-          if (!a.parentAgentId && !a.teamName && a.provider === "claude") {
-            rootParentId = a.id;
-            break;
-          }
-        }
-        const hierarchy = [
-          { name: "pipeDebate",    role: "lead",          parent: -1, model: "claude-opus-4-6",    tokens: [15000, 8000], useRootParent: true },
-          { name: "advocate-cur",  role: "Code Reviewer", parent: 0,  model: "claude-opus-4-6",    tokens: [12000, 6000] },
-          { name: "advocate-auto", role: "Explore",       parent: 0,  model: "claude-opus-4-6",    tokens: [9000, 4500] },
-          { name: "judge",         role: "Plan",          parent: 0,  model: "claude-opus-4-6",    tokens: [18000, 9000] },
-          { name: "codeExplorer",  role: "Explore",       parent: 1,  model: "claude-sonnet-4-6",  tokens: [4000, 2000] },
-          { name: "testRunner",    role: "test-runner",   parent: 1,  model: "claude-sonnet-4-6",  tokens: [3000, 1500] },
-          { name: "cofehleb",      role: "worker",        parent: 0,  model: "claude-opus-4-6",    tokens: [6000, 3000], coffee: true },
-          { name: "kurilshik",    role: "worker",        parent: 0,  model: "claude-opus-4-6",    tokens: [5000, 2500], smoke: true },
-        ] as Array<{ name: string; role: string; parent: number; model: string; tokens: number[]; useRootParent?: boolean; coffee?: boolean; smoke?: boolean }>;
-
-        const ids = hierarchy.map(() => nextAgentId++);
-        console.log(`[Server] Spawning ${ids.length} test agents (4-level hierarchy, staggered)`);
-
-        for (let i = 0; i < hierarchy.length; i++) {
-          setTimeout(() => {
-            const h = hierarchy[i];
-            const id = ids[i];
-            const parentId = h.useRootParent ? rootParentId : (h.parent >= 0 ? ids[h.parent] : undefined);
-            broadcast({ type: "agentCreated", id, folderName: h.name, parentAgentId: parentId });
-            broadcast({
-              type: "agentStats", id, model: h.model,
-              totalInputTokens: h.tokens[0], totalOutputTokens: h.tokens[1],
-              totalCacheRead: Math.floor(h.tokens[0] * 0.3), totalCacheCreation: Math.floor(h.tokens[0] * 0.1),
-              turnCount: Math.floor(Math.random() * 8) + 2,
-              totalDurationMs: Math.floor(Math.random() * 200000) + 30000,
-              cacheHitRate: Math.floor(Math.random() * 40) + 10,
-            });
-            broadcast({ type: "agentRole", id, role: h.role, autoDetected: true, colors: getRoleColors(h.role) });
-            // Force coffee break after a short delay (agent needs to finish walking to seat first)
-            if (h.coffee || h.smoke) {
-              setTimeout(() => {
-                broadcast({ type: "agentStatus", id, status: "waiting" });
-                broadcast({ type: h.coffee ? "forceCoffee" : "forceSmoke", id });
-              }, 3000);
-            }
-            testAgentIds.add(id);
-            testAgentData.set(id, { folderName: h.name, role: h.role, parentAgentId: parentId, model: h.model });
-            console.log(`  Test agent ${id}: ${h.name} (${h.role})${parentId ? ` [sub of ${parentId}]` : ""}${h.coffee ? " ☕" : ""}${h.smoke ? " 🚬" : ""}`);
-          }, i * 800);
-        }
-      } else if (msg.type === "addDaemon") {
-        const cfg = getConfig();
-        if (!cfg.daemons.some((d: any) => d.url === msg.url)) {
-          cfg.daemons.push({ url: msg.url, name: msg.name, enabled: true });
-          saveConfig(cfg);
-          // Restart hub with updated config
-          daemonHub.stop();
-          daemonHub.start(cfg.daemons);
-        }
-        ws.send(JSON.stringify({ type: "daemonStatus", daemons: daemonHub.getConnections() }));
-      } else if (msg.type === "removeDaemon") {
-        const cfg = getConfig();
-        cfg.daemons = cfg.daemons.filter((d: any) => d.url !== msg.url);
-        saveConfig(cfg);
-        daemonHub.stop();
-        daemonHub.start(cfg.daemons);
-        ws.send(JSON.stringify({ type: "daemonStatus", daemons: daemonHub.getConnections() }));
-      } else if (msg.type === "toggleDaemon") {
-        const cfg = getConfig();
-        const daemon = cfg.daemons.find((d: any) => d.url === msg.url);
-        if (daemon) {
-          daemon.enabled = msg.enabled;
-          saveConfig(cfg);
-          daemonHub.stop();
-          daemonHub.start(cfg.daemons);
-        }
-        ws.send(JSON.stringify({ type: "daemonStatus", daemons: daemonHub.getConnections() }));
-      } else if (msg.type === "getDaemonStatus") {
-        ws.send(JSON.stringify({ type: "daemonStatus", daemons: daemonHub.getConnections() }));
-      }
-    } catch (err) {
-      console.error(`[Server] WS message error:`, err instanceof Error ? err.message : err);
-    }
-  });
-
-  ws.on("close", () => clients.delete(ws));
+initWsHandler({
+  characterSprites,
+  wallTiles,
+  floorTiles,
+  furnitureAssets,
+  currentLayout,
+  layoutWasReset,
+  isDev,
+  persistedSeats,
+  previousAgentState,
+  testAgentData,
+  getFurnitureAssets: () => furnitureAssets,
+  setFurnitureAssets: (a) => { furnitureAssets = a; },
 });
 
-// ── Layout file watcher (cross-process sync) ─────────────────────────────
-let layoutWatcherOwnWrite = false;
-let layoutWatcherLastMtime = 0;
-let layoutFsWatcher: FSWatcher | null = null;
-const LAYOUT_POLL_INTERVAL_MS = 2000;
+// ── Layout watcher ──────────────────────────────────────────────────────
 
-// Initialize lastMtime
-try {
-  if (existsSync(persistedLayoutPath)) {
-    layoutWatcherLastMtime = statSync(persistedLayoutPath).mtimeMs;
-  }
-} catch { /* ignore */ }
+const layoutWatcher = new LayoutWatcher(currentLayout, broadcast);
+layoutWatcher.start();
 
-function checkLayoutFileChange(): void {
-  try {
-    if (!existsSync(persistedLayoutPath)) return;
-    const stat = statSync(persistedLayoutPath);
-    if (stat.mtimeMs <= layoutWatcherLastMtime) return;
-    layoutWatcherLastMtime = stat.mtimeMs;
+// ── Daemon hub ──────────────────────────────────────────────────────────
 
-    if (layoutWatcherOwnWrite) {
-      layoutWatcherOwnWrite = false;
-      return;
-    }
-
-    const raw = readFileSync(persistedLayoutPath, "utf-8");
-    const layout = JSON.parse(raw) as Record<string, unknown>;
-    console.log("[Server] External layout change detected, broadcasting to clients");
-    currentLayout = layout;
-    broadcast({ type: "layoutLoaded", layout, version: 1, wasReset: false });
-  } catch (err) {
-    console.error(`[Server] Error checking layout file: ${err instanceof Error ? err.message : err}`);
-  }
-}
-
-function startLayoutFsWatch(): void {
-  if (layoutFsWatcher) return;
-  try {
-    if (!existsSync(persistedLayoutPath)) return;
-    layoutFsWatcher = watch(persistedLayoutPath, () => {
-      checkLayoutFileChange();
-    });
-    layoutFsWatcher.on("error", () => {
-      layoutFsWatcher?.close();
-      layoutFsWatcher = null;
-    });
-  } catch { /* file may not exist yet */ }
-}
-
-startLayoutFsWatch();
-
-// Polling backup for layout file watching
-const layoutPollTimer = setInterval(() => {
-  if (!layoutFsWatcher) {
-    startLayoutFsWatch();
-  }
-  checkLayoutFileChange();
-}, LAYOUT_POLL_INTERVAL_MS);
-
-// ── Agent state persistence ───────────────────────────────────────────────
-const agentStatePath = join(persistDir, "agents-state.json");
-const AGENT_STATE_SAVE_INTERVAL_MS = 30_000;
-
-interface PersistedAgentState {
-  provider: AgentProvider;
-  sessionId: string;
-  id: number;
-  agentSetting?: string;
-  agentDescription?: string;
-  projectName: string;
-  nameSource?: "fallback" | "derived" | "explicit";
-  palette?: number;
-  hueShift?: number;
-  seatId?: string | null;
-  parentAgentId?: number;
-  teamName?: string;
-  isTeamLead?: boolean;
-}
-
-function saveAgentState(): void {
-  if (agents.size === 0) return;
-  try {
-    mkdirSync(persistDir, { recursive: true });
-    const states: PersistedAgentState[] = [];
-    for (const agent of agents.values()) {
-      const seat = persistedSeats?.[agent.id];
-      states.push({
-        provider: agent.provider,
-        sessionId: agent.sessionId,
-        id: agent.id,
-        projectName: agent.projectName,
-        nameSource: agent.nameSource,
-        palette: seat?.palette,
-        hueShift: seat?.hueShift,
-        seatId: seat?.seatId,
-        agentSetting: agent.agentSetting,
-        agentDescription: agent.agentDescription,
-        parentAgentId: agent.parentAgentId,
-        teamName: agent.teamName,
-        isTeamLead: agent.isTeamLead,
-      });
-    }
-    const json = JSON.stringify({ agents: states, nextAgentId, savedAt: Date.now() }, null, 2);
-    const tmpPath = agentStatePath + ".tmp";
-    writeFileSync(tmpPath, json, "utf-8");
-    renameSync(tmpPath, agentStatePath);
-  } catch (err) {
-    console.error(`[Server] Failed to save agent state: ${err instanceof Error ? err.message : err}`);
-  }
-}
-
-function loadAgentState(): { agents: PersistedAgentState[]; nextAgentId: number } | null {
-  if (!existsSync(agentStatePath)) return null;
-  try {
-    const content = readFileSync(agentStatePath, "utf-8");
-    return JSON.parse(content);
-  } catch {
-    return null;
-  }
-}
-
-function findPreviousAgent(provider: AgentProvider, sessionId: string): PersistedAgentState | undefined {
-  return previousAgentState?.agents.find((agent) => {
-    const previousProvider = agent.provider ?? "claude";
-    return previousProvider === provider && agent.sessionId === sessionId;
-  });
-}
-
-// Restore agent seat assignments from persisted state
-const previousAgentState = loadAgentState();
-if (previousAgentState) {
-  console.log(`[Server] Found previous agent state with ${previousAgentState.agents.length} agents, nextAgentId=${previousAgentState.nextAgentId}`);
-  // Restore nextAgentId to avoid ID collisions
-  if (previousAgentState.nextAgentId > nextAgentId) {
-    nextAgentId = previousAgentState.nextAgentId;
-  }
-}
-
-// Periodically save agent state
-const agentStateSaveTimer = setInterval(() => {
-  saveAgentState();
-}, AGENT_STATE_SAVE_INTERVAL_MS);
-
-// Auto-suspend idle subagents after SUBAGENT_AUTO_SUSPEND_MS
-// Subagent = any agent that has a parent (parentSessionId OR parentAgentId) and is NOT a team lead
-const subagentSuspendTimer = setInterval(() => {
-  const now = Date.now();
-  for (const [key, agent] of agents) {
-    // Must have a parent — either from file path (parentSessionId) or from state (parentAgentId)
-    const isSubagent = !!(agent.parentSessionId || agent.parentAgentId);
-    if (!isSubagent || agent.isTeamLead) continue;
-    // Must be in waiting/idle state
-    if (agent.activity !== "waiting" && agent.activity !== "idle") continue;
-    // Check idle duration
-    if (now - agent.lastActivityTime >= SUBAGENT_AUTO_SUSPEND_MS) {
-      console.log(`[auto-suspend] Closing idle subagent ${agent.id} (${agent.projectName}) — idle ${Math.round((now - agent.lastActivityTime) / 60000)}m`);
-      agents.delete(key);
-      cleanupAgentParserState(agent.id);
-      broadcast({ type: "agentClosed", id: agent.id });
-      // Clean up stale SendMessage events
-      for (let i = recentSendMessages.length - 1; i >= 0; i--) {
-        if (recentSendMessages[i].id === agent.id) recentSendMessages.splice(i, 1);
-      }
-      // Suspend in watcher — unpins AND blocks re-add until real new writes
-      claudeWatcher.suspendFile(agent.jsonlFile);
-    }
-  }
-}, 60_000); // sweep every 60s
-
-function forwardServerMessage(msg: ServerMessage): void {
-  if (msg.type === "agentSendMessage") {
-    recentSendMessages.push({ id: msg.id, toolId: msg.toolId, from: msg.from, to: msg.to, message: msg.message, timestamp: msg.timestamp });
-    if (recentSendMessages.length > MAX_SEND_MESSAGES) recentSendMessages.shift();
-  }
-  broadcast(msg);
-}
-
-function rebuildAgentPlacement(agent: TrackedAgent): void {
-  broadcast({ type: "agentClosed", id: agent.id });
-  broadcast({
-    type: "agentCreated",
-    id: agent.id,
-    folderName: agent.projectName,
-    parentAgentId: agent.parentAgentId,
-    teamName: agent.teamName,
-    isTeamLead: agent.isTeamLead,
-  });
-  broadcast(buildAgentRoleMessage(agent));
-  if (agent.model || agent.turnCount > 0) {
-    broadcast(buildAgentStatsMessage(agent));
-  }
-  if (agent.activeTools.size === 0) {
-    broadcast({ type: "agentStatus", id: agent.id, status: "waiting" });
-  }
-}
-
-function applyCodexSubagentHint(hint: { sessionId: string; parentSessionId: string; nickname?: string; role?: string }): void {
-  codexSubagentHints.set(hint.sessionId, hint);
-
-  const key = getAgentKey("codex", hint.sessionId);
-  const agent = agents.get(key);
-  if (!agent) return;
-
-  let needsPlacementRebuild = false;
-
-  if (hint.nickname) {
-    const changed = agent.projectName !== hint.nickname || agent.nameSource !== "explicit";
-    agent.projectName = hint.nickname;
-    agent.nameSource = "explicit";
-    if (changed) {
-      broadcast({ type: "agentRenamed", id: agent.id, folderName: agent.projectName });
-    }
-  }
-
-  if (hint.role && agent.agentSetting !== hint.role) {
-    agent.agentSetting = hint.role;
-    syncRoleAndBroadcast(agent);
-  }
-
-  if (!agent.parentSessionId) {
-    agent.parentSessionId = hint.parentSessionId;
-  }
-
-  const parentAgent = agents.get(getAgentKey("codex", hint.parentSessionId));
-  if (parentAgent && agent.parentAgentId !== parentAgent.id) {
-    agent.parentAgentId = parentAgent.id;
-    needsPlacementRebuild = true;
-  }
-
-  if (needsPlacementRebuild) {
-    rebuildAgentPlacement(agent);
-  }
-}
-
-function handleFileAdded(file: WatchedFile): void {
-  const agentKey = getAgentKey(file.provider, file.sessionId);
-  if (agents.has(agentKey)) return;
-  lastActivityTime = Date.now();
-
-  const prevAgent = findPreviousAgent(file.provider, file.sessionId);
-  const agentId = prevAgent?.id ?? nextAgentId++;
-
-  if (agentId >= nextAgentId) {
-    nextAgentId = agentId + 1;
-  }
-
-  const codexHint = file.provider === "codex" ? codexSubagentHints.get(file.sessionId) : undefined;
-  const parentSessionId = codexHint?.parentSessionId ?? file.parentSessionId;
-
-  const agent: TrackedAgent = {
-    key: agentKey,
-    provider: file.provider,
-    id: agentId,
-    sessionId: file.sessionId,
-    projectDir: file.projectDir,
-    projectName: codexHint?.nickname
-      ?? (file.provider === "codex" ? file.projectName : prevAgent?.projectName ?? file.projectName),
-    nameSource: codexHint?.nickname ? "explicit" : prevAgent?.nameSource ?? "fallback",
-    jsonlFile: file.path,
-    fileOffset: 0,
-    lineBuffer: "",
-    activity: "idle",
-    activeTools: new Map(),
-    activeToolNames: new Map(),
-    activeSubagentToolIds: new Map(),
-    activeSubagentToolNames: new Map(),
-    isWaiting: false,
-    permissionSent: false,
-    hadToolsInTurn: false,
-    lastActivityTime: Date.now(),
-    totalInputTokens: 0,
-    totalOutputTokens: 0,
-    totalCacheRead: 0,
-    totalCacheCreation: 0,
-    currentContextTokens: undefined,
-    currentContextLimit: undefined,
-    currentInputTokens: undefined,
-    currentOutputTokens: undefined,
-    currentCacheRead: undefined,
-    turnCount: 0,
-    totalDurationMs: 0,
-    toolHistory: [],
-    toolCounts: {},
-    conversation: [],
-  };
-
-  if (prevAgent?.agentSetting) {
-    agent.agentSetting = prevAgent.agentSetting;
-  }
-  if (prevAgent?.agentDescription) {
-    agent.agentDescription = prevAgent.agentDescription;
-  }
-  if (prevAgent?.teamName) {
-    agent.teamName = prevAgent.teamName;
-    agent.isTeamLead = prevAgent.isTeamLead;
-    // Rename team lead from "MegaBoss" to teamName
-    if (agent.isTeamLead && agent.nameSource === "fallback") {
-      const words = prevAgent.teamName.split(/[-_\s]+/).filter(Boolean).slice(0, 2);
-      agent.projectName = (words[0] + (words[1] ? words[1][0].toUpperCase() + words[1].slice(1) : "")).slice(0, 15);
-      agent.nameSource = "derived";
-    }
-  }
-  if (prevAgent?.parentAgentId !== undefined) {
-    agent.parentAgentId = prevAgent.parentAgentId;
-  }
-
-  if (parentSessionId) {
-    agent.parentSessionId = parentSessionId;
-    const parentAgent = agents.get(getAgentKey(file.provider, parentSessionId));
-    if (parentAgent) {
-      agent.parentAgentId = parentAgent.id;
-    }
-  }
-
-  if (file.agentType && !agent.agentSetting) {
-    agent.agentSetting = file.agentType;
-  }
-  if (codexHint?.role) {
-    agent.agentSetting = codexHint.role;
-  }
-  if (file.agentDescription) {
-    agent.agentDescription = file.agentDescription;
-  }
-
-  syncAgentNameAndBroadcast(agent);
-
-  const { description: roleDesc, isSubagent } = getAgentRoleInputs(agent);
-  const { displayRole } = resolveDisplayRole(agent.agentSetting, roleDesc, isSubagent);
-  agent.role = displayRole;
-
-  agents.set(agent.key, agent);
-  // Resolve orphan parents (dead parent from previous session, or no parent at all)
-  resolveOrphanParent(agent);
-  broadcast({
-    type: "agentCreated",
-    id: agent.id,
-    folderName: agent.projectName,
-    parentAgentId: agent.parentAgentId,
-    teamName: agent.teamName,
-    isTeamLead: agent.isTeamLead,
-  });
-  broadcast(buildAgentRoleMessage(agent));
-
-  if (displayRole) {
-    console.log(`[${file.provider}] Role: ${agent.agentSetting || "(none)"} -> "${displayRole}" (desc: ${agent.agentDescription || "(none)"})`);
-  }
-
-  if (prevAgent) {
-    console.log(`[${file.provider}] Agent ${agent.id} rejoined: ${agent.projectName} (${file.sessionId.slice(0, 8)})${agent.parentAgentId ? ` [subagent of ${agent.parentAgentId}]` : ""}`);
-  } else {
-    console.log(`[${file.provider}] Agent ${agent.id} joined: ${agent.projectName} (${file.sessionId.slice(0, 8)})${agent.parentAgentId ? ` [subagent of ${agent.parentAgentId}]` : ""}`);
-  }
-
-  setTimeout(() => {
-    if (agent.activeTools.size === 0) {
-      agent.isWaiting = true;
-      agent.activity = "waiting";
-      broadcast({ type: "agentStatus", id: agent.id, status: "waiting" });
-    }
-  }, 1000);
-}
-
-function handleFileRemoved(file: WatchedFile): void {
-  const agentKey = getAgentKey(file.provider, file.sessionId);
-  const agent = agents.get(agentKey);
-  if (!agent) return;
-
-  agents.delete(agentKey);
-  if (file.provider === "claude") {
-    cleanupAgentParserState(agent.id);
-  } else {
-    cleanupCodexParserState();
-  }
-  broadcast({ type: "agentClosed", id: agent.id });
-  // Clean up stale SendMessage events from this agent
-  for (let i = recentSendMessages.length - 1; i >= 0; i--) {
-    if (recentSendMessages[i].id === agent.id) recentSendMessages.splice(i, 1);
-  }
-  console.log(`[${file.provider}] Agent ${agent.id} left: ${agent.projectName}`);
-}
-
-function handleWatchedLine(file: WatchedFile, line: string): void {
-  const agent = agents.get(getAgentKey(file.provider, file.sessionId));
-  if (!agent) return;
-
-  lastActivityTime = Date.now();
-  agent.lastActivityTime = lastActivityTime;
-
-  if (file.provider === "claude") {
-    processTranscriptLine(line, agent, forwardServerMessage, onAgentStatsUpdate);
-    return;
-  }
-
-  processCodexTranscriptLine(line, agent, {
-    emit: forwardServerMessage,
-    onStatsUpdate: onAgentStatsUpdate,
-    onSubagentHint: applyCodexSubagentHint,
-    resolveSessionLabel: (sessionId) => resolveSessionLabel("codex", sessionId),
-  });
-}
-
-const claudeWatcher = new JsonlWatcher();
-const watchers = [claudeWatcher, new CodexJsonlWatcher()];
-for (const watcher of watchers) {
-  watcher.on("fileAdded", handleFileAdded);
-  watcher.on("fileRemoved", handleFileRemoved);
-  watcher.on("line", handleWatchedLine);
-}
-
-// ── GitHub Issues Pipeline Tracking ─────────────────────────────────────────
-const PIPELINE_POLL_INTERVAL_MS = 60_000; // Poll every 60s
-interface GateStatus { gate: number; status: string; comment: string; timestamp: string }
-let cachedPipelineIssues: Array<{ number: number; title: string; labels: string[]; state: string; pipelineState: string; repo: string; gates: GateStatus[] }> = [];
-const gateCache = new Map<string, { ts: number; gates: GateStatus[] }>();
-const GATE_COMMENT_RE = /^\[gate (\d+)\]\[(pass|fail)\]\s*(.*)$/m;
-let githubCliAvailable: boolean | null = null;
-
-function isGitHubCliAvailable(): boolean {
-  if (githubCliAvailable != null) return githubCliAvailable;
-  try {
-    execSync("gh --version >/dev/null 2>&1", { stdio: "ignore" });
-    githubCliAvailable = true;
-  } catch {
-    githubCliAvailable = false;
-  }
-  return githubCliAvailable;
-}
-
-function normalizeLabel(label: string): string {
-  return label.trim().toLowerCase();
-}
-
-function resolvePipelineState(labelNames: string[], states: GithubTaskStateConfig[]): string {
-  const normalizedLabels = new Set(labelNames.map(normalizeLabel));
-  for (const state of states) {
-    if (state.labels.some((label) => normalizedLabels.has(normalizeLabel(label)))) {
-      return state.id;
-    }
-  }
-  return "";
-}
-
-let pipelineFetchRunning = false;
-
-async function ghExec(args: string[], options?: { cwd?: string; timeout?: number }): Promise<string> {
-  const { stdout } = await execFileAsync("gh", args, {
-    encoding: "utf-8",
-    timeout: options?.timeout ?? 10_000,
-    cwd: options?.cwd,
-    env: { ...process.env, GH_NO_UPDATE_NOTIFIER: "1" },
-  });
-  return stdout.trim();
-}
-
-async function fetchPipelineIssues(): Promise<void> {
-  if (pipelineFetchRunning) return; // prevent overlapping runs
-  pipelineFetchRunning = true;
-
-  try {
-    const cfg = getConfig();
-    const githubTasks = cfg.githubTasks;
-
-    if (!githubTasks.enabled || !isGitHubCliAvailable()) {
-      if (cachedPipelineIssues.length > 0) {
-        cachedPipelineIssues = [];
-        broadcast({ type: "pipelineIssues", issues: [] } as any);
-      }
-      return;
-    }
-
-    // Get unique repo names from active agents' project directories (parallel)
-    const repoSet = new Set<string>();
-    const repoDetectPromises = Array.from(agents.values()).map(async (agent) => {
-      try {
-        const result = await ghExec(
-          ["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
-          { cwd: agent.projectDir, timeout: 10_000 },
-        );
-        if (result) repoSet.add(result);
-      } catch { /* not a git repo or gh not available */ }
-    });
-    await Promise.all(repoDetectPromises);
-
-    // Fallback: if no repos detected, try listing user repos
-    if (repoSet.size === 0) {
-      try {
-        const result = await ghExec(
-          ["repo", "list", "--json", "nameWithOwner", "-q", ".[].nameWithOwner", "--limit", "10"],
-          { timeout: 15_000 },
-        );
-        if (result) {
-          for (const r of result.split("\n").filter(Boolean)) repoSet.add(r);
-        }
-      } catch { /* gh not available */ }
-    }
-
-    const allIssues: typeof cachedPipelineIssues = [];
-    const pipelineEnabled = githubTasks.pipeline.enabled;
-
-    // Fetch issues from all repos in parallel
-    const issuePromises = Array.from(repoSet).map(async (repo) => {
-      try {
-        const raw = await ghExec(
-          ["issue", "list", "-R", repo, "--state", "open", "--limit", String(githubTasks.maxIssues), "--json", "number,title,labels,state,body"],
-          { timeout: 15_000 },
-        );
-        const issues = JSON.parse(raw) as Array<{ number: number; title: string; labels: Array<{ name: string }>; state: string; body: string }>;
-        for (const issue of issues) {
-          const labelNames = issue.labels.map((l) => l.name);
-          const pipelineState = pipelineEnabled
-            ? resolvePipelineState(labelNames, githubTasks.pipeline.states)
-            : "";
-          allIssues.push({
-            number: issue.number,
-            title: issue.title,
-            labels: labelNames,
-            state: issue.state,
-            pipelineState,
-            repo: repo.split("/").pop() || repo,
-            gates: [],
-          });
-        }
-      } catch {
-        // Degrade quietly when gh auth or repo access is unavailable.
-      }
-    });
-    await Promise.all(issuePromises);
-
-    // Parse gate comments for in-progress issues (parallel)
-    if (pipelineEnabled && githubTasks.pipeline.gates.length > 0) {
-      const gatePromises = allIssues
-        .filter((issue) => issue.pipelineState === "in_progress")
-        .map(async (issue) => {
-          const cacheKey = `${issue.repo}/${issue.number}`;
-          const cached = gateCache.get(cacheKey);
-          if (cached && Date.now() - cached.ts < 30_000) {
-            issue.gates = cached.gates;
-            return;
-          }
-          const fullRepo = Array.from(repoSet).find((r) => r.endsWith(`/${issue.repo}`)) || issue.repo;
-          try {
-            const raw = await ghExec(
-              ["api", `repos/${fullRepo}/issues/${issue.number}/comments`, "--jq", '[.[] | select(.body | test("^\\\\[gate ")) | {body: .body, ts: .created_at}]'],
-              { timeout: 10_000 },
-            );
-            const parsed = JSON.parse(raw) as Array<{ body: string; ts: string }>;
-            const gates: GateStatus[] = [];
-            for (const c of parsed) {
-              const m = c.body.match(GATE_COMMENT_RE);
-              if (m) {
-                gates.push({ gate: parseInt(m[1], 10), status: m[2], comment: m[3].trim(), timestamp: c.ts });
-              }
-            }
-            issue.gates = gates;
-            gateCache.set(cacheKey, { ts: Date.now(), gates });
-          } catch {
-            /* ignore */
-          }
-        });
-      await Promise.all(gatePromises);
-    }
-
-    // Clean cache for issues no longer in-progress
-    for (const [key] of gateCache) {
-      if (!allIssues.some((i) => `${i.repo}/${i.number}` === key && i.pipelineState === "in_progress")) {
-        gateCache.delete(key);
-      }
-    }
-
-    cachedPipelineIssues = allIssues;
-    broadcast({ type: "pipelineIssues", issues: allIssues } as any);
-    if (allIssues.length > 0) {
-      console.log(`[Server] Fetched ${allIssues.length} pipeline issues from ${repoSet.size} repos`);
-    }
-  } finally {
-    pipelineFetchRunning = false;
-  }
-}
-
-// Initial fetch after a short delay (let agents connect first)
-setTimeout(() => { fetchPipelineIssues().catch(() => {}); }, 5000);
-const pipelineIssuesPollTimer = setInterval(() => { fetchPipelineIssues().catch(() => {}); }, PIPELINE_POLL_INTERVAL_MS);
-
-// Start
-for (const watcher of watchers) {
-  watcher.start();
-}
-
-// ── Daemon Hub (multi-server aggregation) ──────────────────────────────────
 const daemonHub = new DaemonHub();
-
-// Forward remote daemon messages to all local clients
 daemonHub.on("message", (msg) => {
   broadcast(msg);
 });
 
-// Start daemon connections from config
 {
   const daemonConfig = getConfig();
   if (daemonConfig.daemons && daemonConfig.daemons.length > 0) {
@@ -1732,45 +255,84 @@ daemonHub.on("message", (msg) => {
   }
 }
 
+// ── Setup WS connection handler ─────────────────────────────────────────
+
+setupConnectionHandler(wss, {
+  PORT,
+  assetsRoot,
+  currentLayout,
+  layoutWatcher,
+  launchClaude,
+  openSessionsFolder,
+  testAgentIds,
+  testAgentData,
+  getNextAgentId: () => {
+    const id = nextAgentId;
+    // Advance nextAgentId by the number of test agents that will be created (8)
+    setNextAgentId(nextAgentId + 8);
+    return id;
+  },
+  daemonHub,
+});
+
+// ── Timers ──────────────────────────────────────────────────────────────
+
+const agentStateSaveTimer = setInterval(() => {
+  saveAgentState(agentStatePath, persistDir, agents, nextAgentId, persistedSeats);
+}, 30_000);
+
+const subagentSuspendTimer = startSubagentAutoSuspend(
+  agents,
+  broadcast,
+  recentSendMessages,
+  (path) => claudeWatcher.suspendFile(path),
+);
+
+// ── Start watchers & polling ────────────────────────────────────────────
+
+for (const watcher of watchers) {
+  watcher.start();
+}
+
+startGithubPolling(agents, broadcast);
+
+// ── Server startup ──────────────────────────────────────────────────────
+
 function startServer(retries = 1): void {
-  // Mutual exclusion: if another instance is already running, exit cleanly
   const pidDir = join(homedir(), ".pixel-agents");
   const pidFile = join(pidDir, ".server.pid");
   try {
     const existingPid = parseInt(readFileSync(pidFile, "utf-8").trim(), 10);
     if (existingPid && existingPid !== process.pid) {
       try {
-        process.kill(existingPid, 0); // test if alive (signal 0)
+        process.kill(existingPid, 0);
         console.log(`[Server] Another instance already running (PID ${existingPid}). Exiting.`);
-        process.exit(0); // exit 0 so launchd SuccessfulExit:false won't restart
+        process.exit(0);
       } catch {
-        // PID is stale, remove it and continue
         try { unlinkSync(pidFile); } catch {}
       }
     }
   } catch {
-    // No PID file or unreadable — proceed normally
+    // No PID file or unreadable
   }
 
   server.listen(PORT, "0.0.0.0", () => {
     console.log(`Pixel Agents server running at http://localhost:${PORT}`);
     console.log(`Watching ~/.claude/projects and ~/.codex/sessions for active sessions...`);
 
-    // Write PID file for daemon mode
     try {
       mkdirSync(pidDir, { recursive: true });
       writeFileSync(pidFile, String(process.pid));
     } catch {}
 
-    // Resolve all team parent-child relationships after initial load
     setTimeout(() => {
       for (const [, agent] of agents) {
         resolveTeamParent(agent);
       }
-      saveAgentState();
+      saveAgentState(agentStatePath, persistDir, agents, nextAgentId, persistedSeats);
     }, 2000);
   });
-  // Use .once() to prevent error handler accumulation on retry
+
   server.once("error", (err: NodeJS.ErrnoException) => {
     if (err.code === "EADDRINUSE" && retries > 0) {
       console.log(`[Server] Port ${PORT} in use, killing existing process and retrying...`);
@@ -1791,36 +353,27 @@ function startServer(retries = 1): void {
 
 startServer();
 
-// Cleanup helper for shutdown
+// ── Cleanup ─────────────────────────────────────────────────────────────
+
 function cleanupAll(): void {
-  saveAgentState();
+  saveAgentState(agentStatePath, persistDir, agents, nextAgentId, persistedSeats);
   cleanupSpawnedClaudes();
   daemonHub.stop();
   for (const watcher of watchers) {
     watcher.stop();
   }
-  layoutFsWatcher?.close();
-  layoutFsWatcher = null;
-  clearInterval(layoutPollTimer);
+  layoutWatcher.stop();
   clearInterval(agentStateSaveTimer);
   clearInterval(subagentSuspendTimer);
-  clearInterval(pipelineIssuesPollTimer);
+  clearInterval(heartbeatTimer);
+  stopGithubPolling();
+  stopShareCleanup();
   server.close();
 }
-
-// Idle shutdown disabled — server should stay up permanently
-// setInterval(() => {
-//   if (agents.size === 0 && clients.size === 0 && Date.now() - lastActivityTime > IDLE_SHUTDOWN_MS) {
-//     console.log("No active sessions or clients for 10 minutes, shutting down...");
-//     cleanupAll();
-//     process.exit(0);
-//   }
-// }, 30_000);
 
 // Graceful shutdown
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, () => {
-    // Remove PID file
     try { unlinkSync(join(homedir(), ".pixel-agents", ".server.pid")); } catch {}
     cleanupAll();
     process.exit(0);

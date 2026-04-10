@@ -1,5 +1,6 @@
 import * as path from "path";
 import type { TrackedAgent, ServerMessage } from "./types.js";
+import { compactName } from "./utils.js";
 
 const READING_TOOLS = new Set(["Read", "Grep", "Glob", "WebFetch", "WebSearch"]);
 const PERMISSION_EXEMPT_TOOLS = new Set(["Task", "AskUserQuestion"]);
@@ -30,28 +31,7 @@ const waitingTimers = new Map<number, ReturnType<typeof setTimeout>>();
 const permissionTimers = new Map<number, ReturnType<typeof setTimeout>>();
 const idleTimeoutTimers = new Map<number, ReturnType<typeof setTimeout>>();
 
-/**
- * Compact a name to fit within maxLen using camelCase (no dashes).
- * "improve-agent-names-roles" → "imprAgntNamRol" (15 chars)
- */
-function compactName(name: string, maxLen: number): string {
-  if (name.length <= maxLen) return name;
-
-  // Split into words, take first 2
-  const words = name.split(/[-_\s]+/).filter(Boolean);
-  if (words.length === 0) return name.slice(0, maxLen);
-  const w1 = words[0].toLowerCase();
-  const w2 = words.length > 1 ? words[1][0].toUpperCase() + words[1].slice(1) : "";
-
-  // Full 2 words fit?
-  if ((w1 + w2).length <= maxLen) return w1 + w2;
-
-  // Split budget: each word gets proportional share, min 3 chars
-  const total = w1.length + w2.length;
-  const budget1 = Math.max(3, Math.min(w1.length, Math.floor((w1.length / total) * maxLen)));
-  const budget2 = Math.max(3, maxLen - budget1);
-  return w1.slice(0, budget1) + (w2 ? w2.slice(0, budget2) : "");
-}
+// compactName imported from ./utils.js
 
 /** Extract readable text from SendMessage input.message (string or structured object) */
 function extractSendMessageText(raw: unknown): string {

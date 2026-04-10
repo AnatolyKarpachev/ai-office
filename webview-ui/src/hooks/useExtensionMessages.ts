@@ -9,6 +9,8 @@ import { setWallSprites } from '../office/wallTiles.js'
 import { setCharacterTemplates } from '../office/sprites/spriteData.js'
 import { vscode } from '../vscodeApi.js'
 import { playDoneSound, setSoundEnabled, showDesktopNotification, setDesktopNotificationsEnabled } from '../notificationSound.js'
+import { useAgentMessages, handleAgentMessage } from './useAgentMessages.js'
+import { useAssetMessages, handleAssetMessage } from './useAssetMessages.js'
 
 export interface SubagentCharacter {
   id: number
@@ -164,43 +166,20 @@ export function useExtensionMessages(
   onLayoutLoaded?: (layout: OfficeLayout) => void,
   isEditDirty?: () => boolean,
 ): ExtensionMessageState {
-  const [agents, setAgents] = useState<number[]>([])
-  const [selectedAgent, setSelectedAgent] = useState<number | null>(null)
+  // ── Sub-hooks ──────────────────────────────────────────────────────
+  const agentState = useAgentMessages()
+  const assetState = useAssetMessages()
+
+  // ── Remaining local state ──────────────────────────────────────────
   const [agentTools, setAgentTools] = useState<Record<number, ToolActivity[]>>({})
   const [agentStatuses, setAgentStatuses] = useState<Record<number, string>>({})
   const [subagentTools, setSubagentTools] = useState<Record<number, Record<string, ToolActivity[]>>>({})
   const [subagentCharacters, setSubagentCharacters] = useState<SubagentCharacter[]>([])
   const [layoutReady, setLayoutReady] = useState(false)
   const [layoutWasReset, setLayoutWasReset] = useState(false)
-  const [loadedAssets, setLoadedAssets] = useState<{ catalog: FurnitureAsset[]; sprites: Record<string, string[][]> } | undefined>()
-  const [workspaceFolders, setWorkspaceFolders] = useState<WorkspaceFolder[]>([])
-  const [externalAssetDirectories, setExternalAssetDirectories] = useState<string[]>([])
-  const [githubTasks, setGithubTasks] = useState<GithubTasksConfig>({
-    enabled: true,
-    maxIssues: 30,
-    pipeline: {
-      enabled: false,
-      states: [],
-      gates: [],
-    },
-  })
-  const [agentStatsMap, setAgentStatsMap] = useState<Map<number, AgentStats>>(new Map())
-  const [agentRolesMap, setAgentRolesMap] = useState<Map<number, AgentRoleInfo>>(new Map())
-  const [agentTeamInfoMap, setAgentTeamInfoMap] = useState<Map<number, { teamName?: string; isTeamLead?: boolean }>>(new Map())
-  const [agentDetailsState, setAgentDetailsState] = useState<AgentDetails | null>(null)
-  const [agentConversationState, setAgentConversationState] = useState<{ id: number; messages: ConversationMessage[] } | null>(null)
   const [pipelineIssues, setPipelineIssues] = useState<PipelineIssue[]>([])
   const [sendMessages, setSendMessages] = useState<Array<{ id: number; from: string; to: string; message: string; timestamp: number }>>([])
   const [shareLink, setShareLink] = useState<{ url: string; expiresAt: number } | null>(null)
-  const [serverMode, setServerMode] = useState<string>('...')
-
-  const requestAgentDetails = useCallback((id: number) => {
-    vscode.postMessage({ type: 'requestAgentDetails', id })
-  }, [])
-
-  const requestAgentConversation = useCallback((id: number) => {
-    vscode.postMessage({ type: 'requestAgentConversation', id })
-  }, [])
 
   // Track whether initial layout has been loaded (ref to avoid re-render)
   const layoutReadyRef = useRef(false)
@@ -213,6 +192,16 @@ export function useExtensionMessages(
       const msg = e.data
       const os = getOfficeState()
 
+      // ── Try sub-hook handlers first ────────────────────────────────
+      if (handleAgentMessage(
+        msg, os, agentState, saveAgentSeats,
+        setAgentTools, setAgentStatuses, setSubagentTools, setSubagentCharacters,
+        showDesktopNotification,
+      )) return
+
+      if (handleAssetMessage(msg, assetState)) return
+
+      // ── Layout, tools, WebSocket, pipeline — remain here ───────────
       if (msg.type === 'layoutLoaded') {
         // Skip external layout updates while editor has unsaved changes
         if (layoutReadyRef.current && isEditDirty?.()) {
@@ -259,93 +248,6 @@ export function useExtensionMessages(
         if (os.characters.size > 0) {
           saveAgentSeats(os)
         }
-      } else if (msg.type === 'agentCreated') {
-        const id = msg.id as number
-        const folderName = msg.folderName as string | undefined
-        const parentAgentId = msg.parentAgentId as number | undefined
-        const teamName = msg.teamName as string | undefined
-        const isTeamLead = msg.isTeamLead as boolean | undefined
-        // Store team info
-        if (teamName || isTeamLead) {
-          setAgentTeamInfoMap((prev) => {
-            const next = new Map(prev)
-            next.set(id, { teamName, isTeamLead })
-            return next
-          })
-        }
-        const existing = os.characters.get(id)
-        if (existing && parentAgentId && !existing.parentAgentId) {
-          // Update existing agent with new parent (team resolution)
-          existing.parentAgentId = parentAgentId
-          existing.isSubagent = true
-          // Reassign seat near the newly resolved parent
-          os.reassignNearParent(id, parentAgentId)
-          saveAgentSeats(os)
-        } else if (existing && (existing.leavingOffice || existing.matrixEffect === 'despawn')) {
-          // Agent reconnecting while mid-despawn — revive in place
-          os.reviveAgent(id, folderName, parentAgentId)
-          setAgents((prev) => (prev.includes(id) ? prev : [...prev, id]))
-          setSelectedAgent(id)
-        } else if (!existing) {
-          setAgents((prev) => (prev.includes(id) ? prev : [...prev, id]))
-          setSelectedAgent(id)
-          // Add immediately — sidebar + canvas data appear at once
-          // Server-side stagger handles entrance animation timing
-          os.addAgent(id, undefined, undefined, undefined, undefined, folderName, parentAgentId)
-        }
-        showDesktopNotification('New agent joined', `${folderName || 'Agent'} entered the office`)
-        saveAgentSeats(os)
-      } else if (msg.type === 'agentRenamed') {
-        const id = msg.id as number
-        const folderName = msg.folderName as string
-        const ch = os.characters.get(id)
-        if (ch) {
-          ch.folderName = folderName
-        }
-      } else if (msg.type === 'agentClosed') {
-        const id = msg.id as number
-        setAgents((prev) => prev.filter((a) => a !== id))
-        setSelectedAgent((prev) => (prev === id ? null : prev))
-        setAgentTools((prev) => {
-          if (!(id in prev)) return prev
-          const next = { ...prev }
-          delete next[id]
-          return next
-        })
-        setAgentStatuses((prev) => {
-          if (!(id in prev)) return prev
-          const next = { ...prev }
-          delete next[id]
-          return next
-        })
-        setSubagentTools((prev) => {
-          if (!(id in prev)) return prev
-          const next = { ...prev }
-          delete next[id]
-          return next
-        })
-        // Remove all sub-agent characters belonging to this agent
-        os.removeAllSubagents(id)
-        setSubagentCharacters((prev) => prev.filter((s) => s.parentAgentId !== id))
-        setAgentStatsMap((prev) => {
-          if (!prev.has(id)) return prev
-          const next = new Map(prev)
-          next.delete(id)
-          return next
-        })
-        setAgentRolesMap((prev) => {
-          if (!prev.has(id)) return prev
-          const next = new Map(prev)
-          next.delete(id)
-          return next
-        })
-        setAgentTeamInfoMap((prev) => {
-          if (!prev.has(id)) return prev
-          const next = new Map(prev)
-          next.delete(id)
-          return next
-        })
-        os.removeAgent(id)
       } else if (msg.type === 'existingAgents') {
         const incoming = msg.agents as number[]
         const meta = (msg.agentMeta || {}) as Record<number, { palette?: number; hueShift?: number; seatId?: string }>
@@ -354,7 +256,7 @@ export function useExtensionMessages(
         const incomingTeamNames = (msg.teamNames || {}) as Record<number, string>
         const incomingIsTeamLeads = (msg.isTeamLeads || {}) as Record<number, boolean>
         // Store team info for all existing agents
-        setAgentTeamInfoMap((prev) => {
+        agentState.setAgentTeamInfoMap((prev) => {
           let changed = false
           const next = new Map(prev)
           for (const id of incoming) {
@@ -370,7 +272,7 @@ export function useExtensionMessages(
           const m = meta[id]
           pendingAgents.push({ id, palette: m?.palette, hueShift: m?.hueShift, seatId: m?.seatId, folderName: folderNames[id], parentAgentId: parentAgentIds[id] })
         }
-        setAgents((prev) => {
+        agentState.setAgents((prev) => {
           const ids = new Set(prev)
           const merged = [...prev]
           for (const id of incoming) {
@@ -440,7 +342,7 @@ export function useExtensionMessages(
         }
       } else if (msg.type === 'agentSelected') {
         const id = msg.id as number
-        setSelectedAgent(id)
+        agentState.setSelectedAgent(id)
       } else if (msg.type === 'agentStatus') {
         const id = msg.id as number
         const status = msg.status as string
@@ -567,113 +469,6 @@ export function useExtensionMessages(
         // Remove sub-agent character
         os.removeSubagent(id, parentToolId)
         setSubagentCharacters((prev) => prev.filter((s) => !(s.parentAgentId === id && s.parentToolId === parentToolId)))
-      } else if (msg.type === 'characterSpritesLoaded') {
-        const characters = msg.characters as Array<{ down: string[][][]; up: string[][][]; right: string[][][] }>
-        console.log(`[Webview] Received ${characters.length} pre-colored character sprites`)
-        setCharacterTemplates(characters)
-      } else if (msg.type === 'floorTilesLoaded') {
-        const sprites = msg.sprites as string[][][]
-        console.log(`[Webview] Received ${sprites.length} floor tile patterns`)
-        setFloorSprites(sprites)
-      } else if (msg.type === 'wallTilesLoaded') {
-        const sets = msg.sets as string[][][][]
-        console.log(`[Webview] Received ${sets.length} wall tile set(s)`)
-        setWallSprites(sets)
-      } else if (msg.type === 'workspaceFolders') {
-        const folders = msg.folders as WorkspaceFolder[]
-        setWorkspaceFolders(folders)
-      } else if (msg.type === 'settingsLoaded') {
-        const soundOn = msg.soundEnabled as boolean
-        setSoundEnabled(soundOn)
-        if (msg.desktopNotifications !== undefined) {
-          setDesktopNotificationsEnabled(msg.desktopNotifications as boolean)
-        }
-        if (Array.isArray(msg.externalAssetDirectories)) {
-          setExternalAssetDirectories(msg.externalAssetDirectories as string[])
-        }
-        if (msg.githubTasks) {
-          setGithubTasks(msg.githubTasks as GithubTasksConfig)
-        }
-        if (msg.serverMode) {
-          setServerMode(msg.serverMode as string)
-        }
-      } else if (msg.type === 'externalAssetDirectoriesUpdated') {
-        if (Array.isArray(msg.dirs)) {
-          setExternalAssetDirectories(msg.dirs as string[])
-        }
-      } else if (msg.type === 'furnitureAssetsLoaded') {
-        try {
-          const catalog = msg.catalog as FurnitureAsset[]
-          const sprites = msg.sprites as Record<string, string[][]>
-          console.log(`📦 Webview: Loaded ${catalog.length} furniture assets`)
-          // Build dynamic catalog immediately so getCatalogEntry() works when layoutLoaded arrives next
-          buildDynamicCatalog({ catalog, sprites })
-          setLoadedAssets({ catalog, sprites })
-        } catch (err) {
-          console.error(`❌ Webview: Error processing furnitureAssetsLoaded:`, err)
-        }
-      } else if (msg.type === 'agentStats') {
-        const id = msg.id as number
-        const stats: AgentStats = {
-          model: msg.model as string | undefined,
-          totalInputTokens: msg.totalInputTokens as number,
-          totalOutputTokens: msg.totalOutputTokens as number,
-          totalCacheRead: msg.totalCacheRead as number,
-          totalCacheCreation: msg.totalCacheCreation as number,
-          currentContextTokens: msg.currentContextTokens as number | undefined,
-          currentContextLimit: msg.currentContextLimit as number | undefined,
-          turnCount: msg.turnCount as number,
-          totalDurationMs: msg.totalDurationMs as number,
-          cacheHitRate: msg.cacheHitRate as number,
-        }
-        setAgentStatsMap((prev) => {
-          const next = new Map(prev)
-          next.set(id, stats)
-          return next
-        })
-      } else if (msg.type === 'agentDetails') {
-        const details: AgentDetails = {
-          id: msg.id as number,
-          model: msg.model as string | undefined,
-          gitBranch: msg.gitBranch as string | undefined,
-          cwd: msg.cwd as string | undefined,
-          sessionId: msg.sessionId as string,
-          version: msg.version as string | undefined,
-          permissionMode: msg.permissionMode as string | undefined,
-          toolHistory: msg.toolHistory as Array<{ name: string; timestamp: string; durationMs?: number }>,
-          tokenBreakdown: msg.tokenBreakdown as { input: number; output: number; cacheRead: number; cacheCreation: number },
-          contextUsage: msg.contextUsage as { input: number; output: number; cacheRead: number; total: number; limit: number } | undefined,
-          turnCount: msg.turnCount as number,
-          totalDurationMs: msg.totalDurationMs as number,
-          startTime: msg.startTime as string | undefined,
-        }
-        setAgentDetailsState(details)
-      } else if (msg.type === 'agentConversation') {
-        setAgentConversationState({
-          id: msg.id as number,
-          messages: msg.messages as ConversationMessage[],
-        })
-      } else if (msg.type === 'agentConversationUpdate') {
-        const newMsg = msg.message as ConversationMessage
-        const agentId = msg.id as number
-        setAgentConversationState((prev) => {
-          if (!prev || prev.id !== agentId) return prev
-          return { ...prev, messages: [...prev.messages, newMsg] }
-        })
-      } else if (msg.type === 'agentRole') {
-        const id = msg.id as number
-        const roleInfo: AgentRoleInfo = {
-          role: msg.role as string,
-          autoDetected: msg.autoDetected as boolean,
-          colors: msg.colors as { primary: string; badge: string },
-        }
-        setAgentRolesMap((prev) => {
-          const next = new Map(prev)
-          next.set(id, roleInfo)
-          return next
-        })
-        // Notify OfficeState so role-restricted seats are respected
-        os.setAgentRole(id, roleInfo.role)
       } else if (msg.type === 'pipelineIssues') {
         const issues = msg.issues as PipelineIssue[]
         setPipelineIssues(issues)
@@ -697,28 +492,28 @@ export function useExtensionMessages(
   }, [getOfficeState])
 
   return {
-    agents,
-    selectedAgent,
+    agents: agentState.agents,
+    selectedAgent: agentState.selectedAgent,
     agentTools,
     agentStatuses,
     subagentTools,
     subagentCharacters,
     layoutReady,
     layoutWasReset,
-    loadedAssets,
-    workspaceFolders,
-    externalAssetDirectories,
-    githubTasks,
-    agentStats: agentStatsMap,
-    agentRoles: agentRolesMap,
-    agentTeamInfo: agentTeamInfoMap,
-    agentDetails: agentDetailsState,
-    requestAgentDetails,
-    agentConversation: agentConversationState,
-    requestAgentConversation,
+    loadedAssets: assetState.loadedAssets,
+    workspaceFolders: assetState.workspaceFolders,
+    externalAssetDirectories: assetState.externalAssetDirectories,
+    githubTasks: assetState.githubTasks,
+    agentStats: agentState.agentStatsMap,
+    agentRoles: agentState.agentRolesMap,
+    agentTeamInfo: agentState.agentTeamInfoMap,
+    agentDetails: agentState.agentDetailsState,
+    requestAgentDetails: agentState.requestAgentDetails,
+    agentConversation: agentState.agentConversationState,
+    requestAgentConversation: agentState.requestAgentConversation,
     pipelineIssues,
     sendMessages,
-    serverMode,
+    serverMode: assetState.serverMode,
     shareLink,
   }
 }

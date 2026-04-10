@@ -5,17 +5,17 @@
  */
 
 import { watch } from "chokidar";
-import { statSync, readdirSync, openSync, readSync, closeSync, readFileSync } from "fs";
+import { statSync, readdirSync, readFileSync } from "fs";
 import { basename, dirname, join } from "path";
 import { homedir } from "os";
 import { EventEmitter } from "events";
 import type { WatchedFile } from "./sourceTypes.js";
+import { compactName, readNewLines } from "./utils.js";
 
 const CODEX_SESSION_ROOT = join(homedir(), ".codex", "sessions");
 const CODEX_ARCHIVE_ROOT = join(homedir(), ".codex", "archived_sessions");
 const ACTIVE_THRESHOLD_MS = 300_000;
 const POLL_INTERVAL_MS = 1000;
-const MAX_PROJECT_NAME_LENGTH = 15;
 
 interface CodexSessionMeta {
   sessionId: string;
@@ -25,46 +25,16 @@ interface CodexSessionMeta {
   agentType?: string;
 }
 
-function compactName(name: string, maxLen: number): string {
-  if (name.length <= maxLen) return name;
-  const words = name.split(/[-_\s]+/).filter(Boolean);
-  if (words.length === 0) return name.slice(0, maxLen);
-
-  const camel = words[0] + words.slice(1).map((word) => word[0].toUpperCase() + word.slice(1)).join("");
-  if (camel.length <= maxLen) return camel;
-
-  const shortened = words.slice();
-  for (let iter = 0; iter < 50; iter++) {
-    const result = shortened[0] + shortened.slice(1).map((word) => word[0].toUpperCase() + word.slice(1)).join("");
-    if (result.length <= maxLen) return result;
-
-    let maxWord = 0;
-    let maxWordLen = 0;
-    for (let index = 0; index < shortened.length; index++) {
-      if (shortened[index].length > maxWordLen) {
-        maxWordLen = shortened[index].length;
-        maxWord = index;
-      }
-    }
-
-    if (maxWordLen <= 3) break;
-    shortened[maxWord] = shortened[maxWord].slice(0, Math.max(3, maxWordLen - 1));
-  }
-
-  const result = shortened[0] + shortened.slice(1).map((word) => word[0].toUpperCase() + word.slice(1)).join("");
-  return result.slice(0, maxLen);
-}
-
 function buildProjectName(cwd: string | undefined, agentNickname: string | undefined): string {
   if (agentNickname) {
-    return compactName(agentNickname, MAX_PROJECT_NAME_LENGTH);
+    return compactName(agentNickname);
   }
 
   if (!cwd) return "Codex";
   if (cwd === homedir()) return "Codex";
 
   const folderName = basename(cwd);
-  return compactName(folderName || "Codex", MAX_PROJECT_NAME_LENGTH);
+  return compactName(folderName || "Codex");
 }
 
 function readCodexMeta(filePath: string): CodexSessionMeta | null {
@@ -233,7 +203,7 @@ export class CodexJsonlWatcher extends EventEmitter {
     this.files.set(file.path, file);
     this.sessionIds.set(file.sessionId, file.path);
     this.emit("fileAdded", file);
-    this.readNewLines(file);
+    this.readFileLines(file);
   }
 
   private pollFiles(): void {
@@ -241,7 +211,7 @@ export class CodexJsonlWatcher extends EventEmitter {
       try {
         const stat = statSync(path);
         if (stat.size > file.offset) {
-          this.readNewLines(file);
+          this.readFileLines(file);
         }
         if (Date.now() - stat.mtimeMs > ACTIVE_THRESHOLD_MS) {
           this.files.delete(path);
@@ -260,28 +230,7 @@ export class CodexJsonlWatcher extends EventEmitter {
     }
   }
 
-  private readNewLines(file: WatchedFile): void {
-    try {
-      const stat = statSync(file.path);
-      if (stat.size <= file.offset) return;
-
-      const buffer = Buffer.alloc(stat.size - file.offset);
-      const fd = openSync(file.path, "r");
-      readSync(fd, buffer, 0, buffer.length, file.offset);
-      closeSync(fd);
-
-      file.offset = stat.size;
-      const text = file.lineBuffer + buffer.toString("utf-8");
-      const lines = text.split("\n");
-      file.lineBuffer = lines.pop() || "";
-
-      for (const line of lines) {
-        if (line.trim()) {
-          this.emit("line", file, line);
-        }
-      }
-    } catch {
-      // ignore deleted file
-    }
+  private readFileLines(file: WatchedFile): void {
+    readNewLines(file, this);
   }
 }

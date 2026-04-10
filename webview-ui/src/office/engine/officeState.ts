@@ -7,24 +7,16 @@ import {
   CHARACTER_SITTING_OFFSET_PX,
   DISMISS_BUBBLE_FAST_FADE_SEC,
   FURNITURE_ANIM_INTERVAL_SEC,
-  HUE_SHIFT_MIN_DEG,
-  HUE_SHIFT_RANGE_DEG,
   INACTIVE_SEAT_TIMER_MIN_SEC,
   INACTIVE_SEAT_TIMER_RANGE_SEC,
-  PALETTE_COUNT,
   WAITING_BUBBLE_DURATION_SEC,
   ACTIVITY_BUBBLE_DURATION_SEC,
   ACTIVITY_BUBBLE_MAX_CHARS,
-  IDLE_SEAT_MAX_SEC,
-  TEAM_PRIORITY_WEIGHTS,
-  TEAM_SIBLING_BONUS,
-  TEAM_SIBLING_RADIUS,
-  TEAM_MAX_DEPTH,
 } from '../../constants.js'
 import type { Character, Seat, FurnitureInstance, TileType as TileTypeVal, OfficeLayout, PlacedFurniture } from '../types.js'
 import { createCharacter, updateCharacter, findFreeCoffeeSpot, findFreeSmokingSpot } from './characters.js'
 import { matrixEffectSeeds } from './matrixEffect.js'
-import { isWalkable, getWalkableTiles, findPath, bfsDistanceMap } from '../layout/tileMap.js'
+import { isWalkable, getWalkableTiles, findPath } from '../layout/tileMap.js'
 import {
   createDefaultLayout,
   layoutToTileMap,
@@ -35,21 +27,32 @@ import {
   getSeatTiles,
 } from '../layout/layoutSerializer.js'
 import { getAnimationFrames, getCatalogEntry, getOnStateType } from '../layout/furnitureCatalog.js'
-
-/** Legacy fallback used when layout.agentSpawn is not set */
-const LEGACY_ENTRANCE_COL = 39
-const LEGACY_ENTRANCE_ROW = 39
-
-/** Door bridge tiles — blocked by furniture but characters walk through to enter/exit */
-const DOOR_BRIDGE_TILES = new Set(['26,37', '26,38', '27,38', '26,39', '27,39'])
-
-/** Facing direction overrides for specific seat positions (col,row → Direction) */
-const SEAT_FACING_OVERRIDES = new Map<string, Direction>([
-  ['4,17', Direction.UP],      // sofa — back to viewer
-  ['5,15', Direction.DOWN],    // face toward viewer
-  ['24,36', Direction.RIGHT],  // face right
-  ['26,36', Direction.LEFT],   // face left
-])
+import {
+  getAgentPriority as _getAgentPriority,
+  getClusterCentroid as _getClusterCentroid,
+  snapToWalkable as _snapToWalkable,
+  getWalkingDistance as _getWalkingDistance,
+  scoreClusterSeat as _scoreClusterSeat,
+  findFreeSeatNear as _findFreeSeatNear,
+  getBfsDistanceMap as _getBfsDistanceMap,
+  type ClusterState,
+} from './teamClustering.js'
+import {
+  applySeatFacingOverrides,
+  isSeatClaimed as _isSeatClaimed,
+  claimSeat as _claimSeat,
+  canSitInSeat as _canSitInSeat,
+  isRoleSeatForAgent as _isRoleSeatForAgent,
+  findFreeSeat as _findFreeSeat,
+  pickDiversePalette as _pickDiversePalette,
+} from './seatManager.js'
+import {
+  DOOR_BRIDGE_TILES,
+  getEntranceTile as _getEntranceTile,
+  buildPathFromEntrance as _buildPathFromEntrance,
+  buildPathToEntrance as _buildPathToEntrance,
+  startLeaveOffice as _startLeaveOffice,
+} from './entranceManager.js'
 
 export class OfficeState {
   layout: OfficeLayout
@@ -75,11 +78,24 @@ export class OfficeState {
   /** BFS distance map cache: key = "col,row" source → Map of distances to all reachable tiles */
   private distanceCache = new Map<string, Map<string, number>>()
 
+  /** Expose a ClusterState view of this instance for standalone clustering functions */
+  private get clusterState(): ClusterState {
+    return {
+      characters: this.characters,
+      seats: this.seats,
+      tileMap: this.tileMap,
+      blockedTiles: this.blockedTiles,
+      agentRoles: this.agentRoles,
+      subagentMeta: this.subagentMeta,
+      distanceCache: this.distanceCache,
+    }
+  }
+
   constructor(layout?: OfficeLayout) {
     this.layout = layout || createDefaultLayout()
     this.tileMap = layoutToTileMap(this.layout)
     this.seats = layoutToSeats(this.layout.furniture)
-    this.applySeatFacingOverrides()
+    applySeatFacingOverrides(this.seats)
     const seatTiles = getSeatTiles(this.seats)
     this.blockedTiles = getBlockedTiles(this.layout.furniture, seatTiles)
     // Door bridge tiles must always be passable — unblock them globally
@@ -92,22 +108,12 @@ export class OfficeState {
 
   /** Rebuild all derived state from a new layout. Reassigns existing characters.
    *  @param shift Optional pixel shift to apply when grid expands left/up */
-  /** Apply facing direction overrides for specific seat positions */
-  private applySeatFacingOverrides(): void {
-    for (const [, seat] of this.seats) {
-      const key = `${seat.seatCol},${seat.seatRow}`
-      const override = SEAT_FACING_OVERRIDES.get(key)
-      if (override !== undefined) {
-        seat.facingDir = override
-      }
-    }
-  }
 
   rebuildFromLayout(layout: OfficeLayout, shift?: { col: number; row: number }): void {
     this.layout = layout
     this.tileMap = layoutToTileMap(layout)
     this.seats = layoutToSeats(layout.furniture)
-    this.applySeatFacingOverrides()
+    applySeatFacingOverrides(this.seats)
     const seatTiles = getSeatTiles(this.seats)
     this.blockedTiles = getBlockedTiles(layout.furniture, seatTiles)
     // Door bridge tiles must always be passable — unblock them globally
@@ -261,129 +267,49 @@ export class OfficeState {
     return result
   }
 
-  /** Check if a seatId is already claimed by any live character (skip despawning).
-   *  @param excludeId  Optional character ID to exclude from the check (e.g. the character itself) */
+  /** Check if a seatId is already claimed by any live character (skip despawning). */
   private isSeatClaimed(seatId: string, excludeId?: number): boolean {
-    for (const ch of this.characters.values()) {
-      if (ch.id === excludeId) continue
-      if (ch.seatId === seatId && ch.matrixEffect !== 'despawn') return true
-    }
-    return false
+    return _isSeatClaimed(seatId, this.characters, excludeId)
   }
 
   /** Claim a seat: mark assigned + verify no other character holds it */
   private claimSeat(seatId: string): boolean {
-    const seat = this.seats.get(seatId)
-    if (!seat) return false
-    if (seat.assigned || this.isSeatClaimed(seatId)) return false
-    seat.assigned = true
-    return true
+    return _claimSeat(seatId, this.seats, this.characters)
   }
 
   /** Check if an agent's role allows them to sit in a given seat */
   private canSitInSeat(seat: Seat, agentId: number): boolean {
-    if (!seat.requiredRoles) return true // unrestricted seat
-    const role = this.agentRoles.get(agentId)
-    return !!role && seat.requiredRoles.includes(role)
+    return _canSitInSeat(seat, agentId, this.agentRoles)
   }
 
-  // ── Team Clustering ──────────────────────────────────────────
+  // ── Team Clustering (delegated to teamClustering.ts) ──────────
 
-  /** Walk up parent chain to find the root agent and hierarchy depth.
-   *  Returns { priority: 1-4, chainRoot: root agent ID } */
+  /** Walk up parent chain to find the root agent and hierarchy depth. */
   getAgentPriority(agentId: number): { priority: number; chainRoot: number } {
-    let current = agentId
-    let depth = 0
-    for (let i = 0; i < TEAM_MAX_DEPTH; i++) {
-      const ch = this.characters.get(current)
-      const meta = this.subagentMeta.get(current)
-      const parentId = ch?.parentAgentId ?? meta?.parentAgentId
-      if (parentId == null || !this.characters.has(parentId)) break
-      current = parentId
-      depth++
-    }
-    return { priority: Math.min(depth + 1, 4), chainRoot: current }
-  }
-
-  /** Collect all characters belonging to the cluster rooted at chainRoot */
-  private getClusterMembers(chainRoot: number): Array<{ id: number; col: number; row: number; weight: number }> {
-    const members: Array<{ id: number; col: number; row: number; weight: number }> = []
-    // Add root
-    const rootCh = this.characters.get(chainRoot)
-    if (rootCh && !rootCh.matrixEffect) {
-      members.push({ id: chainRoot, col: rootCh.tileCol, row: rootCh.tileRow, weight: TEAM_PRIORITY_WEIGHTS[1] })
-    }
-    // Find all descendants
-    for (const ch of this.characters.values()) {
-      if (ch.id === chainRoot || ch.matrixEffect) continue
-      const info = this.getAgentPriority(ch.id)
-      if (info.chainRoot === chainRoot) {
-        members.push({ id: ch.id, col: ch.tileCol, row: ch.tileRow, weight: TEAM_PRIORITY_WEIGHTS[info.priority] ?? 0.5 })
-      }
-    }
-    return members
+    return _getAgentPriority(agentId, this.clusterState)
   }
 
   /** Compute weighted centroid of a cluster */
-  private getClusterCentroid(chainRoot: number): { col: number; row: number; members: Array<{ id: number; col: number; row: number; weight: number }> } {
-    const members = this.getClusterMembers(chainRoot)
-    if (members.length === 0) return { col: 0, row: 0, members }
-    let wSum = 0, cCol = 0, cRow = 0
-    for (const m of members) {
-      wSum += m.weight
-      cCol += m.weight * m.col
-      cRow += m.weight * m.row
-    }
-    return { col: cCol / wSum, row: cRow / wSum, members }
+  private getClusterCentroid(chainRoot: number) {
+    return _getClusterCentroid(chainRoot, this.clusterState)
   }
 
   /** Snap fractional coordinates to the nearest walkable tile */
-  private snapToWalkable(col: number, row: number): { col: number; row: number } {
-    const c = Math.round(col)
-    const r = Math.round(row)
-    if (isWalkable(c, r, this.tileMap, this.blockedTiles)) return { col: c, row: r }
-    // Search in expanding radius for nearest walkable tile
-    for (let radius = 1; radius <= 10; radius++) {
-      let bestDist = Infinity
-      let best = { col: c, row: r }
-      for (let dc = -radius; dc <= radius; dc++) {
-        for (let dr = -radius; dr <= radius; dr++) {
-          if (Math.abs(dc) + Math.abs(dr) > radius) continue
-          const nc = c + dc, nr = r + dr
-          if (isWalkable(nc, nr, this.tileMap, this.blockedTiles)) {
-            const d = Math.abs(nc - col) + Math.abs(nr - row)
-            if (d < bestDist) { bestDist = d; best = { col: nc, row: nr } }
-          }
-        }
-      }
-      if (bestDist < Infinity) return best
-    }
-    return { col: c, row: r }
+  private snapToWalkable(col: number, row: number) {
+    return _snapToWalkable(col, row, this.tileMap, this.blockedTiles)
+  }
+
+  /** Get walking distance between two tiles. */
+  private getWalkingDistance(fromCol: number, fromRow: number, toCol: number, toRow: number): number {
+    return _getWalkingDistance(fromCol, fromRow, toCol, toRow, this.clusterState)
   }
 
   /** Get BFS distance map from a source tile (cached) */
   private getBfsDistanceMap(col: number, row: number): Map<string, number> {
-    const key = `${col},${row}`
-    let cached = this.distanceCache.get(key)
-    if (!cached) {
-      cached = bfsDistanceMap(col, row, this.tileMap, this.blockedTiles)
-      this.distanceCache.set(key, cached)
-    }
-    return cached
+    return _getBfsDistanceMap(col, row, this.clusterState)
   }
 
-  /** Get walking distance between two tiles. Returns Manhattan*3 penalty if unreachable. */
-  private getWalkingDistance(fromCol: number, fromRow: number, toCol: number, toRow: number): number {
-    const distMap = this.getBfsDistanceMap(fromCol, fromRow)
-    const d = distMap.get(`${toCol},${toRow}`)
-    if (d !== undefined) return d
-    // Unreachable — heavy penalty
-    return (Math.abs(fromCol - toCol) + Math.abs(fromRow - toRow)) * 3
-  }
-
-  /** Score a seat for team clustering.
-   *  Lower score = better seat.
-   *  β·d(seat,parent) + α·d(seat,centroid) + γ·nearby_teammates */
+  /** Score a seat for team clustering. */
   private scoreClusterSeat(
     seat: Seat,
     parentCol: number, parentRow: number,
@@ -391,108 +317,29 @@ export class OfficeState {
     priority: number,
     teammates: Array<{ col: number; row: number }>,
   ): number {
-    const beta = Math.max(0, 4 - priority)  // P1:3, P2:2, P3:1, P4:0
-    const alpha = priority - 1               // P1:0, P2:1, P3:2, P4:3
-    const dParent = this.getWalkingDistance(parentCol, parentRow, seat.seatCol, seat.seatRow)
-    const centroidSnap = this.snapToWalkable(centroidCol, centroidRow)
-    const dCentroid = this.getWalkingDistance(centroidSnap.col, centroidSnap.row, seat.seatCol, seat.seatRow)
-    let nearbyCount = 0
-    for (const t of teammates) {
-      const tSnap = this.snapToWalkable(t.col, t.row)
-      if (this.getWalkingDistance(tSnap.col, tSnap.row, seat.seatCol, seat.seatRow) <= TEAM_SIBLING_RADIUS) {
-        nearbyCount++
-      }
-    }
-    return beta * dParent + alpha * dCentroid + TEAM_SIBLING_BONUS * nearbyCount
+    return _scoreClusterSeat(seat, parentCol, parentRow, centroidCol, centroidRow, priority, teammates, this.clusterState)
   }
 
   /** Check if a seat is role-restricted and the agent's role matches */
   private isRoleSeatForAgent(seat: Seat, agentId: number): boolean {
-    if (!seat.requiredRoles) return false
-    const role = this.agentRoles.get(agentId)
-    return !!role && seat.requiredRoles.includes(role)
+    return _isRoleSeatForAgent(seat, agentId, this.agentRoles)
   }
 
   private findFreeSeat(agentId?: number): string | null {
-    // Priority 0: role-restricted seats for matching agents (boss/lead/megaboss)
-    if (agentId !== undefined) {
-      for (const [uid, seat] of this.seats) {
-        if (!seat.assigned && !seat.isLounge && !this.isSeatClaimed(uid)
-            && this.isRoleSeatForAgent(seat, agentId)) return uid
-      }
-    }
-
-    // Priority 1: desk-facing non-lounge seats (workstations), skip role-restricted seats
-    for (const [uid, seat] of this.seats) {
-      if (!seat.assigned && !seat.isLounge && seat.facesDesk && !this.isSeatClaimed(uid)
-          && (agentId === undefined || this.canSitInSeat(seat, agentId))) return uid
-    }
-    // Priority 2: any non-lounge seats, skip role-restricted seats
-    for (const [uid, seat] of this.seats) {
-      if (!seat.assigned && !seat.isLounge && !this.isSeatClaimed(uid)
-          && (agentId === undefined || this.canSitInSeat(seat, agentId))) return uid
-    }
-    // Lounge seats (sofas, benches) are NEVER assigned as workstations
-    return null
+    return _findFreeSeat(this.seats, this.characters, this.agentRoles, agentId)
   }
 
-  /** Find the best free seat using team cluster scoring.
-   *  Uses weighted centroid + parent proximity + sibling attraction.
-   *  Parent position is based on their assigned SEAT (last active position),
-   *  not their current wandering tile. */
+  /** Find the best free seat using team cluster scoring. */
   private findFreeSeatNear(parentAgentId: number, agentId?: number): string | null {
-    const parentCh = this.characters.get(parentAgentId)
-    if (!parentCh) return this.findFreeSeat(agentId)
-
-    // Use parent's seat position (stable work location) instead of current tile (may be wandering)
-    const parentSeat = parentCh.seatId ? this.seats.get(parentCh.seatId) : null
-    const parentCol = parentSeat ? parentSeat.seatCol : parentCh.tileCol
-    const parentRow = parentSeat ? parentSeat.seatRow : parentCh.tileRow
-
-    // Compute cluster info for team-aware scoring
-    const { chainRoot, priority } = agentId !== undefined
-      ? { chainRoot: this.getAgentPriority(parentAgentId).chainRoot, priority: Math.min(this.getAgentPriority(parentAgentId).priority + 1, 4) }
-      : { chainRoot: parentAgentId, priority: 2 }
-    const cluster = this.getClusterCentroid(chainRoot)
-    const teammates = cluster.members.map(m => ({ col: m.col, row: m.row }))
-
-    const score = (seat: Seat) => this.scoreClusterSeat(
-      seat, parentCol, parentRow, cluster.col, cluster.row, priority, teammates,
+    return _findFreeSeatNear(
+      parentAgentId,
+      this.clusterState,
+      agentId,
+      (seatId, excludeId) => this.isSeatClaimed(seatId, excludeId),
+      (seat, aid) => this.canSitInSeat(seat, aid),
+      (seat, aid) => this.isRoleSeatForAgent(seat, aid),
+      (aid) => this.findFreeSeat(aid),
     )
-
-    let bestSeatId: string | null = null
-    let bestScore = Infinity
-
-    // Role-restricted seats (boss/lead/megaboss)
-    if (agentId !== undefined) {
-      for (const [uid, seat] of this.seats) {
-        if (seat.assigned || seat.isLounge || this.isSeatClaimed(uid)) continue
-        if (!this.isRoleSeatForAgent(seat, agentId)) continue
-        const s = score(seat)
-        if (s < bestScore) { bestScore = s; bestSeatId = uid }
-      }
-      if (bestSeatId) return bestSeatId
-      bestScore = Infinity
-    }
-
-    // Desk-facing non-lounge seats, scored by cluster proximity
-    for (const [uid, seat] of this.seats) {
-      if (seat.assigned || seat.isLounge || !seat.facesDesk || this.isSeatClaimed(uid)) continue
-      if (agentId !== undefined && !this.canSitInSeat(seat, agentId)) continue
-      const s = score(seat)
-      if (s < bestScore) { bestScore = s; bestSeatId = uid }
-    }
-    // Any non-lounge seats
-    if (!bestSeatId) {
-      bestScore = Infinity
-      for (const [uid, seat] of this.seats) {
-        if (seat.assigned || seat.isLounge || this.isSeatClaimed(uid)) continue
-        if (agentId !== undefined && !this.canSitInSeat(seat, agentId)) continue
-        const s = score(seat)
-        if (s < bestScore) { bestScore = s; bestSeatId = uid }
-      }
-    }
-    return bestSeatId
   }
 
   /** Update agent role and reassign to a role-appropriate seat if needed */
@@ -620,110 +467,29 @@ export class OfficeState {
     }
   }
 
-  /**
-   * Pick a diverse palette for a new agent based on currently active agents.
-   * First 6 agents each get a unique skin (random order). Beyond 6, skins
-   * repeat in balanced rounds with a random hue shift (≥45°).
-   */
+  /** Pick a diverse palette for a new agent based on currently active agents. */
   private pickDiversePalette(): { palette: number; hueShift: number } {
-    // Count how many non-sub-agents use each base palette (0-5)
-    const counts = new Array(PALETTE_COUNT).fill(0) as number[]
-    for (const ch of this.characters.values()) {
-      if (ch.isSubagent) continue
-      counts[ch.palette]++
-    }
-    const minCount = Math.min(...counts)
-    // Available = palettes at the minimum count (least used)
-    const available: number[] = []
-    for (let i = 0; i < PALETTE_COUNT; i++) {
-      if (counts[i] === minCount) available.push(i)
-    }
-    const palette = available[Math.floor(Math.random() * available.length)]
-    // First round (minCount === 0): no hue shift. Subsequent rounds: random ≥45°.
-    let hueShift = 0
-    if (minCount > 0) {
-      hueShift = HUE_SHIFT_MIN_DEG + Math.floor(Math.random() * HUE_SHIFT_RANGE_DEG)
-    }
-    return { palette, hueShift }
+    return _pickDiversePalette(this.characters)
   }
 
-  /** Get blocked tiles with door bridge tiles unblocked for entrance/exit pathfinding */
-  private getEntranceBlockedTiles(): Set<string> {
-    const bt = new Set(this.blockedTiles)
-    for (const k of DOOR_BRIDGE_TILES) bt.delete(k)
-    return bt
-  }
-
-  /** Resolve a stable entrance tile from layout.agentSpawn or the nearest valid walkable tile. */
+  /** Resolve a stable entrance tile from layout or the nearest valid walkable tile. */
   private getEntranceTile(): { col: number; row: number } | null {
-    const preferred = this.getPreferredEntranceTile()
-    const bt = this.getEntranceBlockedTiles()
-
-    if (preferred && isWalkable(preferred.col, preferred.row, this.tileMap, bt)) {
-      return preferred
-    }
-
-    const fallbackCol = preferred?.col ?? LEGACY_ENTRANCE_COL
-    const fallbackRow = preferred?.row ?? LEGACY_ENTRANCE_ROW
-
-    let nearest: { col: number; row: number } | null = null
-    let bestDist = Infinity
-    for (const t of this.walkableTiles) {
-      if (!isWalkable(t.col, t.row, this.tileMap, bt)) continue
-      const d = Math.abs(t.col - fallbackCol) + Math.abs(t.row - fallbackRow)
-      if (d < bestDist) {
-        nearest = t
-        bestDist = d
-      }
-    }
-
-    return nearest
-  }
-
-  private getPreferredEntranceTile(): { col: number; row: number } | null {
-    const raw = this.layout.agentSpawn
-    if (!raw || !Number.isFinite(raw.col) || !Number.isFinite(raw.row)) return null
-    return { col: Math.trunc(raw.col), row: Math.trunc(raw.row) }
+    return _getEntranceTile(this.layout, this.tileMap, this.blockedTiles, this.walkableTiles)
   }
 
   /** Build a path from the entrance tile to a target tile, unblocking door tiles */
   private buildPathFromEntrance(toCol: number, toRow: number): Array<{ col: number; row: number }> {
-    const entrance = this.getEntranceTile()
-    if (!entrance) return []
-    const bt = this.getEntranceBlockedTiles()
-    return findPath(entrance.col, entrance.row, toCol, toRow, this.tileMap, bt)
+    return _buildPathFromEntrance(toCol, toRow, this.layout, this.tileMap, this.blockedTiles, this.walkableTiles)
   }
 
   /** Build a path from a source tile to the entrance tile, unblocking door tiles */
   private buildPathToEntrance(fromCol: number, fromRow: number): Array<{ col: number; row: number }> {
-    const entrance = this.getEntranceTile()
-    if (!entrance) return []
-    const bt = this.getEntranceBlockedTiles()
-    return findPath(fromCol, fromRow, entrance.col, entrance.row, this.tileMap, bt)
+    return _buildPathToEntrance(fromCol, fromRow, this.layout, this.tileMap, this.blockedTiles, this.walkableTiles)
   }
 
   /** Start the leave-office sequence: walk to entrance and despawn */
   private startLeaveOffice(ch: Character): void {
-    ch.leavingOffice = true
-    ch.isActive = false
-    ch.bubbleType = null
-    ch.bubbleTimer = 0
-    ch.loungeTargetSeatId = null
-    // Build path to entrance
-    const path = this.buildPathToEntrance(ch.tileCol, ch.tileRow)
-    if (path.length > 0) {
-      ch.path = path
-      ch.moveProgress = 0
-      ch.state = CharacterState.WALK
-      ch.frame = 0
-      ch.frameTimer = 0
-    } else {
-      // No path to entrance — fall back to matrix despawn at current position
-      ch.leavingOffice = false
-      ch.matrixEffect = 'despawn'
-      ch.matrixEffectTimer = 0
-      ch.matrixEffectSeeds = matrixEffectSeeds()
-    }
+    _startLeaveOffice(ch, this.layout, this.tileMap, this.blockedTiles, this.walkableTiles)
   }
 
   addAgent(id: number, preferredPalette?: number, preferredHueShift?: number, preferredSeatId?: string, skipSpawnEffect?: boolean, folderName?: string, parentAgentId?: number): void {
