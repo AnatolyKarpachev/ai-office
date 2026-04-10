@@ -183,17 +183,21 @@ export function getBlockedTiles(furniture: PlacedFurniture[], excludeTiles?: Set
 }
 
 /** Get tiles blocked for placement purposes — skips top backgroundTiles rows per item.
- *  excludeDoors: if true, skip door furniture tiles (doors can overlap other doors). */
-export function getPlacementBlockedTiles(furniture: PlacedFurniture[], excludeUid?: string, excludeDoors?: boolean): Set<string> {
+ *  excludeDoorBgOnly: if true, skip only background rows of door furniture (allows adjacent doors
+ *  to overlap at their top rows, but still blocks placing on another door's base tile). */
+export function getPlacementBlockedTiles(furniture: PlacedFurniture[], excludeUid?: string, excludeDoorBgOnly?: boolean): Set<string> {
   const tiles = new Set<string>()
   for (const item of furniture) {
     if (item.uid === excludeUid) continue
-    if (excludeDoors && isDoorFurniture(item.type)) continue
     const entry = getCatalogEntry(item.type)
     if (!entry) continue
     const bgRows = entry.backgroundTiles || 0
+    const isDoor = excludeDoorBgOnly && isDoorFurniture(item.type)
     for (let dr = 0; dr < entry.footprintH; dr++) {
       if (dr < bgRows) continue
+      // For doors when placing another door: skip background-adjacent rows (allow overlap)
+      // but keep the base row blocked (prevent stacking on same tile)
+      if (isDoor && dr < entry.footprintH - 1) continue
       for (let dc = 0; dc < entry.footprintW; dc++) {
         tiles.add(`${item.col + dc},${item.row + dr}`)
       }
