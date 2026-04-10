@@ -451,6 +451,7 @@ export const FURNITURE_CATEGORIES: Array<{ id: FurnitureCategory; label: string 
   { id: 'chairs', label: 'Chairs' },
   { id: 'storage', label: 'Storage' },
   { id: 'electronics', label: 'Tech' },
+  { id: 'doors', label: 'Doors' },
   { id: 'fence', label: 'Fence' },
   { id: 'decor', label: 'Decor' },
   { id: 'wall', label: 'Wall' },
