@@ -48,7 +48,7 @@ export function TokenBar({ totalTokens, usageTokens, contextLimit, model, turnCo
       )}
       <div
         title={tooltipText}
-        className="w-16 h-[5px] bg-white/10 border border-white/15 overflow-hidden [image-rendering:pixelated]"
+        className="w-16 h-[5px] bg-white/10 border border-white/15 overflow-hidden [image-rendering:pixelated] box-content"
       >
         <div
           className="h-full transition-[width] duration-300 ease-in-out [image-rendering:pixelated]"

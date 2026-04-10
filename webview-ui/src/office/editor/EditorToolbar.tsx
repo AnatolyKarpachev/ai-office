@@ -17,7 +17,7 @@ const btnCls = "px-2 py-[3px] text-[22px] leading-none bg-pixel-btn text-white/7
 const activeBtnCls = "px-2 py-[3px] text-[22px] leading-none bg-pixel-active text-white/90 border-2 border-pixel-accent cursor-pointer"
 const tabCls = "px-1.5 py-0.5 text-[20px] leading-none bg-transparent text-white/50 border-2 border-transparent cursor-pointer hover:bg-pixel-btn"
 const activeTabCls = "px-1.5 py-0.5 text-[20px] leading-none bg-pixel-btn text-white/80 border-2 border-pixel-accent cursor-pointer"
-const previewBtnCls = "p-0 cursor-pointer overflow-hidden shrink-0 bg-[#2A2A3A]"
+const previewBtnCls = "p-0 cursor-pointer overflow-hidden shrink-0 bg-[#2A2A3A] box-content"
 const colorPanelCls = "flex flex-col gap-[3px] px-1.5 py-1 bg-[#181828] border-2 border-pixel-border"
 const subPanelCls = "flex flex-col gap-1.5 px-2 py-1.5 bg-[#181828] border-2 border-pixel-border"
 
