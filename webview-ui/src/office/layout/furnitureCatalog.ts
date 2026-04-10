@@ -461,14 +461,21 @@ export const FURNITURE_CATEGORIES: Array<{ id: FurnitureCategory; label: string 
 
 /** Returns the next asset ID in the rotation group (cw or ccw), or null if not rotatable. */
 export function getRotatedType(currentType: string, direction: 'cw' | 'ccw'): string | null {
-  const group = rotationGroups.get(currentType)
+  let type = currentType
+  let suffix = ''
+  // Handle :left mirror suffix
+  if (type.endsWith(':left')) {
+    suffix = ':left'
+    type = type.slice(0, -5)
+  }
+  const group = rotationGroups.get(type)
   if (!group) return null
   const order = group.orientations.map((o) => group.members[o])
-  const idx = order.indexOf(currentType)
+  const idx = order.indexOf(type)
   if (idx === -1) return null
   const step = direction === 'cw' ? 1 : -1
   const nextIdx = (idx + step + order.length) % order.length
-  return order[nextIdx]
+  return order[nextIdx]  // rotation always returns base type (no :left suffix)
 }
 
 /** Returns true if the given furniture type is a door (ANIM_DOOR variants). */
