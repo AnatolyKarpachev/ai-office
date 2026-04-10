@@ -1163,7 +1163,7 @@ export class OfficeState {
       if (!isDoorFurniture(item.type)) continue
       // Door center in pixel coords
       const doorCx = item.col + 0.5
-      const doorCy = item.row + 1.5  // center of 1x3 door
+      const doorCy = item.row + 1  // center of 1x2 door
       for (const ch of this.characters.values()) {
         const dx = ch.tileCol - doorCx
         const dy = ch.tileRow - doorCy
