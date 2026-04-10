@@ -485,14 +485,31 @@ export function getToggledType(currentType: string): string | null {
   return stateGroups.get(currentType) ?? null
 }
 
-/** Returns the "on" variant if this type has one, otherwise returns the type unchanged. */
+/** Returns the "on" variant if this type has one, otherwise returns the type unchanged.
+ *  Handles :left mirror suffix transparently. */
 export function getOnStateType(currentType: string): string {
-  return offToOn.get(currentType) ?? currentType
+  const direct = offToOn.get(currentType)
+  if (direct) return direct
+  // Handle :left mirror suffix
+  if (currentType.endsWith(':left')) {
+    const base = currentType.slice(0, -5)
+    const baseOn = offToOn.get(base)
+    if (baseOn) return baseOn + ':left'
+  }
+  return currentType
 }
 
-/** Returns the "off" variant if this type has one, otherwise returns the type unchanged. */
+/** Returns the "off" variant if this type has one, otherwise returns the type unchanged.
+ *  Handles :left mirror suffix transparently. */
 export function getOffStateType(currentType: string): string {
-  return onToOff.get(currentType) ?? currentType
+  const direct = onToOff.get(currentType)
+  if (direct) return direct
+  if (currentType.endsWith(':left')) {
+    const base = currentType.slice(0, -5)
+    const baseOff = onToOff.get(base)
+    if (baseOff) return baseOff + ':left'
+  }
+  return currentType
 }
 
 /** Returns true if the given furniture type is part of a rotation group. */
@@ -500,11 +517,18 @@ export function isRotatable(type: string): boolean {
   return rotationGroups.has(type)
 }
 
-/** Get ordered animation frame asset IDs for a given type, or null if not animated. */
+/** Get ordered animation frame asset IDs for a given type, or null if not animated.
+ *  Handles :left mirror suffix — returns frames with :left appended. */
 export function getAnimationFrames(type: string): string[] | null {
-  // Find the animation group this type belongs to
   for (const [, frames] of animationGroups) {
     if (frames.includes(type)) return frames
+  }
+  // Handle :left suffix
+  if (type.endsWith(':left')) {
+    const base = type.slice(0, -5)
+    for (const [, frames] of animationGroups) {
+      if (frames.includes(base)) return frames.map(f => f + ':left')
+    }
   }
   return null
 }

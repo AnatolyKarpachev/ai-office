@@ -97,6 +97,11 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[]): Furnit
       }
     }
 
+    // Doors render in front of characters passing through
+    if (entry.category === 'doors') {
+      zY = (item.row + entry.footprintH) * TILE_SIZE + 2
+    }
+
     // Containment-based surface z-boost: if this item's entire footprint is inside
     // a single strictly-larger furniture piece, render it in front of that furniture.
     // Works for any item (plants, electronics, etc.) without requiring canPlaceOnSurfaces.
