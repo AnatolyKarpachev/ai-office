@@ -44,19 +44,7 @@ function renderMessageText(text: string): React.ReactNode {
     if (part.startsWith('```') && part.endsWith('```')) {
       const code = part.slice(3, -3).replace(/^\w+\n/, '')
       return (
-        <pre key={i} style={{
-          background: 'rgba(0,0,0,0.3)',
-          padding: '4px 6px',
-          margin: '4px 0',
-          fontSize: '12px',
-          fontFamily: 'monospace',
-          borderRadius: 0,
-          border: '1px solid rgba(255,255,255,0.1)',
-          overflow: 'auto',
-          maxHeight: 150,
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-word',
-        }}>
+        <pre key={i} className="bg-black/30 px-1.5 py-1 my-1 text-[12px] font-mono border border-white/10 overflow-auto max-h-[150px] whitespace-pre-wrap break-words">
           {code}
         </pre>
       )
@@ -64,12 +52,7 @@ function renderMessageText(text: string): React.ReactNode {
     return part.split(/(`[^`]+`)/g).map((seg, j) => {
       if (seg.startsWith('`') && seg.endsWith('`')) {
         return (
-          <code key={`${i}-${j}`} style={{
-            background: 'rgba(255,255,255,0.1)',
-            padding: '1px 3px',
-            fontSize: '12px',
-            fontFamily: 'monospace',
-          }}>
+          <code key={`${i}-${j}`} className="bg-white/10 px-[3px] py-px text-[12px] font-mono">
             {seg.slice(1, -1)}
           </code>
         )
@@ -86,65 +69,33 @@ export interface ConversationViewProps {
 
 export function ConversationView({ messages, selectedAgentId }: ConversationViewProps) {
   if (selectedAgentId === null) {
-    return (
-      <div style={{ padding: 16, textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '18px' }}>
-        Select an agent to view conversation
-      </div>
-    )
+    return <div className="p-4 text-center text-white/30 text-[18px]">Select an agent to view conversation</div>
   }
-
   if (messages.length === 0) {
-    return (
-      <div style={{ padding: 16, textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '18px', fontStyle: 'italic' }}>
-        No messages yet...
-      </div>
-    )
+    return <div className="p-4 text-center text-white/30 text-[18px] italic">No messages yet...</div>
   }
 
   return (
     <>
       {messages.map((msg, i) => (
-        <div key={i} style={{
-          padding: '6px 8px',
-          marginBottom: 4,
+        <div key={i} className="px-2 py-1.5 mb-1" style={{
           borderLeft: `3px solid ${msg.role === 'assistant' ? '#6c5ce7' : '#00b894'}`,
-          background: msg.role === 'assistant'
-            ? 'rgba(108,92,231,0.08)'
-            : 'rgba(0,184,148,0.08)',
+          background: msg.role === 'assistant' ? 'rgba(108,92,231,0.08)' : 'rgba(0,184,148,0.08)',
         }}>
-          <div style={{
-            display: 'flex', justifyContent: 'space-between',
-            marginBottom: 2,
-          }}>
-            <span style={{
-              fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase',
-              color: msg.role === 'assistant' ? '#a29bfe' : '#55efc4',
-            }}>
+          <div className="flex justify-between mb-0.5">
+            <span className="text-[11px] font-bold uppercase" style={{ color: msg.role === 'assistant' ? '#a29bfe' : '#55efc4' }}>
               {msg.role}
             </span>
-            <span style={{
-              fontSize: '11px', color: 'rgba(255,255,255,0.3)', fontFamily: 'monospace',
-            }}>
+            <span className="text-[11px] text-white/30 font-mono">
               {formatTime(new Date(msg.timestamp).getTime())}
             </span>
           </div>
           {msg.toolNames && msg.toolNames.length > 0 && (
-            <div style={{
-              fontSize: '10px', color: 'rgba(90,140,255,0.6)',
-              marginBottom: 3,
-            }}>
+            <div className="text-[10px] text-[rgba(90,140,255,0.6)] mb-[3px]">
               tools: {msg.toolNames.join(', ')}
             </div>
           )}
-          <div style={{
-            fontSize: '13px',
-            color: 'rgba(255,255,255,0.75)',
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-word',
-            lineHeight: '1.4',
-            maxHeight: 200,
-            overflow: 'hidden',
-          }}>
+          <div className="text-[13px] text-white/75 whitespace-pre-wrap break-words leading-[1.4] max-h-[200px] overflow-hidden">
             {renderMessageText(msg.text)}
           </div>
         </div>
@@ -160,13 +111,13 @@ function PixelBar({ value, max, color }: { value: number; max: number; color: st
   const filled = max > 0 ? Math.round((value / max) * totalBlocks) : 0
   const blocks: string[] = []
   for (let i = 0; i < totalBlocks; i++) blocks.push(i < filled ? '\u2588' : '\u2591')
-  return <span style={{ fontFamily: 'monospace', letterSpacing: '1px', color, fontSize: '12px' }}>{blocks.join('')}</span>
+  return <span className="font-mono tracking-[1px] text-[12px]" style={{ color }}>{blocks.join('')}</span>
 }
 
-const detailLabelStyle: React.CSSProperties = { fontSize: '12px', color: 'rgba(255,255,255,0.45)', minWidth: 55, flexShrink: 0 }
-const detailValueStyle: React.CSSProperties = { fontSize: '12px', color: 'rgba(255,255,255,0.8)' }
-const detailRowStyle: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, padding: '1px 0' }
-const detailSectionTitle: React.CSSProperties = { fontSize: '11px', color: '#8888bb', marginBottom: 2, marginTop: 6, textTransform: 'uppercase', letterSpacing: '1px' }
+const dlCls = "text-[12px] text-white/45 min-w-[55px] shrink-0"
+const dvCls = "text-[12px] text-white/80"
+const drCls = "flex items-center gap-1.5 py-px"
+const dsCls = "text-[11px] text-[#8888bb] mb-0.5 mt-1.5 uppercase tracking-[1px]"
 
 export interface AgentDetailsViewProps {
   details: AgentDetails
@@ -188,50 +139,45 @@ export function AgentDetailsView({ details, folderName, onClose }: AgentDetailsV
   const reversedHistory = [...d.toolHistory].reverse().slice(0, 20)
 
   return (
-    <div style={{ borderTop: '2px solid var(--pixel-border)', background: 'rgba(255,255,255,0.02)', overflowY: 'auto', flexShrink: 0, maxHeight: '45%' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '4px 8px', background: 'rgba(255,255,255,0.03)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-        <span style={{ fontSize: '13px', color: '#fff', fontWeight: 'bold' }}>
-          {folderName ?? `#${d.id}`} <span style={{ color: 'rgba(255,255,255,0.4)', fontWeight: 'normal' }}>({modelShort})</span>
+    <div className="border-t-2 border-pixel-border bg-white/[0.02] overflow-y-auto shrink-0 max-h-[45%]">
+      <div className="flex items-center justify-between px-2 py-1 bg-white/[0.03] border-b border-white/[0.06]">
+        <span className="text-[13px] text-white font-bold">
+          {folderName ?? `#${d.id}`} <span className="text-white/40 font-normal">({modelShort})</span>
         </span>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.4)', fontSize: '14px', cursor: 'pointer', padding: '0 4px' }}>[X]</button>
+        <button onClick={onClose} className="bg-transparent border-0 text-white/40 text-[14px] cursor-pointer px-1 hover:text-pixel-close-hover">[X]</button>
       </div>
 
-      <div style={{ padding: '2px 8px 6px' }}>
-        {/* Info */}
+      <div className="px-2 py-0.5 pb-1.5">
         {(d.gitBranch || d.permissionMode || d.startTime) && (
           <>
-            <div style={detailSectionTitle}>Info</div>
-            {d.gitBranch && <div style={detailRowStyle}><span style={detailLabelStyle}>Branch:</span><span style={{ ...detailValueStyle, color: '#7cb3ff' }}>{d.gitBranch}</span></div>}
-            {d.permissionMode && <div style={detailRowStyle}><span style={detailLabelStyle}>Perms:</span><span style={{ ...detailValueStyle, color: d.permissionMode === 'bypassPermissions' ? '#e5c07b' : '#98c379' }}>{d.permissionMode}</span></div>}
-            {d.startTime && <div style={detailRowStyle}><span style={detailLabelStyle}>Started:</span><span style={detailValueStyle}>{formatIsoTime(d.startTime)}</span></div>}
+            <div className={dsCls}>Info</div>
+            {d.gitBranch && <div className={drCls}><span className={dlCls}>Branch:</span><span className={`${dvCls} text-[#7cb3ff]`}>{d.gitBranch}</span></div>}
+            {d.permissionMode && <div className={drCls}><span className={dlCls}>Perms:</span><span className={dvCls} style={{ color: d.permissionMode === 'bypassPermissions' ? '#e5c07b' : '#98c379' }}>{d.permissionMode}</span></div>}
+            {d.startTime && <div className={drCls}><span className={dlCls}>Started:</span><span className={dvCls}>{formatIsoTime(d.startTime)}</span></div>}
           </>
         )}
 
-        {/* Tokens */}
-        <div style={detailSectionTitle}>Tokens</div>
-        <div style={detailRowStyle}><span style={detailLabelStyle}>Input:</span><PixelBar value={contextInput} max={contextLimit} color="#5a8cff" /><span style={{ ...detailValueStyle, marginLeft: 4 }}>{formatNumberCompact(contextInput)}</span></div>
-        <div style={detailRowStyle}><span style={detailLabelStyle}>Output:</span><PixelBar value={contextOutput} max={contextLimit} color="#5ac88c" /><span style={{ ...detailValueStyle, marginLeft: 4 }}>{formatNumberCompact(contextOutput)}</span></div>
-        <div style={detailRowStyle}><span style={detailLabelStyle}>Cache:</span><PixelBar value={contextCacheRead} max={contextLimit} color="#c678dd" /><span style={{ ...detailValueStyle, marginLeft: 4 }}>{formatNumberCompact(contextCacheRead)}</span></div>
-        <div style={detailRowStyle}><span style={detailLabelStyle}>Context:</span><PixelBar value={contextTotal} max={contextLimit} color="#e5c07b" /><span style={{ ...detailValueStyle, marginLeft: 4 }}>{formatNumberCompact(contextTotal)}/{formatNumberCompact(contextLimit)}</span></div>
-        {d.contextUsage && <div style={detailRowStyle}><span style={detailLabelStyle}>Lifetime:</span><span style={detailValueStyle}>{formatNumberCompact(totalTokens)}</span></div>}
+        <div className={dsCls}>Tokens</div>
+        <div className={drCls}><span className={dlCls}>Input:</span><PixelBar value={contextInput} max={contextLimit} color="#5a8cff" /><span className={`${dvCls} ml-1`}>{formatNumberCompact(contextInput)}</span></div>
+        <div className={drCls}><span className={dlCls}>Output:</span><PixelBar value={contextOutput} max={contextLimit} color="#5ac88c" /><span className={`${dvCls} ml-1`}>{formatNumberCompact(contextOutput)}</span></div>
+        <div className={drCls}><span className={dlCls}>Cache:</span><PixelBar value={contextCacheRead} max={contextLimit} color="#c678dd" /><span className={`${dvCls} ml-1`}>{formatNumberCompact(contextCacheRead)}</span></div>
+        <div className={drCls}><span className={dlCls}>Context:</span><PixelBar value={contextTotal} max={contextLimit} color="#e5c07b" /><span className={`${dvCls} ml-1`}>{formatNumberCompact(contextTotal)}/{formatNumberCompact(contextLimit)}</span></div>
+        {d.contextUsage && <div className={drCls}><span className={dlCls}>Lifetime:</span><span className={dvCls}>{formatNumberCompact(totalTokens)}</span></div>}
 
-        {/* Performance */}
-        <div style={detailSectionTitle}>Performance</div>
-        <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.7)' }}>
+        <div className={dsCls}>Performance</div>
+        <div className="text-[12px] text-white/70">
           Turns: {d.turnCount} | Avg: {formatDuration(avgTurnMs)} | Cache: {cacheHitRate}% | Total: {formatDuration(d.totalDurationMs)}
         </div>
 
-        {/* Tool History */}
         {reversedHistory.length > 0 && (
           <>
-            <div style={detailSectionTitle}>Tools (last {reversedHistory.length})</div>
-            <div style={{ maxHeight: 120, overflowY: 'auto', background: '#151528', border: '1px solid #333355', padding: '2px 0' }}>
+            <div className={dsCls}>Tools (last {reversedHistory.length})</div>
+            <div className="max-h-[120px] overflow-y-auto bg-[#151528] border border-[#333355] py-0.5">
               {reversedHistory.map((entry, i) => (
-                <div key={`${entry.timestamp}-${i}`} style={{ display: 'flex', justifyContent: 'space-between', padding: '1px 6px', fontSize: '11px', color: 'rgba(255,255,255,0.6)' }}>
-                  <span style={{ color: 'rgba(255,255,255,0.35)', minWidth: 55 }}>{formatIsoTime(entry.timestamp)}</span>
-                  <span style={{ flex: 1, marginLeft: 4, color: '#7cb3ff' }}>{entry.name}</span>
-                  <span style={{ minWidth: 45, textAlign: 'right', color: 'rgba(255,255,255,0.4)' }}>{entry.durationMs !== undefined ? formatDuration(entry.durationMs) : '...'}</span>
+                <div key={`${entry.timestamp}-${i}`} className="flex justify-between px-1.5 py-px text-[11px] text-white/60">
+                  <span className="text-white/35 min-w-[55px]">{formatIsoTime(entry.timestamp)}</span>
+                  <span className="flex-1 ml-1 text-[#7cb3ff]">{entry.name}</span>
+                  <span className="min-w-[45px] text-right text-white/40">{entry.durationMs !== undefined ? formatDuration(entry.durationMs) : '...'}</span>
                 </div>
               ))}
             </div>
