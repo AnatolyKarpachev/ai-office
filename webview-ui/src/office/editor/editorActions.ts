@@ -118,6 +118,10 @@ export function canPlaceFurniture(
     }
   }
 
+  // Build occupied set excluding the item being moved, skipping background tile rows
+  // Doors can overlap other doors — exclude door tiles from occupied set when placing a door
+  const isDoor = isDoorFurniture(type)
+
   // Wall/VOID placement check (background rows skip this check)
   const bgRows = entry.backgroundTiles || 0
   for (let dr = 0; dr < entry.footprintH; dr++) {
@@ -139,10 +143,6 @@ export function canPlaceFurniture(
       }
     }
   }
-
-  // Build occupied set excluding the item being moved, skipping background tile rows
-  // Doors can overlap other doors — exclude door tiles from occupied set when placing a door
-  const isDoor = isDoorFurniture(type)
   const occupied = getPlacementBlockedTiles(layout.furniture, excludeUid, isDoor)
 
   // If this item can be placed on surfaces, build set of desk tiles to exclude from collision

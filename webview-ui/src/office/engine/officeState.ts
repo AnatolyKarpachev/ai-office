@@ -1230,8 +1230,9 @@ export class OfficeState {
         }
       }
 
-      // Auto-on: active agents turn electronics ON
+      // Auto-on: active agents turn electronics ON (skip doors — handled by door detection above)
       if (!hasAutoOn) return item
+      if (isDoorFurniture(item.type)) return item
       for (let dr = 0; dr < entry.footprintH; dr++) {
         for (let dc = 0; dc < entry.footprintW; dc++) {
           if (autoOnTiles.has(`${item.col + dc},${item.row + dr}`)) {

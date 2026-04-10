@@ -40,8 +40,8 @@
 
   /* Z-index */
   --z-controls: 50;
-  --z-overlay: 100;
-  --z-overlay-selected: 110;
+  --z-overlay: 30;
+  --z-overlay-selected: 35;
   --z-sidebar: 120;
 }
 
@@ -74,8 +74,8 @@
   --vscode-charts-blue: #3794ff;
   --pixel-status-permission: var(--vscode-charts-yellow, #cca700);
   --pixel-status-active: var(--vscode-charts-blue, #3794ff);
-  --pixel-overlay-z: 100;
-  --pixel-overlay-selected-z: 110;
+  --pixel-overlay-z: 30;
+  --pixel-overlay-selected-z: 35;
   --pixel-controls-z: 50;
   --pixel-sidebar-z: 120;
 }

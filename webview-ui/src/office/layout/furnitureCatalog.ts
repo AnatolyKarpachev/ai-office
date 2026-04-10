@@ -196,7 +196,7 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
 
     // For 2-way scheme, only use front and right (side)
     let allowedOrients = orientationOrder
-    if (scheme === '2-way') {
+    if (scheme === '2-way' || scheme === '2-way-mirror') {
       allowedOrients = ['front', 'right']
     }
 

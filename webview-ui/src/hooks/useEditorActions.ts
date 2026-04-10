@@ -465,7 +465,25 @@ export function useEditorActions(
       } else {
         // Remove wall → paint floor with current floor settings
         if (isWall) {
-          const newLayout = paintTile(layout, effectiveCol, effectiveRow, editorState.selectedTileType, editorState.floorColor)
+          // Restore floor color from adjacent floor tile (preserves original color)
+          const existingColors = layout.tileColors || []
+          const neighbors: [number, number][] = [
+            [effectiveCol - 1, effectiveRow],
+            [effectiveCol + 1, effectiveRow],
+            [effectiveCol, effectiveRow - 1],
+            [effectiveCol, effectiveRow + 1],
+          ]
+          let restoredColor: FloorColor | undefined
+          for (const [nc, nr] of neighbors) {
+            const ni = nr * layout.cols + nc
+            if (nc >= 0 && nc < layout.cols && nr >= 0 && nr < layout.rows
+                && layout.tiles[ni] !== TileType.WALL && layout.tiles[ni] !== TileType.VOID
+                && existingColors[ni]) {
+              restoredColor = existingColors[ni] as FloorColor
+              break
+            }
+          }
+          const newLayout = paintTile(layout, effectiveCol, effectiveRow, editorState.selectedTileType, restoredColor)
           if (newLayout !== layout) {
             applyEdit(newLayout)
           }
