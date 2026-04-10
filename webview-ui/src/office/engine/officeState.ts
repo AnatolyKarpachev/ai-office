@@ -26,7 +26,7 @@ import {
 
   getSeatTiles,
 } from '../layout/layoutSerializer.js'
-import { getAnimationFrames, getCatalogEntry, getOnStateType } from '../layout/furnitureCatalog.js'
+import { getAnimationFrames, getCatalogEntry, getOnStateType, isDoorFurniture } from '../layout/furnitureCatalog.js'
 import {
   getAgentPriority as _getAgentPriority,
   getClusterCentroid as _getClusterCentroid,
@@ -64,6 +64,8 @@ export class OfficeState {
   characters: Map<number, Character> = new Map()
   /** Accumulated time for furniture animation frame cycling */
   furnitureAnimTimer = 0
+  _prevOpenDoors?: Set<string>
+  _openDoorUids = new Set<string>()
   selectedAgentId: number | null = null
   cameraFollowId: number | null = null
   hoveredAgentId: number | null = null
@@ -1134,10 +1136,58 @@ export class OfficeState {
       }
     }
 
+    // Door proximity detection — collect door tiles that should be "open"
+    const DOOR_PROXIMITY = 3  // Manhattan distance in tiles
+    const openDoorUids = new Set<string>()
+    for (const item of this.layout.furniture) {
+      if (!isDoorFurniture(item.type)) continue
+      const doorCenterCol = item.col
+      const doorCenterRow = item.row + Math.floor((getCatalogEntry(item.type)?.footprintH ?? 1) / 2)
+      for (const ch of this.characters.values()) {
+        const chCol = Math.round(ch.col)
+        const chRow = Math.round(ch.row)
+        const dist = Math.abs(chCol - doorCenterCol) + Math.abs(chRow - doorCenterRow)
+        if (dist <= DOOR_PROXIMITY) {
+          openDoorUids.add(item.uid)
+          break
+        }
+      }
+    }
+
+    // Track door state changes for blocking recalc
+    if (this._prevOpenDoors === undefined) this._prevOpenDoors = new Set<string>()
+    let doorsChanged = openDoorUids.size !== this._prevOpenDoors.size
+    if (!doorsChanged) {
+      for (const uid of openDoorUids) {
+        if (!this._prevOpenDoors.has(uid)) { doorsChanged = true; break }
+      }
+    }
+    this._prevOpenDoors = openDoorUids
+
+    // Rebuild blocked tiles if door states changed
+    if (doorsChanged) {
+      this._openDoorUids = openDoorUids
+      this.blockedTiles = getBlockedTiles(this.layout.furniture, undefined, openDoorUids)
+      this.walkableTiles = getWalkableTiles(this.tileMap, this.blockedTiles)
+      this.distanceCache.clear()
+    }
+
     // Build modified furniture list with auto-state and animation applied
     const animFrame = Math.floor(this.furnitureAnimTimer / FURNITURE_ANIM_INTERVAL_SEC)
     const hasAutoOn = autoOnTiles.size > 0
     const modifiedFurniture: PlacedFurniture[] = this.layout.furniture.map((item) => {
+      // Door auto-open based on proximity
+      if (isDoorFurniture(item.type) && openDoorUids.has(item.uid)) {
+        let onType = getOnStateType(item.type)
+        if (onType !== item.type) {
+          const onFrames = getAnimationFrames(onType)
+          if (onFrames && onFrames.length > 1) {
+            const frameIdx = animFrame % onFrames.length
+            onType = onFrames[frameIdx]
+          }
+          return { ...item, type: onType }
+        }
+      }
       const entry = getCatalogEntry(item.type)
       if (!entry) return item
 

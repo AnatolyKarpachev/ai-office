@@ -11,6 +11,7 @@ export interface LoadedAssetData {
     footprintW: number
     footprintH: number
     isDesk: boolean
+    isDoor?: boolean
     groupId?: string
     orientation?: string // 'front' | 'back' | 'left' | 'right' | 'side'
     state?: string // 'on' | 'off'
@@ -115,6 +116,7 @@ export function buildDynamicCatalog(assets: LoadedAssetData): boolean {
         footprintH: asset.footprintH,
         sprite,
         isDesk: asset.isDesk,
+        isDoor: !!asset.isDoor,
         category: asset.category as FurnitureCategory,
         ...(asset.orientation ? { orientation: asset.orientation } : {}),
         ...(asset.canPlaceOnSurfaces ? { canPlaceOnSurfaces: true } : {}),
@@ -467,6 +469,19 @@ export function getRotatedType(currentType: string, direction: 'cw' | 'ccw'): st
   const step = direction === 'cw' ? 1 : -1
   const nextIdx = (idx + step + order.length) % order.length
   return order[nextIdx]
+}
+
+/** Returns true if the given furniture type is a door (has isDoor flag). */
+export function isDoorFurniture(type: string): boolean {
+  const entry = getCatalogEntry(type)
+  if (entry?.isDoor) return true
+  // Also check the "off" variant (closed door)
+  const offType = getOffStateType(type)
+  if (offType !== type) {
+    const offEntry = getCatalogEntry(offType)
+    if (offEntry?.isDoor) return true
+  }
+  return false
 }
 
 /** Returns the toggled state variant (on<->off), or null if no state variant exists. */

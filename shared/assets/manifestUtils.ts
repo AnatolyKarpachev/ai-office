@@ -59,6 +59,8 @@ export interface InheritedProps {
   canPlaceOnWalls: boolean;
   canPlaceOnSurfaces: boolean;
   backgroundTiles: number;
+  isDoor?: boolean;
+  isDesk?: boolean;
   orientation?: string;
   state?: string;
   rotationScheme?: string;
@@ -76,6 +78,7 @@ export interface FurnitureAsset {
   footprintW: number;
   footprintH: number;
   isDesk: boolean;
+  isDoor?: boolean;
   canPlaceOnWalls: boolean;
   groupId?: string;
   canPlaceOnSurfaces?: boolean;
@@ -110,6 +113,7 @@ export function flattenManifest(node: ManifestNode, inherited: InheritedProps): 
         footprintW: asset.footprintW,
         footprintH: asset.footprintH,
         isDesk: inherited.isDesk ?? (inherited.category === 'desks'),
+        isDoor: inherited.isDoor,
         canPlaceOnWalls: inherited.canPlaceOnWalls,
         canPlaceOnSurfaces: inherited.canPlaceOnSurfaces,
         backgroundTiles: asset.backgroundTiles ?? inherited.backgroundTiles,

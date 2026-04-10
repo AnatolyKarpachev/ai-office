@@ -193,6 +193,7 @@ export function loadFurnitureAssets(assetsRoot: string): LoadedFurnitureAssets |
           canPlaceOnWalls: manifest.canPlaceOnWalls,
           canPlaceOnSurfaces: manifest.canPlaceOnSurfaces,
           backgroundTiles: manifest.backgroundTiles,
+          isDoor: (manifest as Record<string, unknown>).isDoor === true,
         };
 
         let assets: FurnitureAsset[];
@@ -219,6 +220,7 @@ export function loadFurnitureAssets(assetsRoot: string): LoadedFurnitureAssets |
               footprintW: manifest.footprintW,
               footprintH: manifest.footprintH,
               isDesk: manifest.isDesk ?? (manifest.category === "desks"),
+              isDoor: (manifest as Record<string, unknown>).isDoor === true,
               canPlaceOnWalls: manifest.canPlaceOnWalls,
               canPlaceOnSurfaces: manifest.canPlaceOnSurfaces,
               backgroundTiles: manifest.backgroundTiles,

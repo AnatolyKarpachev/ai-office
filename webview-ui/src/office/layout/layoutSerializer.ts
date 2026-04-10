@@ -159,11 +159,13 @@ export function layoutToFurnitureInstances(furniture: PlacedFurniture[]): Furnit
 
 /** Get all tiles blocked by furniture footprints, optionally excluding a set of tiles.
  *  Skips top backgroundTiles rows so characters can walk through them. */
-export function getBlockedTiles(furniture: PlacedFurniture[], excludeTiles?: Set<string>): Set<string> {
+export function getBlockedTiles(furniture: PlacedFurniture[], excludeTiles?: Set<string>, openDoorUids?: Set<string>): Set<string> {
   const tiles = new Set<string>()
   // Categories that don't block walking
   const WALKABLE_CATEGORIES = new Set(['chairs', 'floor_decor'])
   for (const item of furniture) {
+    // Open doors don't block
+    if (openDoorUids && openDoorUids.has(item.uid)) continue
     const entry = getCatalogEntry(item.type)
     if (!entry) continue
     if (WALKABLE_CATEGORIES.has(entry.category)) continue // walkable furniture never blocks

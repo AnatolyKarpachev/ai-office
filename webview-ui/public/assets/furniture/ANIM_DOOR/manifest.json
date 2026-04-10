@@ -1,0 +1,60 @@
+{
+  "id": "ANIM_DOOR",
+  "name": "Animated Door",
+  "category": "doors",
+  "type": "group",
+  "groupType": "state",
+  "canPlaceOnWalls": false,
+  "canPlaceOnSurfaces": false,
+  "backgroundTiles": 1,
+  "isDoor": true,
+  "members": [
+    {
+      "type": "group",
+      "groupType": "animation",
+      "state": "on",
+      "members": [
+        {
+          "type": "asset",
+          "id": "ANIM_DOOR_OPEN_1",
+          "file": "ANIM_DOOR_OPEN_1.png",
+          "width": 16,
+          "height": 48,
+          "footprintW": 1,
+          "footprintH": 3,
+          "frame": 0
+        },
+        {
+          "type": "asset",
+          "id": "ANIM_DOOR_OPEN_2",
+          "file": "ANIM_DOOR_OPEN_2.png",
+          "width": 16,
+          "height": 48,
+          "footprintW": 1,
+          "footprintH": 3,
+          "frame": 1
+        },
+        {
+          "type": "asset",
+          "id": "ANIM_DOOR_OPEN",
+          "file": "ANIM_DOOR_OPEN.png",
+          "width": 16,
+          "height": 48,
+          "footprintW": 1,
+          "footprintH": 3,
+          "frame": 2
+        }
+      ]
+    },
+    {
+      "type": "asset",
+      "id": "ANIM_DOOR_CLOSED",
+      "file": "ANIM_DOOR_CLOSED.png",
+      "state": "off",
+      "width": 16,
+      "height": 48,
+      "footprintW": 1,
+      "footprintH": 3
+    }
+  ]
+}
