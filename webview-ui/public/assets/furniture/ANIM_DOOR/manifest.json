@@ -3,8 +3,7 @@
   "name": "Animated Door",
   "category": "doors",
   "type": "group",
-  "groupType": "rotation",
-  "rotationScheme": "2-way-mirror",
+  "groupType": "state",
   "canPlaceOnWalls": false,
   "canPlaceOnSurfaces": false,
   "backgroundTiles": 1,
@@ -12,40 +11,14 @@
   "members": [
     {
       "type": "group",
-      "groupType": "state",
-      "orientation": "front",
+      "groupType": "animation",
+      "state": "on",
       "members": [
-        {
-          "type": "group",
-          "groupType": "animation",
-          "state": "on",
-          "members": [
-            { "type": "asset", "id": "ANIM_DOOR_OPEN_1", "file": "ANIM_DOOR_OPEN_1.png", "width": 16, "height": 48, "footprintW": 1, "footprintH": 3, "frame": 0 },
-            { "type": "asset", "id": "ANIM_DOOR_OPEN_2", "file": "ANIM_DOOR_OPEN_2.png", "width": 16, "height": 48, "footprintW": 1, "footprintH": 3, "frame": 1 },
-            { "type": "asset", "id": "ANIM_DOOR_OPEN", "file": "ANIM_DOOR_OPEN.png", "width": 16, "height": 48, "footprintW": 1, "footprintH": 3, "frame": 2 }
-          ]
-        },
-        { "type": "asset", "id": "ANIM_DOOR_CLOSED", "file": "ANIM_DOOR_CLOSED.png", "state": "off", "width": 16, "height": 48, "footprintW": 1, "footprintH": 3 }
+        { "type": "asset", "id": "ANIM_DOOR_OPEN_1", "file": "ANIM_DOOR_OPEN_1.png", "width": 16, "height": 48, "footprintW": 1, "footprintH": 3, "frame": 0 },
+        { "type": "asset", "id": "ANIM_DOOR_OPEN_2", "file": "ANIM_DOOR_OPEN_2.png", "width": 16, "height": 48, "footprintW": 1, "footprintH": 3, "frame": 1 },
+        { "type": "asset", "id": "ANIM_DOOR_OPEN", "file": "ANIM_DOOR_OPEN.png", "width": 16, "height": 48, "footprintW": 1, "footprintH": 3, "frame": 2 }
       ]
     },
-    {
-      "type": "group",
-      "groupType": "state",
-      "orientation": "side",
-      "mirrorSide": true,
-      "members": [
-        {
-          "type": "group",
-          "groupType": "animation",
-          "state": "on",
-          "members": [
-            { "type": "asset", "id": "ANIM_DOOR_SIDE_OPEN_1", "file": "ANIM_DOOR_SIDE_OPEN_1.png", "width": 48, "height": 16, "footprintW": 3, "footprintH": 1, "frame": 0 },
-            { "type": "asset", "id": "ANIM_DOOR_SIDE_OPEN_2", "file": "ANIM_DOOR_SIDE_OPEN_2.png", "width": 48, "height": 16, "footprintW": 3, "footprintH": 1, "frame": 1 },
-            { "type": "asset", "id": "ANIM_DOOR_SIDE_OPEN", "file": "ANIM_DOOR_SIDE_OPEN.png", "width": 48, "height": 16, "footprintW": 3, "footprintH": 1, "frame": 2 }
-          ]
-        },
-        { "type": "asset", "id": "ANIM_DOOR_SIDE_CLOSED", "file": "ANIM_DOOR_SIDE_CLOSED.png", "state": "off", "width": 48, "height": 16, "footprintW": 3, "footprintH": 1 }
-      ]
-    }
+    { "type": "asset", "id": "ANIM_DOOR_CLOSED", "file": "ANIM_DOOR_CLOSED.png", "state": "off", "width": 16, "height": 48, "footprintW": 1, "footprintH": 3 }
   ]
 }
