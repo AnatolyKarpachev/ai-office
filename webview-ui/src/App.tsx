@@ -28,10 +28,10 @@ function getOfficeState(): OfficeState {
   return officeStateRef.current
 }
 
-const abCls = "px-2.5 py-1 text-[22px] bg-pixel-btn text-pixel-text-dim border-2 border-transparent cursor-pointer hover:bg-pixel-btn-hover"
-const abDisabledCls = "px-2.5 py-1 text-[22px] bg-pixel-btn text-pixel-text-dim border-2 border-transparent cursor-default opacity-35"
-const abSaveCls = "px-2.5 py-1 text-[22px] bg-[rgba(46,160,67,0.22)] text-[#d7ffe0] border-2 border-[rgba(46,160,67,0.85)] cursor-pointer"
-const abResetCls = "px-2.5 py-1 text-[22px] bg-[rgba(198,59,59,0.22)] text-[#ffd7d7] border-2 border-[rgba(198,59,59,0.85)] cursor-pointer"
+const abCls = "px-2.5 py-1 text-[22px] bg-pixel-btn text-pixel-text-dim border-2 border-transparent cursor-pointer hover:bg-pixel-btn-hover leading-none"
+const abDisabledCls = "px-2.5 py-1 text-[22px] bg-pixel-btn text-pixel-text-dim border-2 border-transparent cursor-default opacity-35 leading-none"
+const abSaveCls = "px-2.5 py-1 text-[22px] bg-[rgba(46,160,67,0.22)] text-[#d7ffe0] border-2 border-[rgba(46,160,67,0.85)] cursor-pointer leading-none"
+const abResetCls = "px-2.5 py-1 text-[22px] bg-[rgba(198,59,59,0.22)] text-[#ffd7d7] border-2 border-[rgba(198,59,59,0.85)] cursor-pointer leading-none"
 
 function EditActionBar({ editor, editorState: es }: { editor: ReturnType<typeof useEditorActions>; editorState: EditorState }) {
   const [showResetConfirm, setShowResetConfirm] = useState(false)

@@ -17,8 +17,8 @@ interface BottomToolbarProps {
   shareLink: { url: string; expiresAt: number } | null
 }
 
-const btnCls = "px-2.5 py-1.5 text-[24px] text-pixel-text bg-pixel-btn border-2 border-transparent cursor-pointer hover:bg-pixel-btn-hover"
-const btnActiveCls = "px-2.5 py-1.5 text-[24px] text-pixel-text bg-pixel-active border-2 border-pixel-accent cursor-pointer"
+const btnCls = "px-2.5 py-[5px] text-[24px] text-pixel-text bg-pixel-btn border-2 border-transparent cursor-pointer hover:bg-pixel-btn-hover"
+const btnActiveCls = "px-2.5 py-[5px] text-[24px] text-pixel-text bg-pixel-active border-2 border-pixel-accent cursor-pointer"
 
 export function BottomToolbar({
   isEditMode,
@@ -113,7 +113,7 @@ export function BottomToolbar({
           onClick={() => setIsShareOpen(false)}
           className="fixed inset-0 z-[190]"
         />
-        <div className="fixed bottom-[60px] left-2.5 z-[191] bg-pixel-bg border-2 border-pixel-border p-2 shadow-pixel min-w-[260px]">
+        <div className="fixed bottom-[60px] left-2.5 z-[191] bg-pixel-bg border-2 border-pixel-border p-2 shadow-pixel min-w-[260px] min-w-[260px]">
           <div className="text-[18px] text-white/50 mb-1.5 font-bold">
             SHARE OFFICE
           </div>
@@ -132,14 +132,14 @@ export function BottomToolbar({
                     setCopied(true)
                     setTimeout(() => setCopied(false), 2000)
                   }}
-                  className={`flex-1 text-center text-[16px] px-2.5 py-1.5 border-2 border-transparent cursor-pointer ${
+                  className={`flex-1 text-center text-[16px] px-2.5 py-[5px] border-2 border-transparent cursor-pointer ${
                     copied ? 'bg-pixel-agent-bg text-pixel-green' : 'bg-pixel-btn text-pixel-text hover:bg-pixel-btn-hover'
                   }`}
                 >
                   {copied ? 'Copied!' : 'Copy'}
                 </button>
                 <button
-                  className="flex-1 text-center text-[16px] px-2.5 py-1.5 bg-pixel-btn border-2 border-transparent cursor-pointer text-pixel-close-hover hover:bg-pixel-btn-hover"
+                  className="flex-1 text-center text-[16px] px-2.5 py-[5px] bg-pixel-btn border-2 border-transparent cursor-pointer text-pixel-close-hover hover:bg-pixel-btn-hover"
                   onClick={() => {
                     const token = shareUrl.split('/').pop()
                     vscode.postMessage({ type: 'revokeShareLink', token })

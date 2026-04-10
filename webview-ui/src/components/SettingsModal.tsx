@@ -11,7 +11,7 @@ interface SettingsModalProps {
   onToggleAlwaysShowOverlay: () => void
 }
 
-const menuItemCls = "flex items-center justify-between w-full px-2.5 py-1.5 text-[24px] text-pixel-text bg-transparent border-0 cursor-pointer text-left hover:bg-pixel-btn"
+const menuItemCls = "flex items-center justify-between w-full px-2.5 py-[6px] text-[24px] text-pixel-text bg-transparent border-0 cursor-pointer text-left hover:bg-pixel-btn"
 
 function Checkbox({ checked }: { checked: boolean }) {
   return (
@@ -84,7 +84,7 @@ export function SettingsModal({
           <span>Always Show Labels</span>
           <Checkbox checked={alwaysShowOverlay} />
         </button>
-        <div className="mt-2 p-2.5 border-t border-pixel-border text-[20px] leading-[1.45] text-white/[0.78] max-w-[520px]">
+        <div className="mt-2 p-2.5 border-t border-pixel-border border-pixel-border text-[20px] leading-[1.45] text-white/[0.78] max-w-[520px]">
           Проект поддерживается по личной инициативе и содержит баги, которые стараюсь оперативно
           исправлять. Если вам понравилось, то лучшая благодарность это подписка на канал:{' '}
           <a href="https://t.me/segagridchin" target="_blank" rel="noreferrer" className="text-pixel-accent no-underline">

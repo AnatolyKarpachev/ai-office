@@ -114,7 +114,7 @@ export function MessagesView({ messages }: { messages: SendMessageEntry[] }) {
           <div
             key={key}
             onClick={() => toggle(key)}
-            className="px-1.5 py-1 mb-0.5 cursor-pointer transition-colors duration-100"
+            className="px-1.5 py-1 mb-px cursor-pointer transition-colors duration-100"
             style={{
               background: msg.to === 'scratchboard' ? 'rgba(0,50,150,0.2)' : 'rgba(0,100,30,0.2)',
               borderLeft: `2px solid ${msg.to === 'scratchboard' ? 'rgba(0,150,255,0.9)' : 'rgba(255,165,0,0.9)'}`,
@@ -175,7 +175,7 @@ export function ActivityFeed({ entries, agentRoles }: ActivityFeedProps) {
         return (
           <div
             key={entry.id}
-            className="mb-px transition-colors duration-100"
+            className="mb-px transition-colors"
             style={{
               padding: isSendMsg ? '4px 6px' : '3px 6px',
               borderLeft: `2px solid ${getEntryColor(entry.type)}`,
