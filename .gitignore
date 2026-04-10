@@ -13,6 +13,9 @@ sd-office/
 # Playwright MCP debug logs
 .playwright-mcp/
 
+# Claude Code config
+CLAUDE.md
+
 # Screenshots
 pixel-agents-current.png
 *.HEIC
