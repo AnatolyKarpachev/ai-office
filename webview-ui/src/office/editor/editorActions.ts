@@ -130,9 +130,12 @@ export function canPlaceFurniture(
       const tileVal = layout.tiles[idx]
       if (entry.canPlaceOnWalls) {
         if (tileVal !== TileType.WALL) return false
+      } else if (isDoor) {
+        // Doors can be placed on any tile type (floor, wall, void) — they go in doorways
+        continue
       } else {
-        if (tileVal === TileType.VOID) return false // Cannot place on VOID
-        if (tileVal === TileType.WALL) return false // Normal items cannot overlap walls
+        if (tileVal === TileType.VOID) return false
+        if (tileVal === TileType.WALL) return false
       }
     }
   }
