@@ -66,7 +66,14 @@ function getEntryIcon(type: ActivityEntry['type']): string {
   }
 }
 
-// ── SendMessageEntry type & MessagesView ─────────────────────────────
+// ── Badge components ────────────────────────────────────────────────
+
+const fromBadgeCls = "text-[13px] px-1 font-bold bg-[rgba(255,165,0,0.2)] text-[#ffb347] border border-[rgba(255,165,0,0.4)] rounded-sm whitespace-nowrap leading-[16px] overflow-hidden text-ellipsis max-w-[80px]"
+const toBadgeCls = "text-[13px] px-1 font-bold bg-[rgba(90,200,140,0.2)] text-pixel-green border border-[rgba(90,200,140,0.4)] rounded-sm whitespace-nowrap leading-[16px] overflow-hidden text-ellipsis max-w-[80px]"
+const fromBadgeLgCls = "text-[14px] px-[5px] py-px font-bold bg-[rgba(255,165,0,0.2)] text-[#ffb347] border border-[rgba(255,165,0,0.4)] rounded-sm whitespace-nowrap leading-[18px]"
+const toBadgeLgCls = "text-[14px] px-[5px] py-px font-bold bg-[rgba(90,200,140,0.2)] text-pixel-green border border-[rgba(90,200,140,0.4)] rounded-sm whitespace-nowrap leading-[18px]"
+
+// ── MessagesView ────────────────────────────────────────────────────
 
 interface SendMessageEntry {
   id: number
@@ -89,14 +96,9 @@ export function MessagesView({ messages }: { messages: SendMessageEntry[] }) {
   }, [])
 
   if (messages.length === 0) {
-    return (
-      <div style={{ padding: 16, textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '18px', fontStyle: 'italic' }}>
-        No agent messages
-      </div>
-    )
+    return <div className="p-4 text-center text-white/30 text-[18px] italic">No agent messages</div>
   }
 
-  // Show newest first, max 100
   const sorted = [...messages].slice(-100).reverse()
 
   return (
@@ -112,67 +114,35 @@ export function MessagesView({ messages }: { messages: SendMessageEntry[] }) {
           <div
             key={key}
             onClick={() => toggle(key)}
+            className="px-1.5 py-1 mb-0.5 cursor-pointer transition-colors duration-100"
             style={{
-              padding: '4px 6px',
-              marginBottom: 2,
               background: msg.to === 'scratchboard' ? 'rgba(0,50,150,0.2)' : 'rgba(0,100,30,0.2)',
               borderLeft: `2px solid ${msg.to === 'scratchboard' ? 'rgba(0,150,255,0.9)' : 'rgba(255,165,0,0.9)'}`,
-              cursor: 'pointer',
-              transition: 'background 0.1s ease',
             }}
           >
-            {/* Header: time + from -> to */}
-            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-              <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.35)', fontFamily: 'monospace', flexShrink: 0 }}>
+            <div className="flex gap-1 items-center">
+              <span className="text-[12px] text-white/35 font-mono shrink-0">
                 {isExpanded ? '\u25BE' : '\u25B8'}
               </span>
-              <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.35)', fontFamily: 'monospace', flexShrink: 0 }}>
+              <span className="text-[13px] text-white/35 font-mono shrink-0">
                 {formatTime(msg.timestamp)}
               </span>
-              <span style={{
-                fontSize: '13px', padding: '0 4px', fontWeight: 'bold',
-                background: 'rgba(255,165,0,0.2)', color: '#ffb347',
-                border: '1px solid rgba(255,165,0,0.4)',
-                borderRadius: 2, whiteSpace: 'nowrap', lineHeight: '16px',
-                overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 80,
-              }}>
-                {msg.from}
-              </span>
-              <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)' }}>\u2192</span>
-              <span style={{
-                fontSize: '13px', padding: '0 4px', fontWeight: 'bold',
-                background: 'rgba(90,200,140,0.2)', color: '#5ac88c',
-                border: '1px solid rgba(90,200,140,0.4)',
-                borderRadius: 2, whiteSpace: 'nowrap', lineHeight: '16px',
-                overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 80,
-              }}>
-                {msg.to}
-              </span>
+              <span className={fromBadgeCls}>{msg.from}</span>
+              <span className="text-[13px] text-white/50">{'\u2192'}</span>
+              <span className={toBadgeCls}>{msg.to}</span>
             </div>
 
-            {/* Collapsed: single line preview */}
             {!isExpanded && (
-              <div style={{
-                fontSize: '13px', color: 'rgba(255,255,255,0.45)',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                paddingLeft: 16, marginTop: 1,
-              }}>
+              <div className="text-[13px] text-white/45 overflow-hidden text-ellipsis whitespace-nowrap pl-4 mt-px">
                 {lines[0]}
               </div>
             )}
 
-            {/* Expanded: up to 20 lines */}
             {isExpanded && (
-              <div style={{
-                fontSize: '13px', color: 'rgba(255,255,255,0.6)',
-                paddingLeft: 16, marginTop: 2,
-                lineHeight: '1.35',
-                wordBreak: 'break-word',
-                whiteSpace: 'pre-wrap',
-              }}>
+              <div className="text-[13px] text-white/60 pl-4 mt-0.5 leading-[1.35] break-words whitespace-pre-wrap">
                 {truncatedLines.join('\n')}
                 {hasMore && (
-                  <div style={{ color: 'rgba(255,255,255,0.3)', fontStyle: 'italic', marginTop: 2 }}>
+                  <div className="text-white/30 italic mt-0.5">
                     ...{lines.length - 20} more lines
                   </div>
                 )}
@@ -194,11 +164,7 @@ export interface ActivityFeedProps {
 
 export function ActivityFeed({ entries, agentRoles }: ActivityFeedProps) {
   if (entries.length === 0) {
-    return (
-      <div style={{ padding: 16, textAlign: 'center', color: 'rgba(255,255,255,0.3)', fontSize: '18px', fontStyle: 'italic' }}>
-        Waiting for events...
-      </div>
-    )
+    return <div className="p-4 text-center text-white/30 text-[18px] italic">Waiting for events...</div>
   }
 
   return (
@@ -209,114 +175,53 @@ export function ActivityFeed({ entries, agentRoles }: ActivityFeedProps) {
         return (
           <div
             key={entry.id}
+            className="mb-px transition-colors duration-100"
             style={{
               padding: isSendMsg ? '4px 6px' : '3px 6px',
-              marginBottom: 1,
               borderLeft: `2px solid ${getEntryColor(entry.type)}`,
               marginLeft: entry.isSubagent ? 8 : 0,
-              transition: 'background 0.1s ease',
               ...(isSendMsg ? { background: 'rgba(0,100,30,0.35)', borderRadius: 2 } : {}),
             }}
           >
             {isSendMsg ? (
-              /* SendMessage: two-line layout with labels */
               <>
-                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                  <span style={{
-                    fontSize: '14px',
-                    color: 'rgba(255,255,255,0.35)',
-                    fontFamily: 'monospace',
-                    flexShrink: 0,
-                  }}>
+                <div className="flex gap-1 items-center">
+                  <span className="text-[14px] text-white/35 font-mono shrink-0">
                     {formatTime(entry.timestamp)}
                   </span>
-                  <span style={{
-                    fontSize: '14px', padding: '1px 5px', fontWeight: 'bold',
-                    background: 'rgba(255,165,0,0.2)', color: '#ffb347',
-                    border: '1px solid rgba(255,165,0,0.4)',
-                    borderRadius: 2, whiteSpace: 'nowrap', lineHeight: '18px',
-                  }}>
-                    {entry.sendFrom}
-                  </span>
-                  <span style={{ fontSize: '14px', color: 'rgba(255,255,255,0.5)' }}>{'\u2192'}</span>
-                  <span style={{
-                    fontSize: '14px', padding: '1px 5px', fontWeight: 'bold',
-                    background: 'rgba(90,200,140,0.2)', color: '#5ac88c',
-                    border: '1px solid rgba(90,200,140,0.4)',
-                    borderRadius: 2, whiteSpace: 'nowrap', lineHeight: '18px',
-                  }}>
-                    {entry.sendTo}
-                  </span>
+                  <span className={fromBadgeLgCls}>{entry.sendFrom}</span>
+                  <span className="text-[14px] text-white/50">{'\u2192'}</span>
+                  <span className={toBadgeLgCls}>{entry.sendTo}</span>
                 </div>
-                <div style={{
-                  fontSize: '14px',
-                  color: 'rgba(255,255,255,0.55)',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
+                <div className="text-[14px] text-white/55 overflow-hidden text-ellipsis pl-0.5 mt-px leading-[1.3] break-words" style={{
                   display: '-webkit-box',
                   WebkitLineClamp: 3,
                   WebkitBoxOrient: 'vertical',
-                  paddingLeft: 2,
-                  marginTop: 1,
-                  lineHeight: '1.3',
-                  wordBreak: 'break-word',
                 }}>
                   {entry.text}
                 </div>
               </>
             ) : (
-              /* Regular entries: single-line layout */
               <>
-                <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                  <span style={{
-                    fontSize: '14px',
-                    color: 'rgba(255,255,255,0.35)',
-                    fontFamily: 'monospace',
-                    flexShrink: 0,
-                  }}>
+                <div className="flex gap-1 items-center">
+                  <span className="text-[14px] text-white/35 font-mono shrink-0">
                     {formatTime(entry.timestamp)}
                   </span>
-                  <span style={{
-                    fontSize: '14px',
-                    color: getEntryColor(entry.type),
-                    fontWeight: 'bold',
-                    flexShrink: 0,
-                  }}>
+                  <span className="text-[14px] font-bold shrink-0" style={{ color: getEntryColor(entry.type) }}>
                     {getEntryIcon(entry.type)}
                   </span>
                   {entryRole?.role && <RoleBadge role={entryRole.role} colors={entryRole.colors} />}
                   {entry.isSubagent ? (
-                    <span style={{
-                      fontSize: '10px', padding: '0 3px', fontWeight: 'bold',
-                      textTransform: 'none', letterSpacing: '0.3px',
-                      background: 'rgba(120,160,255,0.15)', color: 'rgba(120,160,255,0.9)',
-                      border: '1px solid rgba(120,160,255,0.3)',
-                      borderRadius: 0, whiteSpace: 'nowrap', lineHeight: '14px', flexShrink: 0,
-                    }}>
+                    <span className="text-[10px] px-[3px] font-bold tracking-[0.3px] bg-[rgba(120,160,255,0.15)] text-[rgba(120,160,255,0.9)] border border-[rgba(120,160,255,0.3)] whitespace-nowrap leading-[14px] shrink-0">
                       {entry.agentName.includes(' > ') ? entry.agentName.split(' > ').pop() : entry.agentName}
                     </span>
                   ) : (
-                    <span style={{
-                      fontSize: '14px',
-                      color: 'rgba(90,140,255,0.8)',
-                      flexShrink: 0,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      maxWidth: 140,
-                    }}>
+                    <span className="text-[14px] text-[rgba(90,140,255,0.8)] shrink-0 overflow-hidden text-ellipsis whitespace-nowrap max-w-[140px]">
                       {entry.agentName}
                     </span>
                   )}
                 </div>
-                <div style={{
-                  fontSize: '15px',
-                  color: 'rgba(255,255,255,0.6)',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  paddingLeft: 2,
-                }}>
+                <div className="text-[15px] text-white/60 overflow-hidden text-ellipsis whitespace-nowrap pl-0.5">
                   {entry.text}
                 </div>
               </>
