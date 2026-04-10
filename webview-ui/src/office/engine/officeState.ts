@@ -1155,22 +1155,37 @@ export class OfficeState {
       }
     }
 
-    // Door proximity detection — like agent-town DoorManager:
-    // Open when any character is within threshold, close when all are far
-    const DOOR_THRESHOLD_SQ = 4  // ~2 tiles squared distance
+    // Door open detection — open only when a WALKING agent's path goes through the door
     const openDoorUids = new Set<string>()
     for (const item of this.layout.furniture) {
       if (!isDoorFurniture(item.type)) continue
-      // Door center in pixel coords
-      const doorCx = item.col + 0.5
-      const doorCy = item.row + 1  // center of 1x2 door
+      const entry = getCatalogEntry(item.type)
+      // Collect door tiles
+      const doorKeys = new Set<string>()
+      const fw = entry?.footprintW ?? 1
+      const fh = entry?.footprintH ?? 2
+      for (let dr = 0; dr < fh; dr++) {
+        for (let dc = 0; dc < fw; dc++) {
+          doorKeys.add(`${item.col + dc},${item.row + dr}`)
+        }
+      }
       for (const ch of this.characters.values()) {
-        const dx = ch.tileCol - doorCx
-        const dy = ch.tileRow - doorCy
-        if (dx * dx + dy * dy < DOOR_THRESHOLD_SQ) {
+        if (ch.state !== CharacterState.WALK || ch.path.length === 0) continue
+        // Check if agent is currently on a door tile or next few path steps go through it
+        const currentKey = `${ch.tileCol},${ch.tileRow}`
+        if (doorKeys.has(currentKey)) {
           openDoorUids.add(item.uid)
           break
         }
+        // Check upcoming path (next 3 steps)
+        for (let i = 0; i < Math.min(3, ch.path.length); i++) {
+          const step = ch.path[i]
+          if (doorKeys.has(`${step.col},${step.row}`)) {
+            openDoorUids.add(item.uid)
+            break
+          }
+        }
+        if (openDoorUids.has(item.uid)) break
       }
     }
 
