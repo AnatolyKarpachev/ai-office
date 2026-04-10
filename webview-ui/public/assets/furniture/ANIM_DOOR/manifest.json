@@ -7,7 +7,7 @@
   "rotationScheme": "2-way-mirror",
   "canPlaceOnWalls": false,
   "canPlaceOnSurfaces": false,
-  "backgroundTiles": 0,
+  "backgroundTiles": 1,
   "isDoor": true,
   "members": [
     {
