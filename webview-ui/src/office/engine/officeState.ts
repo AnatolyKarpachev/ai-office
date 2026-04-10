@@ -1165,8 +1165,8 @@ export class OfficeState {
       const doorCx = item.col + 0.5
       const doorCy = item.row + 1.5  // center of 1x3 door
       for (const ch of this.characters.values()) {
-        const dx = ch.col - doorCx
-        const dy = ch.row - doorCy
+        const dx = ch.tileCol - doorCx
+        const dy = ch.tileRow - doorCy
         if (dx * dx + dy * dy < DOOR_THRESHOLD_SQ) {
           openDoorUids.add(item.uid)
           break
