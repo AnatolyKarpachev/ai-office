@@ -4,7 +4,7 @@
   "category": "doors",
   "type": "group",
   "groupType": "rotation",
-  "rotationScheme": "3-way-mirror",
+  "rotationScheme": "2-way-mirror",
   "canPlaceOnWalls": false,
   "canPlaceOnSurfaces": false,
   "backgroundTiles": 1,
@@ -31,24 +31,6 @@
     {
       "type": "group",
       "groupType": "state",
-      "orientation": "back",
-      "members": [
-        {
-          "type": "group",
-          "groupType": "animation",
-          "state": "on",
-          "members": [
-            { "type": "asset", "id": "ANIM_DOOR_BACK_OPEN_1", "file": "ANIM_DOOR_BACK_OPEN_1.png", "width": 16, "height": 48, "footprintW": 1, "footprintH": 3, "frame": 0 },
-            { "type": "asset", "id": "ANIM_DOOR_BACK_OPEN_2", "file": "ANIM_DOOR_BACK_OPEN_2.png", "width": 16, "height": 48, "footprintW": 1, "footprintH": 3, "frame": 1 },
-            { "type": "asset", "id": "ANIM_DOOR_BACK_OPEN", "file": "ANIM_DOOR_BACK_OPEN.png", "width": 16, "height": 48, "footprintW": 1, "footprintH": 3, "frame": 2 }
-          ]
-        },
-        { "type": "asset", "id": "ANIM_DOOR_BACK_CLOSED", "file": "ANIM_DOOR_BACK_CLOSED.png", "state": "off", "width": 16, "height": 48, "footprintW": 1, "footprintH": 3 }
-      ]
-    },
-    {
-      "type": "group",
-      "groupType": "state",
       "orientation": "side",
       "mirrorSide": true,
       "members": [
@@ -62,7 +44,7 @@
             { "type": "asset", "id": "ANIM_DOOR_SIDE_OPEN", "file": "ANIM_DOOR_SIDE_OPEN.png", "width": 16, "height": 48, "footprintW": 1, "footprintH": 3, "frame": 2 }
           ]
         },
-        { "type": "asset", "id": "ANIM_DOOR_SIDE_CLOSED", "file": "ANIM_DOOR_SIDE_CLOSED.png", "state": "off", "width": 16, "height": 48, "footprintW": 1, "footprintH": 3 }
+        { "type": "asset", "id": "ANIM_DOOR_SIDE_CLOSED", "file": "ANIM_DOOR_SIDE_CLOSED.png", "state": "off", "width": 16, "height": 48, "footprintW": 1, "footprintH": 3, "mirrorSide": true }
       ]
     }
   ]
