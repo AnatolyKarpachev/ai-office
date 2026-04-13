@@ -310,7 +310,7 @@ YouTube: <a href="https://www.youtube.com/watch?v=seJ8nwOdRYA" target="_blank">h
 
 <ul>
   <li><a href="https://github.com/pablodelucca/pixel-agents">pablodelucca/pixel-agents</a> by Pablo De Lucca</li>
-  <li>Roland Ligtenberg for standalone groundwork</li>
+  <li>Pablo De Lucca for standalone groundwork</li>
   <li>Sergey Gridchin for public standalone additions, Codex support, task sidebar generalization, richer inspection, and release packaging</li>
 </ul>
 
