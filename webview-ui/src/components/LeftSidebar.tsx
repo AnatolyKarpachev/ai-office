@@ -89,7 +89,7 @@ export function LeftSidebar({
       <div className="absolute top-2.5 left-2.5 bottom-[60px] z-sidebar flex flex-col items-center py-1.5 w-9 bg-pixel-bg border-2 border-pixel-border shadow-pixel overflow-hidden transition-[width] duration-200">
         <button onClick={toggleCollapse} className="px-1.5 py-0.5 text-[18px] text-pixel-text-dim bg-pixel-btn border-2 border-transparent cursor-pointer hover:bg-pixel-btn-hover" title="Expand sidebar">{'\u25B6'}</button>
         <div className="text-[16px] text-pixel-text-dim mt-2 tracking-[1px]" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
-          AGENTS ({totalCount})
+          АГЕНТЫ ({totalCount})
         </div>
       </div>
     )
@@ -100,7 +100,7 @@ export function LeftSidebar({
       {/* Header */}
       <div className="flex items-center justify-between px-2 py-1.5 border-b-2 border-pixel-border bg-white/[0.03] shrink-0">
         <div className="flex items-center gap-1.5">
-          <span className="text-[18px] text-pixel-accent font-bold">AGENTS</span>
+          <span className="text-[18px] text-pixel-accent font-bold">АГЕНТЫ</span>
           {serverMode && (
             <span
               className="text-[10px] px-1 font-bold uppercase tracking-[0.5px] leading-[14px]"

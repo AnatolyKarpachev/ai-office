@@ -92,10 +92,22 @@ Sprites for characters, walls, furniture, tilesets.
 - **Backend auto-detects** Claude sessions in `~/.claude/projects/` and Codex sessions in `~/.codex/sessions/`
 - **Agent state persistence:** found 2 prior agents on first run ("Новая жизнь", "Маркетплейс") — restored from `~/.pixel-agents/`
 
-## i18n Status
+## i18n Status (audited 2026-05-24)
 
-> To be filled in during Task 1.7 audit.
+- ✅ Page title (`webview-ui/index.html`) — Russian: "Офис для агентов Claude Code"
+- ✅ Sidebar header "AGENTS" → переведён в "АГЕНТЫ" (LeftSidebar.tsx, 2 places)
+- ⏸ Остальные ~40-50 английских надписей в редакторе layout (BottomToolbar — Wall/Erase/Pick/Undo), HUD, SettingsModal — **отложено для V2**. Это технические лейблы, видны редко.
+- ❌ Нет i18n библиотеки — все строки инлайн в JSX. Если нужна полная локализация — потребуется добавить react-i18next или подобное.
 
-## Role Hierarchy in Code
+## Role Hierarchy in Code (audited 2026-05-24)
 
-> Source: `server/roleDetector.ts` — to be flattened in Task 1.9 from MEGABOSS/BOSS/LEAD/WORKER to LEAD/SPECIALIST only.
+**Хорошие новости:** иерархия в upstream уже плоская. Нет MEGABOSS/BOSS/LEAD/WORKER каскада из старого описания.
+
+- `server/roleDetector.ts` — маппит `agentSetting` из Claude Code JSONL в визуальные цвета. Известные значения:
+  - `"boss"` / `"lead"` — оркестратор (специальное кресло)
+  - `"worker"` / `"slave"` — линейный (рядовой)
+  - Плюс семантические роли: `"code reviewer"`, `"explore"`, `"backend builder"`, и т.д.
+- Каждая top-level Claude-сессия автоматически получает роль `"boss"` (что нам и нужно для 12 равных LEAD'ов Анатолия)
+- Subagents под конкретным боссом получают свою специализацию
+
+**Вывод:** Task 1.9 из плана (Flatten MEGABOSS/BOSS) — **не нужен**. Текущая модель уже совместима с нашей плоской структурой. Когда добавятся SPECIALIST'ы под LEAD'ами — они автоматически получат correct визуал.
