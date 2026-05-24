@@ -10,21 +10,21 @@
 
 @theme {
   /* Colors */
-  --color-pixel-bg: #1e1e2e;
-  --color-pixel-border: #4a4a6a;
-  --color-pixel-border-light: #6a6a8a;
+  --color-pixel-bg: #f7f3ee;
+  --color-pixel-border: #c8b89a;
+  --color-pixel-border-light: #d9ccba;
   --color-pixel-accent: #5a8cff;
   --color-pixel-green: #5ac88c;
-  --color-pixel-text: rgba(255, 255, 255, 0.8);
-  --color-pixel-text-dim: rgba(255, 255, 255, 0.7);
-  --color-pixel-btn: rgba(255, 255, 255, 0.08);
-  --color-pixel-btn-hover: rgba(255, 255, 255, 0.15);
+  --color-pixel-text: rgba(40, 30, 20, 0.85);
+  --color-pixel-text-dim: rgba(40, 30, 20, 0.6);
+  --color-pixel-btn: rgba(0, 0, 0, 0.06);
+  --color-pixel-btn-hover: rgba(0, 0, 0, 0.12);
   --color-pixel-active: rgba(90, 140, 255, 0.25);
   --color-pixel-agent-bg: rgba(90, 200, 140, 0.15);
   --color-pixel-agent-hover: rgba(90, 200, 140, 0.3);
   --color-pixel-agent-border: #5ac88c;
-  --color-pixel-agent-text: rgba(200, 255, 220, 0.95);
-  --color-pixel-close-text: rgba(255, 255, 255, 0.5);
+  --color-pixel-agent-text: rgba(20, 80, 40, 0.95);
+  --color-pixel-close-text: rgba(40, 30, 20, 0.5);
   --color-pixel-close-hover: #e55;
   --color-pixel-hint: #3278c8;
   --color-pixel-reset-text: #ecc;
@@ -36,7 +36,7 @@
   --font-pixel: 'FS Pixel Sans', sans-serif;
 
   /* Shadow */
-  --shadow-pixel: 2px 2px 0px #0a0a14;
+  --shadow-pixel: 2px 2px 0px rgba(0, 0, 0, 0.25);
 
   /* Z-index */
   --z-controls: 50;
@@ -47,29 +47,29 @@
 
 /* Preserve legacy CSS variables for components not yet migrated */
 :root {
-  --pixel-bg: #1e1e2e;
-  --pixel-border: #4a4a6a;
-  --pixel-border-light: #6a6a8a;
+  --pixel-bg: #f7f3ee;
+  --pixel-border: #c8b89a;
+  --pixel-border-light: #d9ccba;
   --pixel-accent: #5a8cff;
   --pixel-green: #5ac88c;
-  --pixel-shadow: 2px 2px 0px #0a0a14;
-  --pixel-text: rgba(255, 255, 255, 0.8);
-  --pixel-text-dim: rgba(255, 255, 255, 0.7);
-  --pixel-btn-bg: rgba(255, 255, 255, 0.08);
-  --pixel-btn-hover-bg: rgba(255, 255, 255, 0.15);
+  --pixel-shadow: 2px 2px 0px rgba(0, 0, 0, 0.25);
+  --pixel-text: rgba(40, 30, 20, 0.85);
+  --pixel-text-dim: rgba(40, 30, 20, 0.6);
+  --pixel-btn-bg: rgba(0, 0, 0, 0.06);
+  --pixel-btn-hover-bg: rgba(0, 0, 0, 0.12);
   --pixel-btn-disabled-opacity: 0.35;
   --pixel-active-bg: rgba(90, 140, 255, 0.25);
   --pixel-agent-bg: rgba(90, 200, 140, 0.15);
   --pixel-agent-hover-bg: rgba(90, 200, 140, 0.3);
   --pixel-agent-border: #5ac88c;
-  --pixel-agent-text: rgba(200, 255, 220, 0.95);
-  --pixel-close-text: rgba(255, 255, 255, 0.5);
+  --pixel-agent-text: rgba(20, 80, 40, 0.95);
+  --pixel-close-text: rgba(40, 30, 20, 0.5);
   --pixel-close-hover: #e55;
   --pixel-hint-bg: #3278c8;
   --pixel-reset-text: #ecc;
   --pixel-danger-bg: #a33;
   --pixel-vignette: radial-gradient(ellipse at center, transparent 50%, rgba(0, 0, 0, 0.6) 100%);
-  --vscode-foreground: #cccccc;
+  --vscode-foreground: #333333;
   --vscode-charts-yellow: #cca700;
   --vscode-charts-blue: #3794ff;
   --pixel-status-permission: var(--vscode-charts-yellow, #cca700);
@@ -118,10 +118,10 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(0, 0, 0, 0.2);
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.25);
+    background: rgba(0, 0, 0, 0.35);
   }
   ::-webkit-scrollbar-corner {
     background: transparent;
